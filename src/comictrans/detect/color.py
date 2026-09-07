@@ -14,7 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..imaging import RgbArray
-from ..model import Box, Color, Polygon
+from ..model import Box, Color, Polygon, polygon_bounds
 
 MaskArray = NDArray[np.uint8]
 
@@ -82,6 +82,45 @@ def _median_color(rgb: RgbArray, mask: MaskArray) -> Color | None:
     pixels = rgb[mask > 0]
     median = np.median(pixels.astype(np.float64), axis=0)
     return Color.from_rgb((int(median[0]), int(median[1]), int(median[2])))
+
+
+def interior_uniformity(
+    rgb: RgbArray, polygon: Polygon, *, page_height: int, tolerance: float
+) -> float:
+    """How single-coloured a polygon's interior is, from 0.0 to 1.0.
+
+    A speech balloon is a flat fill; a comic panel is artwork. Every other
+    guard in detection is a fraction of the page, so on a page of six small
+    panels a whole panel passes them all. This one does not care how big the
+    page is.
+
+    Measured inside the polygon's bounding box rather than across the page: a
+    screentoned page offers thousands of candidates, and a full-page mask and
+    erosion for each of them costs seconds. The outline is eroded away first,
+    so a balloon's own ink border does not count against its interior.
+    """
+    bounds = polygon_bounds(polygon)
+    left, top = max(0, bounds.left), max(0, bounds.top)
+    right = min(rgb.shape[1], bounds.right)
+    bottom = min(rgb.shape[0], bounds.bottom)
+    if right <= left or bottom <= top:
+        return 0.0
+
+    window = rgb[top:bottom, left:right]
+    local = tuple((x - left, y - top) for x, y in polygon)
+    region = polygon_mask(local, window.shape[0], window.shape[1])
+
+    erode_size = max(3, round(page_height * 0.004))
+    interior = cv2.erode(region, _kernel(erode_size))
+    if int(np.count_nonzero(interior)) < _MIN_SAMPLE_PIXELS:
+        interior = region
+
+    pixels = window[interior > 0].astype(np.float32)
+    if len(pixels) < _MIN_SAMPLE_PIXELS:
+        return 0.0
+    median = np.median(pixels, axis=0)
+    distance = np.linalg.norm(pixels - median, axis=1)
+    return float((distance <= tolerance).mean())
 
 
 def sample_colors(

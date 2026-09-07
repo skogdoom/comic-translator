@@ -336,3 +336,86 @@ def test_a_burst_balloon_is_traced_not_rejected_for_being_spiky() -> None:
     assert len(regions) == 1
     assert regions[0].geometry is Geometry.EXACT, "burst balloon fell back to a box"
     assert len(regions[0].polygon) > 8, "spikes were flattened away"
+
+
+def test_a_panel_full_of_artwork_is_not_mistaken_for_a_balloon() -> None:
+    # Every other guard is a fraction of the page, so on a page of small
+    # panels a whole panel passes them all. Interior uniformity is what
+    # separates a flat balloon fill from a panel of art.
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    from .conftest import draw_glyph_marks
+
+    boxes = [Box(200, 300, 420, 330)]
+    image = Image.new("RGB", (600, 800), (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([100, 200, 500, 500], fill=(180, 120, 90), outline=INK_BLACK, width=4)
+    # Busy enough that no single colour dominates, the way real art is.
+    for i in range(20):
+        draw.rectangle(
+            [104 + i * 20, 204, 124 + i * 20, 496],
+            fill=(20 + i * 11, 240 - i * 11, 40 + (i * 37) % 200),
+        )
+    draw_glyph_marks(draw, boxes[0], INK_BLACK)
+
+    regions = find_regions(
+        _page(np.asarray(image, dtype=np.uint8)), lines_for(boxes, ["ON THE ART"]), CFG
+    )
+
+    assert len(regions) == 1
+    assert regions[0].geometry is Geometry.APPROXIMATE, "the panel was traced as a balloon"
+    assert regions[0].bounds.width < 400, "the region swallowed the panel"
+
+
+def test_interior_uniformity_separates_a_flat_fill_from_artwork() -> None:
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    from comictrans.detect.color import interior_uniformity
+
+    flat = np.full((300, 300, 3), 250, dtype=np.uint8)
+    polygon = Box(50, 50, 250, 250).as_polygon()
+    assert interior_uniformity(flat, polygon, page_height=300, tolerance=24.0) > 0.9
+
+    busy = Image.new("RGB", (300, 300), (250, 250, 250))
+    draw = ImageDraw.Draw(busy)
+    for i in range(10):
+        draw.rectangle([50 + i * 20, 50, 70 + i * 20, 250], fill=(i * 25, 255 - i * 25, 128))
+    score = interior_uniformity(
+        np.asarray(busy, dtype=np.uint8), polygon, page_height=300, tolerance=24.0
+    )
+    assert score < 0.6, f"artwork scored {score:.2f} as uniform"
+
+
+def test_a_line_grazing_the_outline_is_admitted_by_the_tolerance() -> None:
+    # Lettering touches the balloon outline and the polygon traces the
+    # interior inside it, so a text box can fall a pixel or two short. Without
+    # the tolerance the line breaks away and the utterance arrives split.
+    import numpy as np
+
+    from comictrans.detect.contour import ContourCandidate
+
+    square = np.array([[[100, 100]], [[300, 100]], [[300, 300]], [[100, 300]]], dtype=np.int32)
+    candidate = ContourCandidate(
+        points=square, bounds=Box(100, 100, 301, 301), area=40000.0, inverted=False
+    )
+
+    inside = Box(120, 120, 280, 280)
+    assert candidate.contains_box(inside, 0.0)
+
+    grazing = Box(96, 120, 280, 280)  # four pixels past the left edge
+    assert not candidate.contains_box(grazing, 0.0)
+    assert not candidate.contains_box(grazing, 2.0), "tolerance must stay tight"
+    assert candidate.contains_box(grazing, 6.0)
+
+
+def test_regions_tracing_the_same_shape_are_merged(
+    balloon_page: tuple[np.ndarray, list[Box]],
+) -> None:
+    # A balloon appears on both threshold polarities. If the two contours end
+    # up holding a line each, the utterance must still come back whole.
+    array, boxes = balloon_page
+    regions = find_regions(_page(array), lines_for(boxes, ["ONE", "TWO"]), CFG)
+    assert len(regions) == 1
+    assert [line.text for line in regions[0].lines] == ["ONE", "TWO"]

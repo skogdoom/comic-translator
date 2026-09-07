@@ -18,3 +18,5 @@ Useful things to add, roughly in order of how much they will teach you:
 - a borderless caption sitting directly on artwork
 - a page with a balloon touching or broken by the panel border
 - the same page scanned at two resolutions (ratios, not pixel constants)
+- a multi-panel page where each panel is small relative to the page, which
+  is what defeats guards expressed as a fraction of the page

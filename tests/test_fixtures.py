@@ -20,6 +20,26 @@ from comictrans.ocr import get_recognizer
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+_RECOGNIZED: dict[Path, tuple[object, list[object]]] = {}
+
+
+def _page_and_lines(path: Path) -> tuple[object, list[object]]:
+    """Decode and OCR a fixture once, then reuse it.
+
+    Three tests run over every fixture, and OCR is the expensive half of each.
+    Detection still runs fresh per test, which is what they are checking.
+    """
+    cached = _RECOGNIZED.get(path)
+    if cached is None:
+        try:
+            recognizer = get_recognizer(OcrConfig())
+        except OcrUnavailableError as exc:
+            pytest.skip(f"no OCR backend: {exc}")
+        page = load_page(path)
+        cached = (page, recognizer.recognize(page, OcrConfig()))
+        _RECOGNIZED[path] = cached
+    return cached
+
 
 def _fixture_images() -> list[Path]:
     if not FIXTURES.is_dir():
@@ -29,14 +49,9 @@ def _fixture_images() -> list[Path]:
 
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
 def test_real_page_produces_sane_geometry(path: Path) -> None:
-    try:
-        recognizer = get_recognizer(OcrConfig())
-    except OcrUnavailableError as exc:
-        pytest.skip(f"no OCR backend: {exc}")
-
-    page = load_page(path)
+    page, lines = _page_and_lines(path)
     cfg = DetectConfig()
-    regions = find_regions(page, recognizer.recognize(page, OcrConfig()), cfg)
+    regions = find_regions(page, lines, cfg)
 
     assert regions, f"no regions found on {path.name}"
     for region in regions:
@@ -59,13 +74,8 @@ def test_real_page_produces_sane_geometry(path: Path) -> None:
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
 def test_colors_are_sampled_from_the_page(path: Path) -> None:
     """Fill and text colour must differ, whichever way round the page is."""
-    try:
-        recognizer = get_recognizer(OcrConfig())
-    except OcrUnavailableError as exc:
-        pytest.skip(f"no OCR backend: {exc}")
-
-    page = load_page(path)
-    regions = find_regions(page, recognizer.recognize(page, OcrConfig()), DetectConfig())
+    page, lines = _page_and_lines(path)
+    regions = find_regions(page, lines, DetectConfig())
 
     for region in regions:
         fill, text = region.fill_color, region.text_color
@@ -85,13 +95,7 @@ def _luminance(color: Color) -> float:
 
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
 def test_detection_is_deterministic(path: Path) -> None:
-    try:
-        recognizer = get_recognizer(OcrConfig())
-    except OcrUnavailableError as exc:
-        pytest.skip(f"no OCR backend: {exc}")
-
-    page = load_page(path)
-    lines = recognizer.recognize(page, OcrConfig())
+    page, lines = _page_and_lines(path)
     first = find_regions(page, lines, DetectConfig())
     second = find_regions(page, lines, DetectConfig())
     assert [r.polygon for r in first] == [r.polygon for r in second]

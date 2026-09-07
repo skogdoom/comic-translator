@@ -11,6 +11,7 @@ the same way a black-on-white balloon is.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
@@ -42,28 +43,46 @@ class ContourCandidate:
     inverted: bool
     """True when found on the inverted threshold, i.e. a dark balloon."""
 
-    def contains_box(self, box: Box) -> bool:
+    def contains_box(self, box: Box, tolerance: float = 0.0) -> bool:
         """True when every corner of ``box`` is inside the contour.
+
+        ``tolerance`` lets a corner sit that many pixels outside and still
+        count, because lettering grazes the balloon outline and the polygon
+        traces the interior within it.
 
         The bounding-box test first: a screentoned page yields thousands of
         candidates and pointPolygonTest is far too expensive to run on all of
         them when a coordinate comparison rejects most.
         """
+        margin = int(tolerance) + 1
         if (
-            box.left < self.bounds.left
-            or box.top < self.bounds.top
-            or box.right > self.bounds.right
-            or box.bottom > self.bounds.bottom
+            box.left < self.bounds.left - margin
+            or box.top < self.bounds.top - margin
+            or box.right > self.bounds.right + margin
+            or box.bottom > self.bounds.bottom + margin
         ):
             return False
+        corners = box.corners()
+        if all(
+            cv2.pointPolygonTest(self.points, (float(x), float(y)), False) >= 0 for x, y in corners
+        ):
+            return True
+        if tolerance <= 0:
+            return False
+        # Measuring the distance costs far more than the inside/outside test,
+        # so it only runs for the near misses the tolerance exists for.
         return all(
-            cv2.pointPolygonTest(self.points, (float(x), float(y)), False) >= 0
-            for x, y in box.corners()
+            cv2.pointPolygonTest(self.points, (float(x), float(y)), True) >= -tolerance
+            for x, y in corners
         )
 
     def polygon(self, cfg: DetectConfig) -> Polygon | None:
         """The plan-file polygon for this contour, or None if none is usable."""
         return _simplify(self.points, cfg)
+
+    def raw_polygon(self) -> Polygon:
+        """The unsimplified contour, for measurements that do not need tidying."""
+        return _points_to_polygon(self.points)
 
 
 def binarise(gray: GrayArray, cfg: DetectConfig, *, inverted: bool) -> GrayArray:
@@ -158,18 +177,29 @@ def build_candidates(gray: GrayArray, cfg: DetectConfig) -> list[ContourCandidat
 
 
 def enclosing_candidate(
-    candidates: list[ContourCandidate], box: Box, cfg: DetectConfig
+    candidates: list[ContourCandidate],
+    box: Box,
+    cfg: DetectConfig,
+    accept: Callable[[int], bool] | None = None,
+    tolerance: float = 0.0,
 ) -> int | None:
     """Index of the tightest candidate that properly encloses ``box``.
 
     ``min_contour_area_slack`` rejects a contour that merely traces the text
     itself — a filled caption blob rather than a balloon around it. An index
     is returned rather than the candidate so callers can group lines by it.
+
+    ``accept`` gets the last word on a candidate that fits geometrically; the
+    search carries on past one it rejects. That is how a panel is turned down
+    in favour of nothing, rather than swallowing the text inside it.
     """
     minimum_area = box.area * cfg.min_contour_area_slack
     for index, candidate in enumerate(candidates):  # already sorted smallest first
         if candidate.area < minimum_area:
             continue
-        if candidate.contains_box(box):
-            return index
+        if not candidate.contains_box(box, tolerance):
+            continue
+        if accept is not None and not accept(index):
+            continue
+        return index
     return None

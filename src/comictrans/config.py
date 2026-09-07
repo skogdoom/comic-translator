@@ -89,6 +89,34 @@ class DetectConfig:
     test while running the full width of the page. Measured balloons sit at
     0.25-0.45; escapes sit near 0.9."""
 
+    containment_tolerance_ratio: float = 0.004
+    """How far outside a contour a text box may reach and still count as
+    inside, as a fraction of image height.
+
+    Lettering often grazes the balloon outline, and the traced polygon is the
+    interior *inside* that outline, so a line's box can fall a pixel or two
+    short. Measured misses on a real page: one line by 1px, another by 12px
+    on a 3880px page. Without the tolerance those lines break away into their
+    own region and one balloon's speech arrives split in two."""
+
+    min_interior_uniformity: float = 0.6
+    """A balloon interior is one flat colour; a panel is full of artwork.
+
+    Measured as the fraction of interior pixels within
+    ``uniformity_tolerance`` of the interior's median colour. This is the only
+    guard that does not scale with the page, which is what makes it work on a
+    six-panel page where every panel is small enough to pass the area and
+    extent caps. Measured balloons and caption boxes score 0.75-0.97; panels
+    score 0.00-0.23."""
+
+    uniformity_tolerance: float = 24.0
+    """Euclidean RGB distance counted as 'the same colour' for the above."""
+
+    duplicate_iou: float = 0.9
+    """Two candidates overlapping by more than this are the same shape found
+    on both threshold polarities. Keeping both splits one balloon's lines
+    across two regions."""
+
     approx_epsilon_ratio: float = 0.004
     """approxPolyDP epsilon as a fraction of contour perimeter."""
 
