@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 from comictrans.config import DetectConfig
@@ -419,3 +420,42 @@ def test_regions_tracing_the_same_shape_are_merged(
     regions = find_regions(_page(array), lines_for(boxes, ["ONE", "TWO"]), CFG)
     assert len(regions) == 1
     assert [line.text for line in regions[0].lines] == ["ONE", "TWO"]
+
+
+def test_a_polygon_grows_to_cover_text_assigned_to_it() -> None:
+    # Erase clips its glyph mask to the polygon, so lettering outside it is
+    # never removed and the original text stays under the translation. A line
+    # absorbed from outside the balloon must drag the polygon out with it.
+    import numpy as np
+
+    boxes = [Box(160, 140, 360, 164), Box(160, 180, 340, 204)]
+    array = make_page_array(
+        (600, 800),
+        ART_DARK,
+        [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes)],
+    )
+    page = _page(array)
+    # A line whose box overshoots the balloon, the way an over-wide OCR box
+    # does, but whose centre still sits inside it.
+    overshooting = Box(130, 108, 410, 136)
+    lines = lines_for([*boxes, overshooting], ["ONE", "TWO", "OVERSHOOTING"])
+
+    regions = find_regions(page, lines, CFG)
+
+    assert len(regions) == 1
+    outline = np.array(regions[0].polygon, dtype=np.int32)
+    for line in regions[0].lines:
+        for x, y in line.box.corners():
+            assert cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0, (
+                f"{line.text!r} sits outside the polygon that is meant to erase it"
+            )
+
+
+def test_growing_a_polygon_keeps_it_simple_and_does_not_hull_it(
+    balloon_page: tuple[np.ndarray, list[Box]],
+) -> None:
+    # Unioning the boxes in, rather than taking a convex hull, is what keeps a
+    # tail or a burst balloon's spikes from being filled in.
+    array, boxes = balloon_page
+    regions = find_regions(_page(array), lines_for(boxes, ["ONE", "TWO"]), CFG)
+    assert polygon_is_simple(regions[0].polygon)

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import median
 from typing import cast
 
@@ -22,10 +22,18 @@ import numpy as np
 
 from ..config import DetectConfig
 from ..imaging import PageImage
-from ..model import Box, Color, Geometry, Polygon, polygon_area, polygon_bounds
+from ..model import (
+    Box,
+    Color,
+    Geometry,
+    Polygon,
+    polygon_area,
+    polygon_bounds,
+    polygon_is_simple,
+)
 from ..ocr.base import OcrLine
 from ..ocr.grouping import sort_lines
-from .color import interior_uniformity, sample_colors
+from .color import MaskArray, interior_uniformity, sample_colors
 from .colorseg import segment
 from .contour import ContourCandidate, GrayArray, build_candidates, enclosing_candidate
 from .fallback import approximate_polygon, cluster_lines
@@ -124,6 +132,7 @@ def find_regions(
 
     regions = _merge_overlapping(page, regions, cfg)
     regions = _absorb_strays(page, regions)
+    regions = [_cover_lines(page, region, cfg) for region in regions]
 
     approximate = sum(1 for r in regions if r.geometry is Geometry.APPROXIMATE)
     if approximate:
@@ -196,6 +205,109 @@ def _segment_loose(
         regions.append(region)
 
     return regions, remaining
+
+
+def _covers(polygon: Polygon, lines: Sequence[OcrLine]) -> bool:
+    """True when every line's box sits wholly inside the polygon."""
+    outline = np.array(polygon, dtype=np.int32)
+    return all(
+        cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0
+        for line in lines
+        for x, y in line.box.corners()
+    )
+
+
+def _cover_lines(page: PageImage, region: DetectedRegion, cfg: DetectConfig) -> DetectedRegion:
+    """Grow a polygon until it covers every line of text assigned to it.
+
+    Erase clips its glyph mask to the polygon, so lettering outside it is
+    never removed: the original text stays on the page and the translation is
+    drawn over the top of it. Two earlier fixes create exactly that situation.
+    The containment tolerance admits a line whose box grazes the outline, and
+    stray absorption folds in a line whose box overshot the balloon
+    altogether — measured at 86px past the edge on a real page.
+
+    The polygon is unioned with the offending boxes rather than replaced by
+    their hull, so a tail or a burst balloon's spikes are not filled in.
+    """
+    if _covers(region.polygon, region.lines):
+        return region
+    outline = np.array(region.polygon, dtype=np.int32)
+    stray = [line.box for line in region.lines]
+
+    window = region.bounds
+    for box in stray:
+        window = window.union(box)
+    window = window.expanded(2).clipped(page.width, page.height)
+
+    mask: MaskArray = np.zeros((window.height, window.width), dtype=np.uint8)
+    shifted = outline - np.array([window.left, window.top], dtype=np.int32)
+    cv2.fillPoly(mask, [shifted], 255)
+    for box in stray:
+        clipped = box.clipped(page.width, page.height)
+        mask[
+            clipped.top - window.top : clipped.bottom - window.top,
+            clipped.left - window.left : clipped.right - window.left,
+        ] = 255
+
+    # A little slack, because simplifying the traced union shaves corners and
+    # a box that ends up a pixel outside is a box whose text is not erased.
+    slack = max(3, round(0.001 * page.height) | 1)
+    mask = cast(
+        "MaskArray", cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (slack, slack)))
+    )
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return region
+    contour = max(contours, key=cv2.contourArea)
+    perimeter = float(cv2.arcLength(contour, True))
+
+    polygon: Polygon | None = None
+    for factor in (1.0, 0.5, 0.25):
+        approx = cv2.approxPolyDP(contour, cfg.approx_epsilon_ratio * perimeter * factor, True)
+        candidate = tuple(
+            (int(point[0][0]) + window.left, int(point[0][1]) + window.top) for point in approx
+        )
+        if len(candidate) < 3 or not polygon_is_simple(candidate):
+            continue
+        if _covers(candidate, region.lines):
+            polygon = candidate
+            break
+    if polygon is None:
+        # A contour too ragged to simplify into a covering shape. The convex
+        # hull always covers and is always simple, but it fills concavities —
+        # a balloon's tail among them — so it is only taken when it is not
+        # much bigger than what it replaces.
+        points = np.array(
+            [*region.polygon, *(corner for box in stray for corner in box.corners())],
+            dtype=np.int32,
+        )
+        hull = tuple((int(p[0][0]), int(p[0][1])) for p in cv2.convexHull(points))
+        union = float(cv2.countNonZero(mask))
+        if (
+            len(hull) >= 3
+            and polygon_is_simple(hull)
+            and polygon_area(hull) <= union * cfg.max_hull_growth
+        ):
+            polygon = hull
+        else:
+            log.debug(
+                "%s: could not grow the polygon at %s to cover its text",
+                page.path.name,
+                region.bounds,
+            )
+            return region
+
+    log.debug(
+        "%s: grew a polygon at %s to cover %d line(s) of its own text",
+        page.path.name,
+        region.bounds,
+        len(stray),
+    )
+    # Colours stay as measured from the original outline: the strip just
+    # added is there to be erased, not to be sampled as balloon fill.
+    return replace(region, polygon=polygon)
 
 
 def _box_iou(a: Box, b: Box) -> float:

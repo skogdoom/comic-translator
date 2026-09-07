@@ -125,6 +125,12 @@ class DetectConfig:
     color_window_ratio: float = 4.0
     """How far around a line of text to search, in multiples of its own box."""
 
+    max_hull_growth: float = 1.5
+    """Cap on the convex hull fallback when growing a polygon to cover its own
+    text, as a multiple of the shape it replaces. Beyond this the hull is
+    swallowing something it should not — a balloon's tail, the gap between two
+    disjoint pieces — and the original polygon is kept instead."""
+
     containment_tolerance_ratio: float = 0.004
     """How far outside a contour a text box may reach and still count as
     inside, as a fraction of image height.

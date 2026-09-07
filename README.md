@@ -120,6 +120,11 @@ A region that will not fit is reported by id and left **completely** alone —
 not erased, not half-drawn. The page stays readable in the source language
 rather than becoming a blank balloon.
 
+A region's polygon is grown until it covers every line of text assigned to
+it, because erase clips to the polygon and lettering outside it would survive
+and show through the translation. Characters the OCR never reported are the
+exception: they are in no box, so nothing knows to cover them.
+
 Every region is erased before any text is drawn, so two overlapping polygons
 cannot cut into each other's lettering. They will still draw over each other,
 which no rendering order can fix, so overlapping regions are named in a

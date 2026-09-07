@@ -116,6 +116,31 @@ markup run separately puts a space before that comma. Only single-weight words
 are hyphenated: splitting across a boundary would have to divide the segments
 too, and shrinking the font is the better answer.
 
+## A polygon must cover its own text
+
+Erase clips its glyph mask to the region's polygon, so any lettering outside
+the polygon is never removed: the original text stays on the page and the
+translation is drawn on top of it. Two earlier fixes create exactly that
+situation — the containment tolerance admits a line whose box grazes the
+outline, and stray absorption folds in a line whose box overshot the balloon,
+measured at 86px past the edge on a real page.
+
+After grouping, every polygon is therefore grown until it covers the boxes of
+all the lines assigned to it. The boxes are unioned into the shape rather than
+replaced by their hull, so a tail or a burst balloon's spikes survive.
+Simplifying the traced union shaves corners, so the union gets a few pixels of
+slack and the result is checked; the epsilon is halved twice before falling
+back to a convex hull, and the hull is only taken when it is no more than
+`max_hull_growth` times the shape it replaces.
+
+What this cannot fix is lettering the OCR never reported. On the six-panel
+page Tesseract reads `YOU SEE, IN THE PAST,` as `OU SEE, IN THE PA`: its box
+covers what it recognised, so the leading `Y` and trailing `ST` are in no box,
+fall outside the polygon, and survive the erase. They also happen to touch the
+balloon's ink outline, so no colour-based erase could remove them without
+cutting the outline either. A recogniser that reports the full line would
+resolve it, since coverage is driven by the boxes.
+
 ## Erase before draw
 
 `render_page` works in two passes: it decides what every region will do and

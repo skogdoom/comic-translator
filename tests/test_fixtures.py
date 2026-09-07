@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from comictrans.config import DetectConfig, OcrConfig
@@ -63,6 +65,16 @@ def test_real_page_produces_sane_geometry(path: Path) -> None:
         for x, y in region.polygon:
             assert 0 <= x <= page.width and 0 <= y <= page.height
         assert region.lines, "a region with no OCR lines should not exist"
+
+        # Erase clips its glyph mask to the polygon, so a line of text
+        # outside the polygon assigned to it is lettering that will never be
+        # removed: the original text stays on the page under the translation.
+        outline = np.array(region.polygon, dtype=np.int32)
+        for line in region.lines:
+            for x, y in line.box.corners():
+                assert cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0, (
+                    f"{line.text!r} lies outside the polygon meant to erase it"
+                )
 
         # Contour escape: a region spanning the page is a band of artwork or a
         # panel, and erasing it would wipe out the art.
