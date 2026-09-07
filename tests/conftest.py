@@ -119,22 +119,46 @@ def borderless_page() -> tuple[np.ndarray, list[Box]]:
     return array, boxes
 
 
+FONT_ROOTS = (
+    Path("/System/Library/Fonts"),  # macOS, including Supplemental/
+    Path("/Library/Fonts"),
+    Path("/usr/share/fonts"),  # Linux
+)
+
+# Known regular/bold pairs, macOS first since that is the target platform.
+FONT_PAIRS = (
+    ("Arial.ttf", "Arial Bold.ttf"),
+    ("Verdana.ttf", "Verdana Bold.ttf"),
+    ("Georgia.ttf", "Georgia Bold.ttf"),
+    ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
+    ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
+    ("FreeSans.ttf", "FreeSansBold.ttf"),
+)
+
+_BOLD_SUFFIXES = (" Bold", "-Bold", "bd")
+
+
 def _find_font_pair() -> tuple[Path, Path] | None:
-    """A regular/bold TTF pair from the host system, for font-resolution tests."""
-    pairs = [
-        ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
-        ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
-        ("FreeSans.ttf", "FreeSansBold.ttf"),
-    ]
-    roots = [Path("/usr/share/fonts"), Path("/System/Library/Fonts"), Path("/Library/Fonts")]
-    for regular_name, bold_name in pairs:
+    """A regular/bold TTF pair from the host system, for font-resolution tests.
+
+    No font ships with this repository, so the tests borrow one. The named
+    pairs cover macOS and the usual Linux distributions; the sibling scan is
+    the fallback for anything else.
+    """
+    roots = [root for root in FONT_ROOTS if root.is_dir()]
+    for regular_name, bold_name in FONT_PAIRS:
         for root in roots:
-            if not root.is_dir():
-                continue
             regular = next(root.rglob(regular_name), None)
             bold = next(root.rglob(bold_name), None)
             if regular is not None and bold is not None:
                 return regular, bold
+
+    for root in roots:
+        for regular in sorted(root.rglob("*.ttf")):
+            for suffix in _BOLD_SUFFIXES:
+                bold = regular.with_name(f"{regular.stem}{suffix}{regular.suffix}")
+                if bold.is_file():
+                    return regular, bold
     return None
 
 
@@ -148,7 +172,8 @@ def font_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """
     pair = _find_font_pair()
     if pair is None:
-        pytest.skip("no regular/bold font pair on this host")
+        searched = ", ".join(str(root) for root in FONT_ROOTS)
+        pytest.skip(f"no regular/bold TTF pair found under {searched}")
     regular, bold = pair
     directory = tmp_path / "fonts"
     directory.mkdir()

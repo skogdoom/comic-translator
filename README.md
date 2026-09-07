@@ -154,10 +154,31 @@ PDF input (milestone 3), and preserving italic emphasis from the source.
 ## Development
 
 ```
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pytest
+uv sync --group dev        # once, and after any dependency change
+uv run pytest              # the suite
+uv run ruff check .        # lint
+uv run ruff format .       # format
+uv run mypy                # strict, over src/comictrans
 ```
+
+Useful while working:
+
+```
+uv run pytest -rs                     # show why anything skipped
+uv run pytest tests/test_detect.py    # one file
+uv run pytest -k polygon              # one topic
+uv run pytest -x -vv                  # stop at the first failure, verbose
+```
+
+Two groups of tests skip rather than fail when the host cannot run them:
+
+- The font tests borrow a regular/bold TTF pair from the system, because no
+  font ships with this repository. They skip if none is found.
+- `tests/test_fixtures.py` runs the real pipeline over any images in
+  `tests/fixtures/`, and skips when that directory is empty or no OCR backend
+  is installed.
+
+`-rs` tells you which. On macOS with `uv sync --group dev` you should see
+neither skipping except the empty fixtures directory.
 
 Fixture images go in `tests/fixtures/`; see the README there.
