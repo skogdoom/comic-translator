@@ -95,3 +95,23 @@ def test_detection_is_deterministic(path: Path) -> None:
     first = find_regions(page, lines, DetectConfig())
     second = find_regions(page, lines, DetectConfig())
     assert [r.polygon for r in first] == [r.polygon for r in second]
+
+
+def test_no_two_fixtures_are_byte_identical() -> None:
+    """Duplicate fixtures cost test time and buy no coverage.
+
+    Renaming a fixture by adding the new name without removing the old one is
+    an easy slip, and the result looks like extra coverage rather than the
+    same page twice.
+    """
+    import hashlib
+
+    by_digest: dict[str, list[str]] = {}
+    for path in _fixture_images():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        by_digest.setdefault(digest, []).append(path.name)
+
+    duplicates = {d: names for d, names in by_digest.items() if len(names) > 1}
+    assert not duplicates, "identical fixture images: " + "; ".join(
+        " == ".join(sorted(names)) for names in duplicates.values()
+    )
