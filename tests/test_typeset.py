@@ -218,3 +218,23 @@ def test_empty_text_is_a_fit_failure(face: FontFace) -> None:
 def test_a_degenerate_polygon_fails_rather_than_dividing_by_zero(face: FontFace) -> None:
     result = _fit("TEXT", ((10, 10), (11, 10), (11, 11), (10, 11)), face)
     assert isinstance(result, FitFailure)
+
+
+def test_an_unknown_hyphenation_language_degrades_instead_of_failing(
+    face: FontFace, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    cfg = TypesetConfig(hyphenation_language="zz", font_size_min_ratio=0.02)
+    with caplog.at_level(logging.WARNING):
+        result = _fit("SOME ORDINARY WORDS", Box(200, 300, 600, 500).as_polygon(), face, cfg=cfg)
+
+    assert isinstance(result, Layout), "an unknown language must not break the fit"
+    assert "no hyphenation dictionary" in caplog.text
+
+
+def test_the_hyphenation_language_is_the_target_language(face: FontFace) -> None:
+    # A bare code is enough; pyphen resolves 'sv' as readily as 'en_US'.
+    cfg = TypesetConfig(hyphenation_language="sv", font_size_min_ratio=0.03)
+    result = _fit("OERHORT", Box(300, 340, 500, 460).as_polygon(), face, cfg=cfg)
+    assert isinstance(result, Layout | FitFailure)

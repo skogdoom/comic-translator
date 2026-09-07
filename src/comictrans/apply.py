@@ -55,7 +55,7 @@ class ApplyReport:
 
     @property
     def unedited(self) -> list[tuple[str, RegionOutcome]]:
-        """Rendered regions whose translation is still the extracted Italian."""
+        """Rendered regions whose translation is still the extracted source."""
         return [(i, o) for i, o in self.outcomes if o.unedited]
 
     @property

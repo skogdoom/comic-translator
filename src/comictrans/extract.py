@@ -13,7 +13,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import __version__
-from .config import ExtractConfig
+from .config import (
+    DEFAULT_SOURCE_LANGUAGE,
+    DEFAULT_TARGET_LANGUAGE,
+    ExtractConfig,
+)
 from .debug import dump as dump_debug
 from .detect import DetectedRegion, find_regions
 from .errors import ComictransError
@@ -79,10 +83,10 @@ def _to_region(
         text_color=detected.text_color,
         confidence=confidence,
         source_text=source_text,
-        # Seeded with the source so you edit Italian into English in place
-        # rather than retyping into a blank field. Until you do, a region
-        # still reads as untranslated: apply reports every translation that
-        # is still identical to its source_text.
+        # Seeded with the source so the text is edited into the target
+        # language in place rather than retyped into a blank field. Until it
+        # is, the region still reads as untranslated: apply reports every
+        # translation that is still identical to its source_text.
         translation=source_text,
         notes="",
         low_confidence=confidence < config.ocr.confidence_threshold,
@@ -116,6 +120,8 @@ def extract(
     config: ExtractConfig,
     *,
     case: TextCase = TextCase.UPPER,
+    source_language: str = DEFAULT_SOURCE_LANGUAGE,
+    target_language: str = DEFAULT_TARGET_LANGUAGE,
     debug_dir: Path | None = None,
 ) -> tuple[Plan, ExtractReport]:
     """Run the extract pass over a file or directory."""
@@ -150,8 +156,8 @@ def extract(
         version=PLAN_VERSION,
         generator=f"comictrans {__version__}",
         created=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        source_language="it",
-        target_language="en",
+        source_language=source_language,
+        target_language=target_language,
         ocr_engine=recognizer.name,
         font=font_family,
         case=case,

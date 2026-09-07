@@ -1,7 +1,7 @@
 [project]
 name = "comictrans"
 version = "0.1.0"
-description = "Two-pass Italian-to-English comic page translation tool for macOS."
+description = "Two-pass comic page translation tool for macOS: extract, translate by hand, apply."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

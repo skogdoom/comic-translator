@@ -303,3 +303,71 @@ def test_detection_tuning_flags_reach_the_config(
         ]
     )
     assert seen == {"extent": 0.5, "solidity": 0.6, "area": 0.3}
+
+
+def test_language_flags_reach_the_plan_header(page_dir: Path, font_dir: Path) -> None:
+    from comictrans.planfile import load_plan
+
+    assert main(["extract", str(page_dir), "--source-lang", "fr", "--target-lang", "sv"]) == EXIT_OK
+    header = load_plan(page_dir / "comic-plan.yaml").header
+    assert (header.source_language, header.target_language) == ("fr", "sv")
+
+
+def test_ocr_language_defaults_to_the_source_language(
+    page_dir: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, tuple[str, ...]] = {}
+
+    import comictrans.cli as cli_module
+
+    original = cli_module._build_config
+
+    def capture(args: object) -> object:
+        config = original(args)  # type: ignore[arg-type]
+        seen["languages"] = config.ocr.languages
+        return config
+
+    monkeypatch.setattr(cli_module, "_build_config", capture)
+    main(["extract", str(page_dir), "--source-lang", "pt", "--force"])
+    assert seen["languages"] == ("pt",)
+
+    main(["extract", str(page_dir), "--source-lang", "pt", "--lang", "pt-BR", "--force"])
+    assert seen["languages"] == ("pt-BR",), "--lang overrides the derived default"
+
+
+def test_hyphenation_language_comes_from_the_plan_header(
+    page_dir: Path, font_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, str] = {}
+
+    import comictrans.cli as cli_module
+
+    original = cli_module._apply_config
+
+    def capture(args: object, plan: object) -> object:
+        config = original(args, plan)  # type: ignore[arg-type]
+        seen["language"] = config.typeset.hyphenation_language
+        return config
+
+    assert main(["extract", str(page_dir), "--target-lang", "sv", "--force"]) == EXIT_OK
+    plan_path = _translate_plan(page_dir, "HEJ DAR")
+    monkeypatch.setattr(cli_module, "_apply_config", capture)
+    main(["apply", str(plan_path), "--output", str(tmp_path / "out")])
+    assert seen["language"] == "sv"
+
+
+def _translate_plan(page_dir: Path, translation: str) -> Path:
+    from comictrans.model import Plan
+    from comictrans.planfile import load_plan, write_plan
+
+    plan_path = page_dir / "comic-plan.yaml"
+    plan = load_plan(plan_path)
+    write_plan(
+        Plan(
+            header=plan.header,
+            regions=tuple(r.with_translation(translation) for r in plan.regions),
+        ),
+        plan_path,
+        force=True,
+    )
+    return plan_path

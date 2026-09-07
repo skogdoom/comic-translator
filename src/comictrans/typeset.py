@@ -293,8 +293,12 @@ def _hyphenator(cfg: TypesetConfig) -> Hyphenator | None:
         import pyphen
 
         return cast("Hyphenator", pyphen.Pyphen(lang=cfg.hyphenation_language))
-    except (ImportError, OSError, KeyError) as exc:  # pragma: no cover - dictionary missing
-        log.warning("hyphenation unavailable for %s: %s", cfg.hyphenation_language, exc)
+    except (ImportError, OSError, KeyError) as exc:
+        log.warning(
+            "no hyphenation dictionary for %r (%s); lines will only break between words",
+            cfg.hyphenation_language,
+            exc,
+        )
         return None
 
 

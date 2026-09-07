@@ -1,7 +1,11 @@
 # comictrans
 
-Translate scanned comic pages from Italian to English in two passes, with the
-translation done by hand in between.
+Translate scanned comic pages from a source language into a target language
+in two passes, with the translation done by hand in between.
+
+Defaults are Italian to English; set `--source-lang` and `--target-lang` on
+`extract` for any other pair. Both are recorded in the plan file, and the
+target language picks the hyphenation dictionary at render time.
 
 ```
 comictrans extract pages/            # -> pages/comic-plan.yaml, no images written
@@ -24,7 +28,7 @@ renders translated pages from it. Milestone 3 (CBZ/PDF input) and milestone 4
 - macOS on Apple Silicon, Python 3.12
 - Apple Vision for OCR, via pyobjc (installed automatically on macOS)
 - Tesseract as an optional fallback: `uv sync --extra tesseract` plus a
-  `tesseract` binary with the `ita` language data
+  `tesseract` binary with language data for your source language
 
 Everything runs locally. There are no network calls anywhere in the pipeline —
 translation is manual by design.
@@ -64,6 +68,8 @@ Useful when detection misbehaves:
 | `--max-extent-ratio` | lower it when a region swallows a band of artwork; balloons measure 0.25-0.45 of page width |
 | `--min-solidity` | lower it for irregular or spiky balloons |
 | `--confidence-threshold` | raise it to flag more regions for checking |
+| `--source-lang` / `--target-lang` | the language pair, recorded in the plan file (default `it` / `en`) |
+| `--lang` | OCR language if the recogniser needs a region-qualified tag; defaults to `--source-lang` |
 | `--ocr tesseract` | force the fallback backend |
 
 ## apply
@@ -82,16 +88,17 @@ run if it is the source directory or anywhere inside it. Existing output files
 are never overwritten without `--force`. Filenames are mirrored flat into the
 output directory.
 
-`extract` seeds `translation` with the Italian it read, so a region you have
-not edited renders that Italian back onto the page rather than being skipped.
-Those are counted as **still Italian** in the summary and named by region id.
+`extract` seeds `translation` with the source text it read, so a region you
+have not edited renders that source text back onto the page rather than being
+skipped. Those are counted as **same as source** in the summary and named by
+region id.
 Clearing a `translation` instead leaves the region untouched and reports it as
 skipped, which fails the run. A region with `skip: true` is a decision you
 made, so it passes quietly.
 
 A region that will not fit is reported by id and left **completely** alone —
-not erased, not half-drawn. The page stays readable in Italian rather than
-becoming a blank balloon.
+not erased, not half-drawn. The page stays readable in the source language
+rather than becoming a blank balloon.
 
 | flag | what it does |
 | --- | --- |
@@ -164,14 +171,14 @@ regions:
     notes: ""
 ```
 
-- `translation` is seeded with the extracted Italian so you can edit it in
-  place rather than retyping into a blank field.
+- `translation` is seeded with the extracted source text so you can edit it
+  in place rather than retyping into a blank field.
 - Clearing `translation` leaves the region untouched and reports it as
   skipped, which fails the run. `skip: true` says you meant it, and passes
   quietly.
 - A region whose `translation` is still identical to its `source_text` is
-  rendered as-is — the Italian gets re-lettered — and listed under
-  **still Italian** at the end of an `apply` run, so a balloon you never got
+  rendered as-is — the source text gets re-lettered — and listed under
+  **same as source** at the end of an `apply` run, so a balloon you never got
   to is visible rather than silent.
 - `notes` is yours. comictrans never reads or rewrites it.
 - `**bold**` marks emphasis. It renders as bold, never italic; the oblique

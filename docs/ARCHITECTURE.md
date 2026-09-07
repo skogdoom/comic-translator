@@ -100,18 +100,19 @@ too, and shrinking the font is the better answer.
 It does not re-run detection or OCR, so it cannot disagree with the plan file.
 It does not touch a region it cannot render: a fit failure leaves the region
 exactly as it was, erased no more than it is drawn, so the page stays readable
-in Italian rather than becoming a blank balloon.
+in the source language rather than becoming a blank balloon.
 
 An empty translation and `skip: true` are deliberately different. The first is
 unfinished work and fails the run; the second is a decision and passes.
 
-Extract seeds `translation` with `source_text` so the Italian can be edited in
-place instead of retyped. That costs the old safety property: a balloon you
-never got to used to be left untouched, and now renders its own Italian in
-Comic Sans. Apply gets the signal back by reporting every region whose
+Extract seeds `translation` with `source_text` so it can be edited in place
+instead of retyped. That costs the old safety property: a balloon you never got
+to used to be left untouched, and now renders its own source text in Comic
+Sans. Apply gets the signal back by reporting every region whose
 translation is still identical to its source, rather than by skipping them —
-"NO!" is a correct translation of "NO!", so an identical string is a report
-line and never a reason to leave a region unrendered.
+a name, a number, or an interjection spelled the same in both languages is a
+correct translation of itself, so an identical string is a report line and
+never a reason to leave a region unrendered.
 
 ## Output files
 
@@ -125,6 +126,21 @@ Rendering happens on RGB with any transparency flattened onto white, so
 without reattaching the alpha a transparent page would come back silently
 opaque. Modes that cannot round-trip through 8-bit RGB — 16-bit, CMYK,
 YCbCr — are refused rather than quietly downconverted.
+
+## Languages
+
+The language pair lives in the plan file header as `source_language` and
+`target_language`, set by `--source-lang` and `--target-lang` on `extract` and
+defaulting to `it` and `en`. Nothing downstream hardcodes a language:
+
+- OCR uses the source language, or whatever `--lang` overrides it with, since
+  a recogniser sometimes wants a region-qualified tag (`pt-BR`) where the plan
+  file records the plain one.
+- Hyphenation uses the target language, because that is the language being
+  written. A language pyphen has no dictionary for disables hyphenation with a
+  warning rather than failing the run — lines then break only between words.
+- The Tesseract adapter maps BCP-47 tags to traineddata names and passes an
+  unmapped one through unchanged, so a traineddata name given directly works.
 
 ## Coordinate convention
 
@@ -291,7 +307,8 @@ of this contradicts what I expected before running it.
    `_simplify` now falls back to the convex hull, which cannot self-intersect.
 10. **Vision on comic lettering.** Untested here — no Mac in the loop. It is
     trained on prose, so expect I/l/1 confusion, dropped accents, and mangled
-    Italian elisions (`dell'uomo` → `dell uomo`), often at high confidence, so
+    elisions in languages that use them (Italian `dell'uomo` → `dell uomo`),
+    often at high confidence, so
     the 0.5 threshold will not catch them.
 11. **Skew.** One or two degrees inflates axis-aligned boxes and loosens the
     polygon fit, long before it counts as "rotated text".

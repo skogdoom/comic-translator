@@ -21,7 +21,15 @@ DEFAULT_CONDENSE_MIN = 0.9
 DEFAULT_CONFIDENCE_THRESHOLD = 0.5
 """Below this, a region is still written out but flagged ``low_confidence``."""
 
-DEFAULT_LANGUAGES = ("it-IT",)
+DEFAULT_SOURCE_LANGUAGE = "it"
+"""Language the pages are lettered in. Recorded in the plan file and used as
+the OCR language unless one is given explicitly."""
+
+DEFAULT_TARGET_LANGUAGE = "en"
+"""Language the translations are written in. Recorded in the plan file and
+used to pick a hyphenation dictionary."""
+
+DEFAULT_LANGUAGES = (DEFAULT_SOURCE_LANGUAGE,)
 
 DEFAULT_MAX_CONTOUR_AREA_RATIO = 0.25
 """A contour larger than this fraction of the page is a panel, not a balloon."""
@@ -111,7 +119,6 @@ class ExtractConfig:
 
 
 DEFAULT_LINE_SPACING = 1.15
-DEFAULT_HYPHENATION_LANGUAGE = "en_US"
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,7 +143,10 @@ class TypesetConfig:
     condense_min: float = DEFAULT_CONDENSE_MIN
     condense_step: float = 0.02
     hyphenate: bool = True
-    hyphenation_language: str = DEFAULT_HYPHENATION_LANGUAGE
+    hyphenation_language: str = DEFAULT_TARGET_LANGUAGE
+    """Which hyphenation dictionary to use. Apply sets this from the plan
+    file's ``target_language``; a language pyphen has no dictionary for
+    simply disables hyphenation, with a warning."""
 
 
 DEFAULT_ERASE_STRATEGY = "flat"

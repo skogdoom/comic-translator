@@ -63,7 +63,11 @@ def unavailable_reason() -> str:
 
 
 def tesseract_languages(languages: tuple[str, ...]) -> str:
-    """``('it-IT',)`` -> ``'ita'``."""
+    """BCP-47 tags to Tesseract traineddata names: ``('it-IT',)`` -> ``'ita'``.
+
+    An unmapped language passes through unchanged, so a traineddata name given
+    directly still works.
+    """
     codes: list[str] = []
     for language in languages:
         prefix = language.split("-")[0].lower()

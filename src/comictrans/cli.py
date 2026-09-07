@@ -21,10 +21,11 @@ from .config import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_ERASE_STRATEGY,
     DEFAULT_FONT_SIZE_MIN_RATIO,
-    DEFAULT_LANGUAGES,
     DEFAULT_MAX_CONTOUR_AREA_RATIO,
     DEFAULT_MAX_EXTENT_RATIO,
     DEFAULT_MIN_SOLIDITY,
+    DEFAULT_SOURCE_LANGUAGE,
+    DEFAULT_TARGET_LANGUAGE,
     ApplyConfig,
     DetectConfig,
     EraseConfig,
@@ -82,8 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[verbosity],
         description=(
             "Translate scanned comic pages in two passes: 'extract' writes a plan "
-            "file of the Italian text, you translate it by hand, 'apply' renders "
-            "new images. Source images are never modified."
+            "file of the source-language text, you translate it by hand, "
+            "'apply' renders new images. Source images are never modified."
         ),
     )
     parser.add_argument("--version", action="version", version=f"comictrans {__version__}")
@@ -124,10 +125,25 @@ def _add_extract(
         help="OCR backend (default: auto, Apple Vision then Tesseract)",
     )
     extract_parser.add_argument(
+        "--source-lang",
+        default=DEFAULT_SOURCE_LANGUAGE,
+        metavar="CODE",
+        help="language the pages are lettered in, recorded in the plan file (default: %(default)s)",
+    )
+    extract_parser.add_argument(
+        "--target-lang",
+        default=DEFAULT_TARGET_LANGUAGE,
+        metavar="CODE",
+        help="language the translations will be written in, recorded in the "
+        "plan file and used to pick a hyphenation dictionary "
+        "(default: %(default)s)",
+    )
+    extract_parser.add_argument(
         "--lang",
         action="append",
         metavar="CODE",
-        help="OCR language, repeatable (default: it-IT)",
+        help="OCR language, repeatable. Defaults to --source-lang; give a "
+        "region-qualified tag here if the recogniser needs one, e.g. pt-BR",
     )
     extract_parser.add_argument(
         "--confidence-threshold",
@@ -280,7 +296,7 @@ def configure_logging(*, verbose: bool, quiet: bool) -> None:
 
 
 def _build_config(args: argparse.Namespace) -> ExtractConfig:
-    languages = tuple(args.lang) if args.lang else DEFAULT_LANGUAGES
+    languages = tuple(args.lang) if args.lang else (args.source_lang,)
     return ExtractConfig(
         ocr=OcrConfig(
             languages=languages,
@@ -347,6 +363,8 @@ def run_extract(args: argparse.Namespace) -> int:
         face.family,
         config,
         case=TextCase(args.case),
+        source_language=args.source_lang,
+        target_language=args.target_lang,
         debug_dir=args.debug_dir,
     )
     write_plan(plan, plan_path, force=args.force)
@@ -362,6 +380,8 @@ def _apply_config(args: argparse.Namespace, plan: Plan) -> ApplyConfig:
             font_size_min_ratio=args.min_font_ratio or header.font_size_min_ratio,
             condense_min=args.condense_min or header.condense_min,
             hyphenate=not args.no_hyphenation,
+            # Hyphenation follows the language being written, not a fixed one.
+            hyphenation_language=header.target_language,
         ),
         erase=EraseConfig(strategy=args.erase),
     )
@@ -374,7 +394,7 @@ def _apply_summary(report: ApplyReport, output: Path) -> None:
     print(f"  skipped (no text): {report.skipped_empty}")
     print(f"  skipped (skip:):   {report.skipped_flag}")
     print(f"  failed to fit:     {report.failed}")
-    print(f"  still Italian:     {len(report.unedited)}")
+    print(f"  same as source:    {len(report.unedited)}")
     for image, outcome in report.condensed:
         print(f"  CONDENSED {outcome.condense:.0%}:  {outcome.region_id} ({image})")
     for image, outcome in report.outcomes:
@@ -389,7 +409,7 @@ def _apply_summary(report: ApplyReport, output: Path) -> None:
     if report.unedited:
         print(
             f"\n{len(report.unedited)} region(s) still hold the extracted "
-            "Italian and were re-lettered as-is."
+            "source text and were re-lettered as-is."
         )
     if report.condensed:
         print(

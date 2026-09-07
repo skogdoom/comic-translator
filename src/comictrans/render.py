@@ -131,8 +131,8 @@ def render_region(
     )
     if isinstance(result, FitFailure):
         # Nothing is drawn and nothing is erased: a region that will not fit
-        # is left exactly as it was, so the page stays readable in Italian
-        # rather than becoming a blank balloon.
+        # is left exactly as it was, so the page stays readable in the source
+        # language rather than becoming a blank balloon.
         return rgb, RegionOutcome(region.id, "failed", result.reason)
 
     erased = erase(rgb, region, cfg.erase, page_height=page_height)
@@ -142,7 +142,7 @@ def render_region(
 
     if region.is_untranslated:
         log.warning(
-            "region %s: translation is still the extracted Italian; "
+            "region %s: translation is still the extracted source text; "
             "the original text is being re-lettered",
             region.id,
         )

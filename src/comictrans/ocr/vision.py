@@ -84,7 +84,7 @@ def _to_pixel_box(bounding_box: Any, width: int, height: int) -> Box:
 
 
 class VisionRecognizer:
-    """``VNRecognizeTextRequest`` at accurate level, Italian by default."""
+    """``VNRecognizeTextRequest`` at accurate level, in the source language."""
 
     name = "apple-vision"
 

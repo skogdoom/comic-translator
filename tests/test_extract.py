@@ -327,3 +327,28 @@ def test_geometry_flag_is_carried_into_the_plan(tmp_path: Path) -> None:
     plan, report = _run(directory, recognizer)
     assert plan.regions[0].geometry is Geometry.APPROXIMATE
     assert report.approximate == 1
+
+
+def test_languages_default_to_the_configured_pair(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    plan, _ = _run(directory, recognizer)
+    assert (plan.header.source_language, plan.header.target_language) == ("it", "en")
+
+
+def test_languages_are_recorded_from_the_arguments(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    plan, _ = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        ExtractConfig(),
+        source_language="ja",
+        target_language="de",
+    )
+    assert plan.header.source_language == "ja"
+    assert plan.header.target_language == "de"
