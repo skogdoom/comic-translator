@@ -115,3 +115,83 @@ def test_no_two_fixtures_are_byte_identical() -> None:
     assert not duplicates, "identical fixture images: " + "; ".join(
         " == ".join(sorted(names)) for names in duplicates.values()
     )
+
+
+ROUND_TRIP_FIXTURES = (
+    "1-plain_white_balloon_on_flat_art.png",
+    "2-white_on_black_caption_box.png",
+    "9-burst_balloon_with_lightning_tail.png",
+)
+
+
+def _round_trip_paths() -> list[Path]:
+    return [p for p in _fixture_images() if p.name in ROUND_TRIP_FIXTURES]
+
+
+@pytest.mark.parametrize("path", _round_trip_paths(), ids=lambda p: p.name)
+def test_extract_then_apply_round_trip(path: Path, tmp_path: Path, font_dir: Path) -> None:
+    """The whole pipeline over a real page: extract, translate, apply.
+
+    Asserts the two rules that matter most — the source is never written to,
+    and everything outside a region's polygon is byte-identical to the source.
+    """
+    import numpy as np
+    from PIL import Image
+
+    from comictrans.apply import apply_plan
+    from comictrans.config import ApplyConfig, ExtractConfig
+    from comictrans.erase import polygon_mask
+    from comictrans.extract import extract
+    from comictrans.model import Plan
+    from comictrans.planfile import write_plan
+    from comictrans.util import sha256_file
+
+    try:
+        recognizer = get_recognizer(OcrConfig())
+    except OcrUnavailableError as exc:
+        pytest.skip(f"no OCR backend: {exc}")
+
+    source_dir = tmp_path / "pages"
+    source_dir.mkdir()
+    source = source_dir / path.name
+    source.write_bytes(path.read_bytes())
+    digest_before = sha256_file(source)
+
+    plan_path = source_dir / "comic-plan.yaml"
+    plan, _ = extract(source, plan_path, recognizer, "Comic Sans MS", ExtractConfig())
+    if not plan.regions:
+        pytest.skip(f"no regions detected on {path.name}")
+
+    translated = Plan(
+        header=plan.header,
+        regions=tuple(r.with_translation("TRANSLATED **TEXT** HERE") for r in plan.regions),
+    )
+    write_plan(translated, plan_path, force=True)
+
+    output = tmp_path / "out"
+    report = apply_plan(translated, plan_path, output, ApplyConfig())
+
+    assert sha256_file(source) == digest_before, "the source image was written to"
+    assert report.rendered + report.failed == len(plan.regions)
+
+    written = output / f"{source.stem}.png"
+    assert written.is_file()
+
+    # Compare against what the pipeline read, not a raw decode: the fixtures
+    # carry transparency, which load_page flattens onto white.
+    from comictrans.imaging import load_page
+
+    page = load_page(source)
+    original = page.rgb.astype(np.int16)
+    result = np.asarray(Image.open(written).convert("RGB"), dtype=np.int16)
+    assert result.shape == original.shape
+
+    if page.alpha is not None:
+        written_alpha = np.asarray(Image.open(written).convert("RGBA").getchannel("A"))
+        assert np.array_equal(written_alpha, page.alpha), "source transparency was dropped"
+
+    touched = np.zeros(original.shape[:2], dtype=bool)
+    for region in translated.regions:
+        touched |= polygon_mask(region, original.shape[0], original.shape[1]) > 0
+    changed = np.abs(original - result).max(axis=2) > 0
+    assert not (changed & ~touched).any(), "pixels outside every polygon were altered"

@@ -9,6 +9,7 @@ from PIL import Image
 
 from comictrans.errors import InputError
 from comictrans.imaging import collect_inputs, load_page
+from comictrans.imaging import save_page as write_output_page
 
 from .conftest import save_page
 
@@ -103,3 +104,49 @@ def test_transparency_is_flattened_onto_white_not_dropped(tmp_path: Path) -> Non
 def test_opaque_images_report_no_alpha(tmp_path: Path) -> None:
     path = save_page(_blank(), tmp_path / "page.png")
     assert load_page(path).meta.had_alpha is False
+
+
+def test_save_page_writes_the_source_transparency_back(tmp_path: Path) -> None:
+    rgba = np.zeros((12, 12, 4), dtype=np.uint8)
+    rgba[:, :, :3] = 40
+    rgba[:, :, 3] = 255
+    rgba[0:4, 0:4, 3] = 0
+    source = tmp_path / "src.png"
+    Image.fromarray(rgba, mode="RGBA").save(source)
+
+    page = load_page(source)
+    destination = tmp_path / "out.png"
+    write_output_page(Image.fromarray(page.rgb), destination, page.meta, alpha=page.alpha)
+
+    with Image.open(destination) as written:
+        assert written.mode == "RGBA"
+        assert np.array_equal(np.asarray(written.getchannel("A")), page.alpha)
+
+
+def test_save_page_keeps_opaque_sources_opaque(tmp_path: Path) -> None:
+    page = load_page(save_page(_blank(), tmp_path / "opaque.png"))
+    destination = tmp_path / "out.png"
+    write_output_page(Image.fromarray(page.rgb), destination, page.meta, alpha=page.alpha)
+    with Image.open(destination) as written:
+        assert written.mode == "RGB"
+
+
+def test_jpeg_output_cannot_carry_alpha_and_says_so(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    rgba = np.full((10, 10, 4), 200, dtype=np.uint8)
+    rgba[0:3, 0:3, 3] = 0
+    source = tmp_path / "src.png"
+    Image.fromarray(rgba, mode="RGBA").save(source)
+    page = load_page(source)
+
+    with caplog.at_level(logging.WARNING):
+        write_output_page(
+            Image.fromarray(page.rgb), tmp_path / "out.jpg", page.meta, "jpeg", page.alpha
+        )
+
+    assert "cannot store transparency" in caplog.text
+    with Image.open(tmp_path / "out.jpg") as written:
+        assert written.mode == "RGB"

@@ -15,24 +15,30 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from .apply import ApplyReport, apply_plan
 from .config import (
     DEFAULT_CONDENSE_MIN,
     DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_ERASE_STRATEGY,
     DEFAULT_FONT_SIZE_MIN_RATIO,
     DEFAULT_LANGUAGES,
     DEFAULT_MAX_CONTOUR_AREA_RATIO,
     DEFAULT_MAX_EXTENT_RATIO,
     DEFAULT_MIN_SOLIDITY,
+    ApplyConfig,
     DetectConfig,
+    EraseConfig,
     ExtractConfig,
     OcrConfig,
+    TypesetConfig,
 )
+from .erase import STRATEGIES
 from .errors import ComictransError, FontError
 from .extract import ExtractReport, default_plan_path, extract
 from .fonts import FONT_PATH_ENV, resolve
-from .model import TextCase
+from .model import Plan, TextCase
 from .ocr import get_recognizer
-from .planfile import write_plan
+from .planfile import load_plan, write_plan
 from .util import is_within
 
 log = logging.getLogger("comictrans")
@@ -196,10 +202,67 @@ def _add_apply(
     apply_parser = subparsers.add_parser(
         "apply",
         parents=[verbosity],
-        help="render translated pages from a plan file (milestone 2)",
-        description="Not implemented yet; lands in milestone 2.",
+        help="render translated pages from a plan file into an output directory",
+        description=(
+            "Reads a plan file with translations filled in and writes new "
+            "images. Runs no detection and no OCR: all geometry comes from the "
+            "plan, so re-running after editing a translation changes only that "
+            "text. Source images are opened read-only."
+        ),
     )
-    apply_parser.add_argument("plan", type=Path, nargs="?", help="plan file to render")
+    apply_parser.add_argument("plan", type=Path, help="plan file to render")
+    apply_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="directory to write pages into; must be outside the source tree",
+    )
+    apply_parser.add_argument(
+        "--force", action="store_true", help="overwrite existing output files"
+    )
+    apply_parser.add_argument(
+        "--font",
+        metavar="NAME",
+        help="font family or file, overriding the plan file for every region",
+    )
+    apply_parser.add_argument(
+        "--format",
+        dest="image_format",
+        choices=("png", "jpeg", "tiff"),
+        help="output format (default: match the source, except JPEG becomes PNG)",
+    )
+    apply_parser.add_argument(
+        "--erase",
+        default=DEFAULT_ERASE_STRATEGY,
+        choices=tuple(sorted(STRATEGIES)),
+        help="how to remove the original lettering: 'flat' repaints the glyphs "
+        "with the region's fill colour, 'polygon' floods the whole interior, "
+        "'inpaint' reconstructs from surrounding pixels (default: %(default)s)",
+    )
+    apply_parser.add_argument(
+        "--min-font-ratio",
+        type=float,
+        metavar="F",
+        help="smallest glyph height as a fraction of image height "
+        "(default: the plan file's font_size_min_ratio)",
+    )
+    apply_parser.add_argument(
+        "--condense-min",
+        type=float,
+        metavar="F",
+        help="horizontal condensing floor (default: the plan file's condense_min)",
+    )
+    apply_parser.add_argument(
+        "--no-hyphenation", action="store_true", help="never hyphenate to make a line fit"
+    )
+    apply_parser.add_argument(
+        "--skip-hash-check",
+        action="store_true",
+        help="render even if a source image no longer matches the plan file. "
+        "The polygons were measured against the original pixels, so this is "
+        "very likely to put text in the wrong place",
+    )
 
 
 def configure_logging(*, verbose: bool, quiet: bool) -> None:
@@ -291,13 +354,61 @@ def run_extract(args: argparse.Namespace) -> int:
     return EXIT_OK if report.ok else EXIT_PROBLEMS
 
 
-def run_apply(args: argparse.Namespace) -> int:
-    plan = f" ({args.plan})" if args.plan else ""
-    raise ComictransError(
-        f"apply is not implemented yet; it lands in milestone 2. The plan file"
-        f"{plan} extract writes already carries every polygon and colour it "
-        "will need, so nothing about it has to change."
+def _apply_config(args: argparse.Namespace, plan: Plan) -> ApplyConfig:
+    """Plan header first, CLI flags on top of it."""
+    header = plan.header
+    return ApplyConfig(
+        typeset=TypesetConfig(
+            font_size_min_ratio=args.min_font_ratio or header.font_size_min_ratio,
+            condense_min=args.condense_min or header.condense_min,
+            hyphenate=not args.no_hyphenation,
+        ),
+        erase=EraseConfig(strategy=args.erase),
     )
+
+
+def _apply_summary(report: ApplyReport, output: Path) -> None:
+    print(f"\noutput: {output}")
+    print(f"  pages written:     {len(report.pages_written)}")
+    print(f"  regions rendered:  {report.rendered}")
+    print(f"  skipped (no text): {report.skipped_empty}")
+    print(f"  skipped (skip:):   {report.skipped_flag}")
+    print(f"  failed to fit:     {report.failed}")
+    for region_id, outcome in report.condensed:
+        print(f"  CONDENSED {outcome.condense:.0%}:  {region_id}")
+    for image, outcome in report.outcomes:
+        if outcome.status == "skipped_empty":
+            print(f"  NO TRANSLATION:    {outcome.region_id} ({image})")
+        elif outcome.failed:
+            print(f"  FAILED:            {outcome.region_id}: {outcome.detail}")
+    for image, reason in report.page_failures:
+        print(f"  PAGE FAILED:       {image}: {reason}")
+    if report.condensed:
+        print(
+            f"\n{len(report.condensed)} region(s) needed condensing; set a "
+            "font_size or widen the polygon in the plan file to hand-tune them."
+        )
+
+
+def run_apply(args: argparse.Namespace) -> int:
+    plan_path: Path = args.plan
+    plan = load_plan(plan_path, check_images=not args.skip_hash_check)
+    if args.skip_hash_check:
+        log.warning(
+            "--skip-hash-check: polygons are being used against pixels they were not measured from"
+        )
+
+    report = apply_plan(
+        plan,
+        plan_path,
+        args.output,
+        _apply_config(args, plan),
+        font=args.font,
+        image_format=args.image_format,
+        force=args.force,
+    )
+    _apply_summary(report, args.output)
+    return EXIT_OK if report.ok else EXIT_PROBLEMS
 
 
 def main(argv: Sequence[str] | None = None) -> int:

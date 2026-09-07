@@ -48,25 +48,75 @@ write_plan(plan: Plan, path: Path, *, force: bool = False) -> None
 load_plan(path: Path, *, check_images: bool = True) -> Plan     # raises PlanError(line)
 ```
 
-Milestone 2 adds three more, and nothing above changes:
+Milestone 2 added three more, and nothing above changed:
 
 ```python
 # erase
-erase(page: RgbArray, region: Region, cfg) -> RgbArray
-class InpaintStrategy(Protocol):     # cheap flat fill now, heavier work later
-    def fill(self, page: RgbArray, mask: MaskArray, region: Region) -> RgbArray
+erase(rgb: RgbArray, region: Region, cfg, *, page_height: int) -> RgbArray
+class FillStrategy(Protocol):        # flat, polygon, inpaint
+    name: str
+    def fill(self, rgb, mask: MaskArray, region: Region, cfg) -> RgbArray
 
 # typeset
-layout(text: str, polygon: Polygon, style: TextStyle, cfg) -> Layout | FitFailure
-    # size down to font_size_min_ratio, then condense to condense_min, then fail
+layout_text(tokens, polygon: Polygon, face: FontFace, cfg, *,
+            page_width, page_height, fixed_size=None) -> Layout | FitFailure
 
 # render
-composite(page: RgbArray, layouts: Sequence[Layout], meta: PageMeta) -> Image
+render_region(rgb, region, style, cfg, *, page_width, page_height)
+    -> (RgbArray, RegionOutcome)
+render_page(page, regions, styles, cfg) -> (Image, list[RegionOutcome])
 ```
 
 `erase` and `typeset` both take a `Region`, not a page and an index, so a
 single region can be re-rendered in isolation — which is what the GUI's
 preview will do.
+
+## Fitting text to a polygon
+
+For each line's vertical band, the usable width is the widest horizontal run
+that is inside the polygon on *every* row of that band. Taking the widest run
+on any row would let a line near the top of an ellipse use the chord from the
+middle of it and run out through the curve.
+
+The fit order is fixed by the spec and not reorderable: shrink to the minimum
+readable size, then condense horizontally, never past the floor, then fail and
+name the region. Size is found by binary search, treating fit as monotonic —
+line breaking makes that not quite true at the margins, so the result is the
+largest size the search proved rather than the global maximum. That is a pixel
+of conservatism, never an overflow.
+
+Condensing is applied by rendering a line to a transparent layer at its natural
+width and scaling that layer on the x axis alone. It is the only way to condense
+without a variable font, and the spec forbids faking anything about a face.
+
+A word can span a markup boundary — `**SHOUT**,` is one word whose comma is not
+bold — so a token carries segments rather than a single weight. Tokenising each
+markup run separately puts a space before that comma. Only single-weight words
+are hyphenated: splitting across a boundary would have to divide the segments
+too, and shrinking the font is the better answer.
+
+## What apply does not do
+
+It does not re-run detection or OCR, so it cannot disagree with the plan file.
+It does not touch a region it cannot render: a fit failure leaves the region
+exactly as it was, erased no more than it is drawn, so the page stays readable
+in Italian rather than becoming a blank balloon.
+
+An empty translation and `skip: true` are deliberately different. The first is
+unfinished work and fails the run; the second is a decision and passes.
+
+## Output files
+
+Filenames are mirrored flat into `--output`, which must be outside the source
+tree. Format matches the source, except JPEG becomes PNG: re-encoding a lossy
+source after repainting part of it would add a second generation of artefacts
+to artwork that is not being changed at all.
+
+DPI, the ICC profile and the source's alpha channel are carried across.
+Rendering happens on RGB with any transparency flattened onto white, so
+without reattaching the alpha a transparent page would come back silently
+opaque. Modes that cannot round-trip through 8-bit RGB — 16-bit, CMYK,
+YCbCr — are refused rather than quietly downconverted.
 
 ## Coordinate convention
 

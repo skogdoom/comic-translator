@@ -48,6 +48,9 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "PTH", "ARG", "C4"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ARG"]
+# Every FillStrategy takes the same arguments so they stay interchangeable;
+# each implementation legitimately ignores the ones it does not need.
+"src/comictrans/erase.py" = ["ARG002"]
 
 [tool.mypy]
 python_version = "3.12"

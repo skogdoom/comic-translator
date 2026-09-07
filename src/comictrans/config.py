@@ -108,3 +108,71 @@ class ExtractConfig:
     detect: DetectConfig = field(default_factory=DetectConfig)
     font_size_min_ratio: float = DEFAULT_FONT_SIZE_MIN_RATIO
     condense_min: float = DEFAULT_CONDENSE_MIN
+
+
+DEFAULT_LINE_SPACING = 1.15
+DEFAULT_HYPHENATION_LANGUAGE = "en_US"
+
+
+@dataclass(frozen=True, slots=True)
+class TypesetConfig:
+    """Fitting translated text into a region's polygon.
+
+    The fit strategy is fixed by the spec and deliberately not reorderable:
+    shrink to the minimum readable size, then condense horizontally to the
+    floor, then fail and name the region. Never condense past the floor, and
+    never overflow silently.
+    """
+
+    line_spacing: float = DEFAULT_LINE_SPACING
+    padding_ratio: float = 0.05
+    """Inset from the polygon edge, as a fraction of its smaller extent, so
+    text does not sit against the balloon outline."""
+
+    font_size_min_ratio: float = DEFAULT_FONT_SIZE_MIN_RATIO
+    max_size_ratio: float = 0.6
+    """Cap on font size as a fraction of the polygon's height."""
+
+    condense_min: float = DEFAULT_CONDENSE_MIN
+    condense_step: float = 0.02
+    hyphenate: bool = True
+    hyphenation_language: str = DEFAULT_HYPHENATION_LANGUAGE
+
+
+DEFAULT_ERASE_STRATEGY = "flat"
+"""Mask the glyphs and repaint them with the region's fill colour."""
+
+
+@dataclass(frozen=True, slots=True)
+class EraseConfig:
+    """Removing the original lettering.
+
+    Glyph pixels are found by colour distance to the region's recorded
+    ``text_color``, relative to how far that sits from ``fill_color``. Both
+    came from the source page at extract time, so this needs no detection and
+    no OCR — apply stays deterministic.
+    """
+
+    strategy: str = DEFAULT_ERASE_STRATEGY
+    """``flat`` fills masked pixels with the region's fill colour. ``inpaint``
+    reconstructs them from the surrounding pixels, for textured balloons and
+    borderless captions. ``polygon`` floods the whole interior."""
+
+    glyph_threshold_ratio: float = 0.5
+    """A pixel is ink when it is closer to ``text_color`` than this fraction
+    of the distance between the text and fill colours. Scale-free, so it works
+    for light-on-dark as well as the usual way round."""
+
+    dilate_ratio: float = 0.0012
+    """Grow the glyph mask by this fraction of image height, to catch the
+    antialiased fringe a colour test leaves behind."""
+
+    inpaint_radius_ratio: float = 0.003
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyConfig:
+    """Everything the apply pass needs."""
+
+    typeset: TypesetConfig = field(default_factory=TypesetConfig)
+    erase: EraseConfig = field(default_factory=EraseConfig)

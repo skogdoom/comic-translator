@@ -6,7 +6,7 @@ translation done by hand in between.
 ```
 comictrans extract pages/            # -> pages/comic-plan.yaml, no images written
 $EDITOR pages/comic-plan.yaml        # fill in the translation: fields
-comictrans apply pages/comic-plan.yaml --output out/   # milestone 2
+comictrans apply pages/comic-plan.yaml --output out/
 ```
 
 **Source images are never modified, moved, or written to.** They are opened
@@ -15,9 +15,9 @@ ever written.
 
 ## Status
 
-Milestone 1 — `extract` — is implemented. `apply` lands in milestone 2; the
-plan file already carries every polygon and colour it will need, so the apply
-pass never re-runs detection or OCR.
+Milestones 1 and 2 are implemented: `extract` writes a plan file, `apply`
+renders translated pages from it. Milestone 3 (CBZ/PDF input) and milestone 4
+(the PySide review GUI) are not started.
 
 ## Requirements
 
@@ -65,6 +65,66 @@ Useful when detection misbehaves:
 | `--min-solidity` | lower it for irregular or spiky balloons |
 | `--confidence-threshold` | raise it to flag more regions for checking |
 | `--ocr tesseract` | force the fallback backend |
+
+## apply
+
+```
+uv run comictrans apply pages/comic-plan.yaml --output out/
+```
+
+Reads the plan file, erases the original lettering, and typesets the
+translation into the same balloon. It runs **no detection and no OCR**: every
+polygon and colour was measured at extract time and recorded, so the pass is
+deterministic. Edit a translation, run it again, and only that text changes.
+
+`--output` is required and must be outside the source tree — apply refuses to
+run if it is the source directory or anywhere inside it. Existing output files
+are never overwritten without `--force`. Filenames are mirrored flat into the
+output directory.
+
+A region with an empty `translation` is left untouched and reported as
+skipped, which fails the run: unfinished work should be visible. A region with
+`skip: true` is a decision you made, so it passes quietly.
+
+A region that will not fit is reported by id and left **completely** alone —
+not erased, not half-drawn. The page stays readable in Italian rather than
+becoming a blank balloon.
+
+| flag | what it does |
+| --- | --- |
+| `--font NAME` | override the font for every region; logged, because the plan file is the record |
+| `--format {png,jpeg,tiff}` | override the output format |
+| `--erase {flat,polygon,inpaint}` | how to remove the old lettering (see below) |
+| `--min-font-ratio` / `--condense-min` | override the plan header's fit limits |
+| `--no-hyphenation` | never hyphenate to make a line fit |
+| `--skip-hash-check` | render against a changed source; almost always wrong |
+
+### Erasing
+
+- `flat` (default) masks the glyph pixels by colour distance to the region's
+  recorded `text_color` and repaints them with `fill_color`. Judged relative to
+  the gap between the two colours, so light-on-dark works the same way.
+- `polygon` floods the whole polygon interior. Cleanest for a plain balloon,
+  wrong for anything flagged `geometry: approximate`, since it paints over art.
+- `inpaint` reconstructs the masked pixels from their surroundings, for
+  textured balloons and borderless captions where a flat patch would read as a
+  hole.
+
+### Fitting
+
+Text is fitted to the **polygon**, not its bounding box: for each line's
+vertical band the usable width is the widest horizontal run inside the polygon
+on every row of that band. That is what keeps a line from running out through
+the curve of a balloon.
+
+The strategy is fixed and ordered: shrink to the minimum readable size, then
+condense horizontally, never past the floor, then fail and name the region.
+Nothing overflows silently, and every region that needed condensing is listed
+at the end of the run so you can hand-tune it.
+
+Emphasis is `**bold**` — never italic, and the oblique face is never used. A
+literal asterisk is `\*`. Line breaks in a translation are advisory; typeset
+reflows to fit the shape.
 
 ## The plan file
 
@@ -141,7 +201,7 @@ Set `COMICTRANS_FONT_PATH` (colon-separated) to add font directories.
 | code | meaning |
 | --- | --- |
 | 0 | everything succeeded |
-| 1 | the run completed but something needs attention: a page failed, or a page yielded no regions |
+| 1 | the run completed but something needs attention: for `extract`, a page failed or yielded no regions; for `apply`, a region had no translation or would not fit |
 | 2 | the run could not start: bad arguments, no OCR backend, no resolvable font |
 
 Both commands process every page and report at the end. Neither aborts on the

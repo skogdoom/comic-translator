@@ -106,11 +106,113 @@ def test_case_flag_reaches_the_plan_header(page_dir: Path, font_dir: Path) -> No
     assert load_plan(page_dir / "comic-plan.yaml").header.case.value == "preserve"
 
 
-def test_apply_reports_that_it_is_not_implemented_yet(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def _extract_then_translate(page_dir: Path, translation: str) -> Path:
+    """Run extract, fill in the translation by hand, return the plan path."""
+    from comictrans.model import Plan
+    from comictrans.planfile import dumps, load_plan, write_plan
+
+    assert main(["extract", str(page_dir), "--force"]) == EXIT_OK
+    plan_path = page_dir / "comic-plan.yaml"
+    plan = load_plan(plan_path)
+    translated = Plan(
+        header=plan.header,
+        regions=tuple(r.with_translation(translation) for r in plan.regions),
+    )
+    write_plan(translated, plan_path, force=True)
+    assert "translation:" in dumps(translated)
+    return plan_path
+
+
+def test_apply_renders_pages_into_the_output_directory(
+    page_dir: Path, font_dir: Path, tmp_path: Path
 ) -> None:
-    assert main(["apply", str(tmp_path / "plan.yaml")]) == EXIT_FATAL
-    assert "milestone 2" in capsys.readouterr().err
+    plan_path = _extract_then_translate(page_dir, "I CANNOT BELIEVE IT")
+    output = tmp_path / "out"
+
+    assert main(["apply", str(plan_path), "--output", str(output)]) == EXIT_OK
+    assert (output / "page1.png").is_file()
+
+
+def test_apply_requires_an_output_directory(page_dir: Path, font_dir: Path) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO")
+    with pytest.raises(SystemExit):
+        main(["apply", str(plan_path)])
+
+
+def test_apply_refuses_to_write_into_the_source_tree(page_dir: Path, font_dir: Path) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO")
+    assert main(["apply", str(plan_path), "--output", str(page_dir / "out")]) == EXIT_FATAL
+    assert not (page_dir / "out").exists()
+
+
+def test_apply_refuses_to_overwrite_without_force(
+    page_dir: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO THERE")
+    output = tmp_path / "out"
+    assert main(["apply", str(plan_path), "--output", str(output)]) == EXIT_OK
+    stamp = (output / "page1.png").stat().st_mtime_ns
+
+    assert main(["apply", str(plan_path), "--output", str(output)]) == EXIT_PROBLEMS
+    assert (output / "page1.png").stat().st_mtime_ns == stamp
+    assert main(["apply", str(plan_path), "--output", str(output), "--force"]) == EXIT_OK
+
+
+def test_apply_exits_nonzero_when_a_translation_is_missing(
+    page_dir: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    plan_path = _extract_then_translate(page_dir, "")
+    assert main(["apply", str(plan_path), "--output", str(tmp_path / "out")]) == EXIT_PROBLEMS
+
+
+def test_apply_rejects_a_plan_whose_source_image_changed(
+    page_dir: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO")
+    save_page(make_page_array((600, 800), (10, 10, 10), []), page_dir / "page1.png")
+
+    assert main(["apply", str(plan_path), "--output", str(tmp_path / "out")]) == EXIT_FATAL
+    assert (
+        main(["apply", str(plan_path), "--output", str(tmp_path / "out"), "--skip-hash-check"])
+        == EXIT_OK
+    )
+
+
+def test_apply_font_flag_overrides_the_plan(
+    page_dir: Path, font_dir: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    plan_path = _extract_then_translate(page_dir, "HELLO")
+    with caplog.at_level(logging.WARNING):
+        code = main(
+            ["apply", str(plan_path), "--output", str(tmp_path / "out"), "--font", "Marker Felt"]
+        )
+    # Marker Felt has no real bold, so it is refused rather than faked.
+    assert code == EXIT_FATAL
+
+
+def test_apply_format_override(page_dir: Path, font_dir: Path, tmp_path: Path) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO")
+    output = tmp_path / "out"
+    assert main(["apply", str(plan_path), "--output", str(output), "--format", "tiff"]) == EXIT_OK
+    assert (output / "page1.tif").is_file()
+
+
+def test_apply_erase_strategies_all_run(page_dir: Path, font_dir: Path, tmp_path: Path) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO THERE")
+    for strategy in ("flat", "polygon", "inpaint"):
+        code = main(
+            [
+                "apply",
+                str(plan_path),
+                "--output",
+                str(tmp_path / strategy),
+                "--erase",
+                strategy,
+            ]
+        )
+        assert code == EXIT_OK, strategy
 
 
 def test_help_lists_both_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
