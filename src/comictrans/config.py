@@ -26,8 +26,13 @@ DEFAULT_LANGUAGES = ("it-IT",)
 DEFAULT_MAX_CONTOUR_AREA_RATIO = 0.25
 """A contour larger than this fraction of the page is a panel, not a balloon."""
 
-DEFAULT_MIN_SOLIDITY = 0.80
-"""Minimum contour area / convex hull area for a balloon."""
+DEFAULT_MIN_SOLIDITY = 0.55
+"""Minimum contour area / convex hull area for a balloon.
+
+Measured against the fixture pages: a burst balloon with a spiked outline
+comes in at 0.64, and 0.80 rejected it. Lowering it to 0.55 changed nothing
+else on any fixture — the guards that actually catch artwork escapes are the
+area cap and the extent ratio, not solidity."""
 
 DEFAULT_MAX_EXTENT_RATIO = 0.75
 """Largest share of the page a region may span in either direction."""
@@ -50,10 +55,11 @@ class OcrConfig:
 class DetectConfig:
     """Balloon-contour search and region assembly.
 
-    The two thresholds that matter most on real scans are
-    ``max_contour_area_ratio`` (stops a broken balloon outline from selecting
-    the whole panel) and ``min_solidity`` (a balloon is convex-ish; a panel
-    full of art is not).
+    The two thresholds that actually catch artwork escapes on real pages are
+    ``max_contour_area_ratio`` (a contour covering a quarter of the page is a
+    panel) and ``max_extent_ratio`` (a contour spanning the page is a band of
+    art). ``min_solidity`` is the loosest of the three on purpose: balloons
+    are only roughly convex, and burst and scalloped outlines are not.
     """
 
     max_contour_area_ratio: float = DEFAULT_MAX_CONTOUR_AREA_RATIO
@@ -63,7 +69,7 @@ class DetectConfig:
     """A contour must be at least this much larger than the text it holds."""
 
     min_solidity: float = DEFAULT_MIN_SOLIDITY
-    """contour area / convex hull area."""
+    """contour area / convex hull area. A burst balloon measures 0.64."""
 
     max_fill_ratio: float = 0.90
     """Text must not fill more than this share of its balloon."""

@@ -308,3 +308,31 @@ def test_clusters_do_not_chain_across_the_page() -> None:
         for line in cluster[1:]:
             union = union.union(line.box)
         assert union.width <= 600 * CFG.max_extent_ratio
+
+
+def test_a_burst_balloon_is_traced_not_rejected_for_being_spiky() -> None:
+    # A shout balloon's spikes cost it solidity: measured at 0.64 on the
+    # fixture page, where a 0.80 threshold rejected it and fell back to a box
+    # around the text, throwing away the shape the polygon exists to capture.
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    from .conftest import draw_glyph_marks
+
+    box = Box(220, 290, 380, 314)
+    image = Image.new("RGB", (600, 800), ART_DARK)
+    draw = ImageDraw.Draw(image)
+    spikes: list[tuple[int, int]] = []
+    for i in range(24):
+        angle = i * np.pi / 12
+        radius = 160 if i % 2 == 0 else 95
+        spikes.append((int(300 + radius * np.cos(angle)), int(300 + radius * 0.75 * np.sin(angle))))
+    draw.polygon(spikes, fill=BALLOON_WHITE, outline=INK_BLACK, width=3)
+    draw_glyph_marks(draw, box, INK_BLACK)
+    array = np.asarray(image, dtype=np.uint8)
+
+    regions = find_regions(_page(array), lines_for([box], ["AAARGH!"]), CFG)
+
+    assert len(regions) == 1
+    assert regions[0].geometry is Geometry.EXACT, "burst balloon fell back to a box"
+    assert len(regions[0].polygon) > 8, "spikes were flattened away"

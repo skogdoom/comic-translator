@@ -175,17 +175,16 @@ worse failure than refusing.
 
 ## Known weak points on real scans
 
-Rewritten against the fixture pages in `tests/fixtures/`, which is why some of
-this contradicts what I expected before running it.
+Rewritten against the fixture pages in `tests/fixtures/`, which is why some
+of this contradicts what I expected before running it.
 
 1. **Contour escape — confirmed, now guarded.** Text sitting on a flat band of
    artwork (a strip of sand, a block of sky) selects the whole band: it is
-   solid, convex, and under the area cap. Erasing it would wipe the art.
-   Area alone does not catch it, because a band is thin. `max_extent_ratio`
-   does: measured balloons span 0.25–0.45 of page width, the escape spanned
-   0.88. The same cap now applies to fallback clustering, where adjacency is
-   transitive and a row of spurious OCR lines could otherwise chain across a
-   page into one region.
+   solid, convex, and under the area cap. Erasing it would wipe the art. Area
+   alone does not catch it, because a band is thin. `max_extent_ratio` does:
+   measured balloons span 0.25–0.45 of page width, the escape spanned 0.88.
+   The same cap applies to fallback clustering, where adjacency is transitive
+   and a row of spurious OCR lines could otherwise chain across a page.
 2. **Joined balloons — did not reproduce.** Balloons joined by a tail and
    balloons sharing an edge both detect as separate regions. The ink outline
    keeps their white interiors separate as connected components, and the
@@ -194,39 +193,56 @@ this contradicts what I expected before running it.
 3. **Balloons breaking the panel border — did not reproduce.** A balloon
    crossing the gutter or hanging out through the panel edge traces cleanly,
    for the same reason.
-4. **A caption box flush against the panel frame — confirmed.** Same colour,
+4. **Burst and scalloped balloons — was broken, now fixed.** A shout balloon
+   with a spiked outline measures 0.64 solidity, and the old 0.80 threshold
+   rejected it, falling back to a box around the text and discarding the very
+   shape the polygon exists to capture. `min_solidity` is now 0.55. Sweeping
+   it from 0.80 down to 0.50 changed nothing on any other fixture, which says
+   solidity was never the guard doing the work — the area cap and the extent
+   ratio are. Scalloped thought bubbles pass either way.
+5. **A caption box flush against the panel frame — confirmed.** Same colour,
    touching, so they are one connected component and the merged blob is too
    large to be a balloon. Falls back to `approximate` and is flagged. Arguably
    correct: there is no visual boundary between the caption's edge and the
    panel's. Colours still round-trip, which is what matters for erase.
-5. **Screentone — confirmed, and the failure is in OCR, not detection.** Both
+6. **Whisper balloons with a dashed outline — genuinely unsolved.** The
+   fixture's balloon interior is luma 255 and the art around it is 238, with a
+   global Otsu threshold of 182: both land on the same side, so they merge into
+   one bright region and the dashed outline is beside the point. Closing the
+   mask does not help at any kernel size up to 19 px, because there is no edge
+   to close over. A flood fill seeded inside the balloon leaks into the
+   near-white art and returns 0.37 of the page. This will hit real scans too —
+   a white balloon over a pale sky, or paper showing through. Separating it
+   needs local thresholding or explicit ellipse fitting, neither of which is
+   milestone 1 work. It falls back to `approximate` and is flagged.
+7. **Screentone — confirmed, and the failure is in OCR, not detection.** Both
    real balloons on the halftoned fixture trace perfectly; Tesseract reads the
    dot rows as ~25 phantom lines of text, and each becomes a region. Neither
    confidence nor line height separates the noise (noise confidence reaches
    0.82, real text sits at 0.92; heights overlap), so there is no cheap filter
-   worth adding. This is measured against Tesseract with `--psm 11`; whether
-   Apple Vision does the same is unknown and worth checking on a real
-   screentoned page before anyone tunes anything.
-6. **Transparency — found by the fixtures.** An RGBA source whose transparent
+   worth adding. Measured against Tesseract with `--psm 11`; whether Apple
+   Vision does the same is unknown and worth checking on a real screentoned
+   page before anyone tunes anything.
+8. **Transparency — found by the fixtures.** An RGBA source whose transparent
    pixels carry black colour channels became a solid black band under a plain
    `convert("RGB")`, shifting the Otsu threshold across the whole page.
    `imaging.flatten_to_rgb` composites onto white instead.
-7. **Self-intersecting polygons — found by the fixtures.** `approxPolyDP` can
+9. **Self-intersecting polygons — found by the fixtures.** `approxPolyDP` can
    fold a ragged contour over itself. The plan file reader rejects such a
    polygon, so extract was capable of writing a plan it could not load back.
    `_simplify` now falls back to the convex hull, which cannot self-intersect.
-8. **Vision on comic lettering.** Untested here — no Mac in the loop. It is
-   trained on prose, so expect I/l/1 confusion, dropped accents, and mangled
-   Italian elisions (`dell'uomo` → `dell uomo`), often at high confidence, so
-   the 0.5 threshold will not catch them.
-9. **Skew.** One or two degrees inflates axis-aligned boxes and loosens the
-   polygon fit, long before it counts as "rotated text".
-10. **Gradient or textured balloon interiors** make a single `fill_color` a
+10. **Vision on comic lettering.** Untested here — no Mac in the loop. It is
+    trained on prose, so expect I/l/1 confusion, dropped accents, and mangled
+    Italian elisions (`dell'uomo` → `dell uomo`), often at high confidence, so
+    the 0.5 threshold will not catch them.
+11. **Skew.** One or two degrees inflates axis-aligned boxes and loosens the
+    polygon fit, long before it counts as "rotated text".
+12. **Gradient or textured balloon interiors** make a single `fill_color` a
     lie; erase leaves a flat patch. Where the sampled text colour comes back
-    within 32 luma of the fill, the text colour is snapped to black or white
-    so apply cannot draw invisible text; the value is in the plan file to
-    correct by hand.
-11. **Metadata round-trip.** ICC and DPI survive Pillow for 8-bit RGB
+    within 32 luma of the fill, the text colour is snapped to black or white so
+    apply cannot draw invisible text; the value is in the plan file to correct
+    by hand.
+13. **Metadata round-trip.** ICC and DPI survive Pillow for 8-bit RGB
     PNG/TIFF. PNG stores resolution as integer pixels per metre, so 300 dpi
     round-trips as 299.9994. 16-bit and CMYK TIFF do not round-trip cleanly;
     milestone 2 should detect and refuse rather than silently downconvert.
