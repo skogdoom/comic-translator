@@ -374,8 +374,9 @@ def _apply_summary(report: ApplyReport, output: Path) -> None:
     print(f"  skipped (no text): {report.skipped_empty}")
     print(f"  skipped (skip:):   {report.skipped_flag}")
     print(f"  failed to fit:     {report.failed}")
-    for region_id, outcome in report.condensed:
-        print(f"  CONDENSED {outcome.condense:.0%}:  {region_id}")
+    print(f"  still Italian:     {len(report.unedited)}")
+    for image, outcome in report.condensed:
+        print(f"  CONDENSED {outcome.condense:.0%}:  {outcome.region_id} ({image})")
     for image, outcome in report.outcomes:
         if outcome.status == "skipped_empty":
             print(f"  NO TRANSLATION:    {outcome.region_id} ({image})")
@@ -383,6 +384,13 @@ def _apply_summary(report: ApplyReport, output: Path) -> None:
             print(f"  FAILED:            {outcome.region_id}: {outcome.detail}")
     for image, reason in report.page_failures:
         print(f"  PAGE FAILED:       {image}: {reason}")
+    for image, outcome in report.unedited:
+        print(f"  NOT TRANSLATED:    {outcome.region_id} ({image})")
+    if report.unedited:
+        print(
+            f"\n{len(report.unedited)} region(s) still hold the extracted "
+            "Italian and were re-lettered as-is."
+        )
     if report.condensed:
         print(
             f"\n{len(report.condensed)} region(s) needed condensing; set a "

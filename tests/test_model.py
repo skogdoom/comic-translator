@@ -90,3 +90,19 @@ def test_region_is_actionable_only_with_a_translation() -> None:
     assert not region.is_actionable
     assert region.with_translation("I CAN'T BELIEVE IT!").is_actionable
     assert not region.with_translation("   ").is_actionable
+
+
+def test_is_untranslated_compares_translation_with_source() -> None:
+    region = _region("a.png", "a-1")  # source_text "CIAO", translation ""
+    assert not region.is_untranslated, "an empty translation is not 'still Italian'"
+    assert region.with_translation("CIAO").is_untranslated
+    assert region.with_translation("  CIAO  ").is_untranslated, "whitespace is ignored"
+    assert not region.with_translation("HELLO").is_untranslated
+
+
+def test_a_translation_that_legitimately_matches_its_source_still_renders() -> None:
+    # "NO!" is a correct translation of "NO!". It reads as untranslated and is
+    # reported as such, but it is never skipped on that basis.
+    region = _region("a.png", "a-1").with_translation("CIAO")
+    assert region.is_untranslated
+    assert region.is_actionable

@@ -54,6 +54,11 @@ class ApplyReport:
         return self._count("failed")
 
     @property
+    def unedited(self) -> list[tuple[str, RegionOutcome]]:
+        """Rendered regions whose translation is still the extracted Italian."""
+        return [(i, o) for i, o in self.outcomes if o.unedited]
+
+    @property
     def condensed(self) -> list[tuple[str, RegionOutcome]]:
         return [(i, o) for i, o in self.outcomes if o.rendered and o.condense < 1.0]
 

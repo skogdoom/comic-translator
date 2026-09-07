@@ -141,13 +141,47 @@ def test_plan_in_another_directory_uses_a_relative_path(
     load_plan(plan_path)
 
 
-def test_translations_start_empty_and_notes_are_present(
+def test_translations_are_seeded_with_the_extracted_text(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    # Seeded rather than blank so the Italian can be edited into English in
+    # place instead of retyped.
+    directory, recognizer, _ = pages
+    plan, _ = _run(directory, recognizer)
+
+    assert all(r.translation == r.source_text for r in plan.regions)
+    assert all(r.source_text for r in plan.regions)
+    assert all(r.notes == "" for r in plan.regions)
+
+
+def test_a_freshly_extracted_region_reads_as_untranslated(
     pages: tuple[Path, FakeRecognizer, list[Box]],
 ) -> None:
     directory, recognizer, _ = pages
     plan, _ = _run(directory, recognizer)
-    assert all(r.translation == "" and r.notes == "" for r in plan.regions)
-    assert all(not r.is_actionable for r in plan.regions)
+
+    assert all(r.is_untranslated for r in plan.regions)
+    # Seeded text is renderable, so apply will letter it as-is unless edited.
+    assert all(r.is_actionable for r in plan.regions)
+
+
+def test_editing_the_translation_clears_the_untranslated_flag(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    plan, _ = _run(directory, recognizer)
+    edited = plan.regions[0].with_translation("I CANNOT BELIEVE IT!")
+    assert not edited.is_untranslated
+
+
+def test_seeded_translations_survive_the_plan_file_round_trip(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    plan_path = directory / "comic-plan.yaml"
+    plan, _ = _run(directory, recognizer, plan_path)
+    write_plan(plan, plan_path)
+    assert load_plan(plan_path) == plan
 
 
 def test_source_text_keeps_the_original_line_breaks(

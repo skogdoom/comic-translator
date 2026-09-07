@@ -67,6 +67,7 @@ def _to_region(
     # Rounded here rather than at write time so the in-memory plan and the
     # file on disk are the same thing.
     confidence = round(utterance_confidence(detected.lines), 3)
+    source_text = utterance_text(detected.lines)
     return Region(
         id=_region_id(page, order),
         image=relative_posix(page.path, plan_dir),
@@ -77,8 +78,12 @@ def _to_region(
         fill_color=detected.fill_color,
         text_color=detected.text_color,
         confidence=confidence,
-        source_text=utterance_text(detected.lines),
-        translation="",
+        source_text=source_text,
+        # Seeded with the source so you edit Italian into English in place
+        # rather than retyping into a blank field. Until you do, a region
+        # still reads as untranslated: apply reports every translation that
+        # is still identical to its source_text.
+        translation=source_text,
         notes="",
         low_confidence=confidence < config.ocr.confidence_threshold,
     )

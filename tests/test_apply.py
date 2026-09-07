@@ -352,3 +352,33 @@ def test_erase_strategy_is_configurable(project: tuple[Path, Path, Plan], font_d
             project, config=ApplyConfig(erase=EraseConfig(strategy=strategy)), force=True
         )
         assert report.ok, strategy
+
+
+def test_an_unedited_translation_is_rendered_but_reported(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    # Extract seeds translation with source_text, so a balloon you never got
+    # to renders its own Italian back onto the page. It must not pass silently.
+    _, _, plan = project
+    seeded = _region("page-001.png", plan.regions[0].image_sha256, translation="CIAO A TUTTI")
+    report = _apply(project, plan=Plan(header=plan.header, regions=(seeded,)))
+
+    assert report.rendered == 1, "a seeded region still renders"
+    assert [outcome.region_id for _, outcome in report.unedited] == ["page-001"]
+
+
+def test_an_edited_translation_is_not_reported_as_unedited(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    report = _apply(project)
+    assert report.rendered == 1
+    assert report.unedited == []
+
+
+def test_whitespace_only_edits_do_not_count_as_translated(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    _, _, plan = project
+    seeded = _region("page-001.png", plan.regions[0].image_sha256, translation="  CIAO A TUTTI\n")
+    report = _apply(project, plan=Plan(header=plan.header, regions=(seeded,)))
+    assert len(report.unedited) == 1

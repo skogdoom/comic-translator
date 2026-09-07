@@ -82,9 +82,12 @@ run if it is the source directory or anywhere inside it. Existing output files
 are never overwritten without `--force`. Filenames are mirrored flat into the
 output directory.
 
-A region with an empty `translation` is left untouched and reported as
-skipped, which fails the run: unfinished work should be visible. A region with
-`skip: true` is a decision you made, so it passes quietly.
+`extract` seeds `translation` with the Italian it read, so a region you have
+not edited renders that Italian back onto the page rather than being skipped.
+Those are counted as **still Italian** in the summary and named by region id.
+Clearing a `translation` instead leaves the region untouched and reports it as
+skipped, which fails the run. A region with `skip: true` is a decision you
+made, so it passes quietly.
 
 A region that will not fit is reported by id and left **completely** alone —
 not erased, not half-drawn. The page stays readable in Italian rather than
@@ -155,12 +158,21 @@ regions:
     source_text: |-
       NON CI POSSO
       CREDERE!
-    translation: ""
+    translation: |-
+      NON CI POSSO
+      CREDERE!
     notes: ""
 ```
 
-- `translation` empty means the region is left untouched and reported as
-  skipped. `skip: true` says you meant it, and silences the report.
+- `translation` is seeded with the extracted Italian so you can edit it in
+  place rather than retyping into a blank field.
+- Clearing `translation` leaves the region untouched and reports it as
+  skipped, which fails the run. `skip: true` says you meant it, and passes
+  quietly.
+- A region whose `translation` is still identical to its `source_text` is
+  rendered as-is — the Italian gets re-lettered — and listed under
+  **still Italian** at the end of an `apply` run, so a balloon you never got
+  to is visible rather than silent.
 - `notes` is yours. comictrans never reads or rewrites it.
 - `**bold**` marks emphasis. It renders as bold, never italic; the oblique
   face is never used.

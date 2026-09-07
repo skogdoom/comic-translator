@@ -65,8 +65,9 @@ REGION_KEYS: frozenset[str] = frozenset(REGION_KEY_ORDER)
 FILE_HEADER_COMMENT = """\
 comictrans plan file. Hand-edit this, then run: comictrans apply
 
-  translation   what gets drawn. Empty means "leave this balloon alone" and
-                the region is reported as skipped.
+  translation   what gets drawn. Seeded with the Italian so you can edit it
+                in place; apply reports any left identical to source_text.
+                Empty means "leave this balloon alone", reported as skipped.
   skip: true    deliberately leave the art untouched, no warning.
   notes         yours; comictrans never reads or rewrites it.
   **bold**      emphasis. Renders as bold, never italic.

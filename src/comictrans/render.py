@@ -51,6 +51,8 @@ class RegionOutcome:
 
     detail: str = ""
     condense: float = 1.0
+    unedited: bool = False
+    """The translation is still identical to the extracted source text."""
 
     @property
     def rendered(self) -> bool:
@@ -138,6 +140,13 @@ def render_region(
     draw_layout(image, result, style, region.text_color)
     out = np.asarray(image, dtype=np.uint8)
 
+    if region.is_untranslated:
+        log.warning(
+            "region %s: translation is still the extracted Italian; "
+            "the original text is being re-lettered",
+            region.id,
+        )
+
     if result.condensed:
         log.info(
             "region %s: condensed to %.0f%% at %dpx to fit",
@@ -145,7 +154,12 @@ def render_region(
             result.condense * 100,
             result.font_size,
         )
-    return out, RegionOutcome(region.id, "rendered", condense=result.condense)
+    return out, RegionOutcome(
+        region.id,
+        "rendered",
+        condense=result.condense,
+        unedited=region.is_untranslated,
+    )
 
 
 def render_page(

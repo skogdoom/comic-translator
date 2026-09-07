@@ -194,6 +194,23 @@ class Region:
         """True when ``apply`` should render this region."""
         return not self.skip and bool(self.translation.strip())
 
+    @property
+    def is_untranslated(self) -> bool:
+        """True when the translation is still the Italian extract seeded.
+
+        Extract fills ``translation`` with ``source_text`` so it can be edited
+        in place, which means an untouched region renders the original text
+        back onto the page instead of being skipped. This is how apply can
+        still tell you which balloons you have not got to yet.
+
+        A translation that genuinely matches its source — a name, "NO!", a
+        number — reads as untranslated too. That is a report line, never a
+        reason to skip the region.
+        """
+        return bool(self.translation.strip()) and (
+            self.translation.strip() == self.source_text.strip()
+        )
+
     def with_translation(self, translation: str) -> Region:
         return replace(self, translation=translation)
 

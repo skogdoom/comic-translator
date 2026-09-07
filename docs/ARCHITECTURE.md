@@ -105,6 +105,14 @@ in Italian rather than becoming a blank balloon.
 An empty translation and `skip: true` are deliberately different. The first is
 unfinished work and fails the run; the second is a decision and passes.
 
+Extract seeds `translation` with `source_text` so the Italian can be edited in
+place instead of retyped. That costs the old safety property: a balloon you
+never got to used to be left untouched, and now renders its own Italian in
+Comic Sans. Apply gets the signal back by reporting every region whose
+translation is still identical to its source, rather than by skipping them —
+"NO!" is a correct translation of "NO!", so an identical string is a report
+line and never a reason to leave a region unrendered.
+
 ## Output files
 
 Filenames are mirrored flat into `--output`, which must be outside the source
