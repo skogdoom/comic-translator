@@ -17,6 +17,7 @@ from pathlib import Path
 from . import __version__
 from .apply import ApplyReport, apply_plan
 from .config import (
+    DEFAULT_COLOR_TOLERANCE,
     DEFAULT_CONDENSE_MIN,
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_ERASE_STRATEGY,
@@ -204,6 +205,23 @@ def _add_extract(
         "lower it when a region swallows a band of artwork (default: %(default)s)",
     )
     extract_parser.add_argument(
+        "--no-color-segmentation",
+        action="store_true",
+        help="do not fall back to colour when a grey threshold finds no region. "
+        "Recovers balloons and caption boxes that differ from their "
+        "surroundings in hue but not brightness; turn it off on a page where "
+        "OCR reports text that is not there, since it gives those phantom "
+        "regions real-looking shapes",
+    )
+    extract_parser.add_argument(
+        "--color-tolerance",
+        type=float,
+        default=DEFAULT_COLOR_TOLERANCE,
+        metavar="F",
+        help="how far a pixel's colour may sit from a region's fill and still "
+        "belong to it (default: %(default)s)",
+    )
+    extract_parser.add_argument(
         "--debug-dir",
         type=Path,
         metavar="DIR",
@@ -307,6 +325,8 @@ def _build_config(args: argparse.Namespace) -> ExtractConfig:
             max_contour_area_ratio=args.max_region_area,
             min_solidity=args.min_solidity,
             max_extent_ratio=args.max_extent_ratio,
+            color_segmentation=not args.no_color_segmentation,
+            color_tolerance=args.color_tolerance,
         ),
         font_size_min_ratio=args.min_font_ratio,
         condense_min=args.condense_min,

@@ -26,6 +26,7 @@ from ..model import Box, Color, Geometry, Polygon, polygon_area, polygon_bounds
 from ..ocr.base import OcrLine
 from ..ocr.grouping import sort_lines
 from .color import interior_uniformity, sample_colors
+from .colorseg import segment
 from .contour import ContourCandidate, GrayArray, build_candidates, enclosing_candidate
 from .fallback import approximate_polygon, cluster_lines
 
@@ -112,6 +113,10 @@ def find_regions(
             geometry = Geometry.APPROXIMATE
         regions.append(_build(page, polygon, geometry, members))
 
+    if cfg.color_segmentation:
+        claimed, loose = _segment_loose(page, loose, cfg)
+        regions.extend(claimed)
+
     for cluster in cluster_lines(loose, cfg, width=page.width, height=page.height):
         boxes = tuple(line.box for line in cluster)
         polygon = approximate_polygon(boxes, cfg, width=page.width, height=page.height)
@@ -129,6 +134,68 @@ def find_regions(
             len(regions),
         )
     return reading_order(regions, cfg)
+
+
+def _segment_loose(
+    page: PageImage, loose: list[OcrLine], cfg: DetectConfig
+) -> tuple[list[DetectedRegion], list[OcrLine]]:
+    """Recover regions for text no contour claimed, by colour.
+
+    One segmentation per region rather than per line: a caption box holds
+    several lines, and once its shape is known the other lines standing on it
+    belong to it too.
+    """
+    regions: list[DetectedRegion] = []
+    remaining: list[OcrLine] = []
+    pending = list(loose)
+
+    while pending:
+        line = pending.pop(0)
+        polygon = segment(page.rgb, line.box, cfg, page_height=page.height)
+        if polygon is None:
+            remaining.append(line)
+            continue
+
+        outline = np.array(polygon, dtype=np.int32)
+        members = [line]
+        still: list[OcrLine] = []
+        for other in pending:
+            x, y = other.box.center
+            if cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0:
+                members.append(other)
+            else:
+                still.append(other)
+        pending = still
+
+        # Judged against every line that turned out to belong to the shape,
+        # not just the one it was seeded from: a caption box holds several.
+        lettering = sum(member.box.area for member in members)
+        if polygon_area(polygon) > lettering * cfg.max_color_text_ratio:
+            log.debug(
+                "%s: colour region at %s is %.0fx its lettering, not a balloon",
+                page.path.name,
+                polygon_bounds(polygon),
+                polygon_area(polygon) / max(1, lettering),
+            )
+            remaining.extend(members)
+            continue
+        if (
+            interior_uniformity(
+                page.rgb,
+                polygon,
+                page_height=page.height,
+                tolerance=cfg.uniformity_tolerance,
+            )
+            < cfg.min_interior_uniformity
+        ):
+            remaining.extend(members)
+            continue
+
+        region = _build(page, polygon, Geometry.EXACT, members)
+        log.debug("%s: recovered a region by colour at %s", page.path.name, region.bounds)
+        regions.append(region)
+
+    return regions, remaining
 
 
 def _box_iou(a: Box, b: Box) -> float:

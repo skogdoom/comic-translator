@@ -68,6 +68,8 @@ Useful when detection misbehaves:
 | `--max-extent-ratio` | lower it when a region swallows a band of artwork; balloons measure 0.25-0.45 of page width |
 | `--min-solidity` | lower it for irregular or spiky balloons |
 | `--confidence-threshold` | raise it to flag more regions for checking |
+| `--no-color-segmentation` | stop falling back to colour; use it when OCR reports text that is not there |
+| `--color-tolerance` | how far a pixel's colour may sit from a region's fill and still belong to it |
 | `--source-lang` / `--target-lang` | the language pair, recorded in the plan file (default `it` / `en`) |
 | `--lang` | OCR language if the recogniser needs a region-qualified tag; defaults to `--source-lang` |
 | `--ocr tesseract` | force the fallback backend |
@@ -188,6 +190,10 @@ regions:
   past it.
 - `geometry: approximate` means no clean balloon contour was found and the
   polygon is a padded box around the text. Check those regions.
+- Regions are found by tracing a contour on a luminance threshold. When that
+  finds nothing — a caption box the same brightness as the art behind it, a
+  white balloon over near-white art — a second pass seeds a region from the
+  text's own background colour and grows it by colour distance.
 - `low_confidence: true` appears on regions whose worst OCR line scored below
   `--confidence-threshold` (default 0.5).
 - Per-region `font` and `font_size` override the header.

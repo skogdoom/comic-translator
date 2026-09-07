@@ -42,6 +42,9 @@ comes in at 0.64, and 0.80 rejected it. Lowering it to 0.55 changed nothing
 else on any fixture — the guards that actually catch artwork escapes are the
 area cap and the extent ratio, not solidity."""
 
+DEFAULT_COLOR_TOLERANCE = 24.0
+"""Euclidean RGB distance still counted as the same fill colour."""
+
 DEFAULT_MAX_EXTENT_RATIO = 0.75
 """Largest share of the page a region may span in either direction."""
 
@@ -88,6 +91,31 @@ class DetectConfig:
     to hold a caption — a sand or sky band is thin enough to pass the area
     test while running the full width of the page. Measured balloons sit at
     0.25-0.45; escapes sit near 0.9."""
+
+    color_segmentation: bool = True
+    """Fall back to colour when a grey threshold cannot find a region.
+
+    Runs only for text no contour claimed, and only around that text. Fixes
+    the case where a balloon or caption box differs from its surroundings in
+    hue but not in brightness — a flat tan caption on artwork, a white
+    balloon over near-white art."""
+
+    color_tolerance: float = DEFAULT_COLOR_TOLERANCE
+    """Euclidean RGB distance from the seed colour still counted as the same
+    fill. Measured: 16 to 28 all recover the same caption box, 40 starts to
+    leak into neighbouring artwork."""
+
+    max_color_text_ratio: float = 10.0
+    """Largest a colour-segmented region may be relative to the text in it.
+
+    A balloon is drawn to fit its lettering; a flat patch of artwork that
+    happens to sit under a phantom OCR line is not. Applied only on the colour
+    path: a traced contour is evidence of a drawn boundary, whereas matching
+    pixels are only evidence of one colour, so the colour path has to be
+    warier. Measured real regions run 2.1x to 6.7x, phantom ones 11x to 33x."""
+
+    color_window_ratio: float = 4.0
+    """How far around a line of text to search, in multiples of its own box."""
 
     containment_tolerance_ratio: float = 0.004
     """How far outside a contour a text box may reach and still count as

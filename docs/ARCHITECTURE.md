@@ -283,16 +283,20 @@ of this contradicts what I expected before running it.
    large to be a balloon. Falls back to `approximate` and is flagged. Arguably
    correct: there is no visual boundary between the caption's edge and the
    panel's. Colours still round-trip, which is what matters for erase.
-6. **Whisper balloons with a dashed outline — genuinely unsolved.** The
-   fixture's balloon interior is luma 255 and the art around it is 238, with a
-   global Otsu threshold of 182: both land on the same side, so they merge into
-   one bright region and the dashed outline is beside the point. Closing the
-   mask does not help at any kernel size up to 19 px, because there is no edge
-   to close over. A flood fill seeded inside the balloon leaks into the
-   near-white art and returns 0.37 of the page. This will hit real scans too —
-   a white balloon over a pale sky, or paper showing through. Separating it
-   needs local thresholding or explicit ellipse fitting, neither of which is
-   milestone 1 work. It falls back to `approximate` and is flagged.
+6. **Regions a grey threshold cannot separate — now handled by colour.**
+   Contour search binarises on luminance, which fails whenever a balloon or
+   caption box differs from what surrounds it in hue but not brightness. Two
+   measured cases: a caption box of flat tan whose luma a global Otsu puts on
+   the same side as the artwork around it, and a whisper balloon of white
+   over near-white art, luma 255 against 238 with the threshold at 182 — a
+   gap of 17 that closing the mask cannot help with, because there is no edge
+   to close over. Both now resolve by seeding a region from the text's own
+   background colour and growing it by colour distance. The cost is that on a
+   page where OCR reports text that is not there, those phantom lines get
+   real-looking shapes instead of padded boxes; `--no-color-segmentation`
+   turns it off. A caption box flush against a panel frame still merges with
+   it and is refused, which is the honest answer: there is no boundary
+   between them to find.
 7. **Screentone — confirmed, and the failure is in OCR, not detection.** Both
    real balloons on the halftoned fixture trace perfectly; Tesseract reads the
    dot rows as ~25 phantom lines of text, and each becomes a region. Neither
