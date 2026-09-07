@@ -371,3 +371,55 @@ def _translate_plan(page_dir: Path, translation: str) -> Path:
         force=True,
     )
     return plan_path
+
+
+def test_merge_carries_hand_work_across_a_re_extraction(page_dir: Path, font_dir: Path) -> None:
+    from comictrans.planfile import load_plan
+
+    plan_path = _extract_then_translate(page_dir, "I CANNOT BELIEVE IT")
+    assert main(["extract", str(page_dir), "--merge"]) == EXIT_OK
+
+    plan = load_plan(plan_path)
+    assert [r.translation for r in plan.regions] == ["I CANNOT BELIEVE IT"]
+
+
+def test_force_still_discards_everything(page_dir: Path, font_dir: Path) -> None:
+    from comictrans.planfile import load_plan
+
+    plan_path = _extract_then_translate(page_dir, "I CANNOT BELIEVE IT")
+    assert main(["extract", str(page_dir), "--force"]) == EXIT_OK
+
+    plan = load_plan(plan_path)
+    assert plan.regions[0].translation != "I CANNOT BELIEVE IT"
+    assert plan.regions[0].is_untranslated
+
+
+def test_merge_and_force_are_mutually_exclusive(page_dir: Path, font_dir: Path) -> None:
+    with pytest.raises(SystemExit):
+        main(["extract", str(page_dir), "--merge", "--force"])
+
+
+def test_merge_without_an_existing_plan_writes_a_fresh_one(page_dir: Path, font_dir: Path) -> None:
+    assert main(["extract", str(page_dir), "--merge"]) == EXIT_OK
+    assert (page_dir / "comic-plan.yaml").is_file()
+
+
+def test_lost_hand_work_fails_the_run(page_dir: Path, font_dir: Path) -> None:
+    from dataclasses import replace
+
+    from comictrans.model import Plan
+    from comictrans.planfile import load_plan, write_plan
+
+    plan_path = _extract_then_translate(page_dir, "I CANNOT BELIEVE IT")
+    plan = load_plan(plan_path)
+    # A region that this page's detection will never produce again.
+    ghost = replace(
+        plan.regions[0],
+        id="ghost",
+        polygon=((5, 5), (40, 5), (40, 40), (5, 40)),
+        translation="TRANSLATION WITH NOWHERE TO GO",
+        source_text="X",
+    )
+    write_plan(Plan(header=plan.header, regions=(*plan.regions, ghost)), plan_path, force=True)
+
+    assert main(["extract", str(page_dir), "--merge"]) == EXIT_PROBLEMS

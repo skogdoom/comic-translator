@@ -279,14 +279,26 @@ does not affect the exit code.
 
 ## Re-running extract
 
-`extract` refuses to overwrite an existing plan file unless `--force`. That
-file may hold hours of hand translation and extract has no way to know.
+`extract` refuses to overwrite an existing plan file unless told what to do
+with it: `--force` discards it, `--merge` keeps the hand work.
 
-A `--merge` mode that carries translations across by polygon IoU is the
-obvious next step, and deliberately not in milestone 1: matching by region id
-would be wrong (ids are positional and shift when detection changes), and a
-wrong IoU match silently moves your text into the wrong balloon, which is a
-worse failure than refusing.
+Merging matches regions on bounding-box overlap, not on id. Ids are
+positional, so the moment detection changes they renumber and stop naming the
+same balloon. Matching is greedy by descending overlap and strictly one to
+one, so two old regions cannot both claim one new one — the better overlap
+wins and the loser is reported rather than silently folded in.
+
+Only what a person put there is carried: the translation where it was
+actually edited, plus notes, skip and the font overrides. A translation still
+equal to its `source_text` is the seed extract wrote, not hand work, so it is
+replaced by the fresh OCR — carrying it would pin an old, worse read into the
+new plan. A cleared translation is the opposite: blanking one is how you tell
+apply to leave a balloon alone, so it counts as a decision and is kept.
+
+The risk the merge cannot remove is a wrong match putting your text in the
+wrong balloon, which is why the threshold is a conservative 0.5 and anything
+below it is reported as lost rather than guessed at. Lost hand work fails the
+run.
 
 ## Known weak points on real scans
 

@@ -52,7 +52,25 @@ comes before `page10`. Anything else is skipped and logged.
 
 The plan file defaults to `<dir>/comic-plan.yaml`, or `<stem>-plan.yaml` beside
 a single input file. `extract` refuses to overwrite an existing plan file —
-it may hold hours of translation — unless you pass `--force`.
+it may hold hours of translation — unless you pass `--force` to discard it or
+`--merge` to keep it.
+
+### Re-extracting
+
+`--merge` re-detects the pages and then carries your work across from the
+existing plan: edited translations, `notes`, `skip` flags and `font` /
+`font_size` overrides. Everything measured from the page — polygons, colours,
+confidence, the OCR text — comes from the new run, which is the point of
+re-running it.
+
+Regions are matched on geometry, not on id: ids are positional, so any change
+to detection renumbers them. A region whose hand work finds no match in the
+new detection is named under **LOST HAND WORK** and the run exits non-zero,
+so it is never quietly dropped.
+
+A translation still identical to its `source_text` is a seed, not hand work,
+so it is replaced by the fresh OCR rather than pinning the old read. A
+translation you deliberately *cleared* is hand work and is kept.
 
 `--debug-dir` writes two images per page: `<stem>-regions.png` with the
 polygons (green = traced from a balloon contour, orange = approximate), the

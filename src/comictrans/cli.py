@@ -41,7 +41,7 @@ from .extract import ExtractReport, default_plan_path, extract
 from .fonts import FONT_PATH_ENV, resolve
 from .model import Plan, TextCase
 from .ocr import get_recognizer
-from .planfile import load_plan, write_plan
+from .planfile import MergeReport, load_plan, merge_plans, write_plan
 from .util import is_within
 
 log = logging.getLogger("comictrans")
@@ -117,8 +117,19 @@ def _add_extract(
         type=Path,
         help="plan file path (default: <dir>/comic-plan.yaml or <stem>-plan.yaml)",
     )
-    extract_parser.add_argument(
-        "--force", action="store_true", help="overwrite an existing plan file"
+    existing = extract_parser.add_mutually_exclusive_group()
+    existing.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite an existing plan file, discarding everything in it",
+    )
+    existing.add_argument(
+        "--merge",
+        action="store_true",
+        help="re-detect, then carry translations, notes, skip flags and font "
+        "overrides across from the existing plan file by matching regions on "
+        "geometry. Hand work with no match in the new detection is reported "
+        "and lost, and the run exits non-zero",
     )
     extract_parser.add_argument(
         "--ocr",
@@ -342,7 +353,9 @@ def _build_config(args: argparse.Namespace) -> ExtractConfig:
     )
 
 
-def _report_summary(report: ExtractReport, plan_path: Path) -> None:
+def _report_summary(
+    report: ExtractReport, plan_path: Path, merged: MergeReport | None = None
+) -> None:
     print(f"\nplan file: {plan_path}")
     print(f"  pages read:        {report.pages_read}")
     print(f"  regions found:     {report.regions}")
@@ -354,6 +367,17 @@ def _report_summary(report: ExtractReport, plan_path: Path) -> None:
         print(f"  NO REGIONS:        {path.name}")
     for path, reason in report.failures:
         print(f"  FAILED:            {path.name}: {reason}")
+    if merged is not None:
+        print(f"  carried over:      {len(merged.carried)}")
+        print(f"  newly detected:    {len(merged.added)}")
+        for region_id in merged.dropped:
+            print(f"  LOST HAND WORK:    {region_id} (no match in this detection)")
+    if merged is not None and merged.dropped:
+        print(
+            f"\n{len(merged.dropped)} region(s) from the previous plan had "
+            "translations or notes with nowhere to go. Recover them from your "
+            "backup or version control before re-running."
+        )
     if report.approximate:
         print(
             f"\n{report.approximate} region(s) have approximate geometry; "
@@ -396,9 +420,19 @@ def run_extract(args: argparse.Namespace) -> int:
         target_language=args.target_lang,
         debug_dir=args.debug_dir,
     )
-    write_plan(plan, plan_path, force=args.force)
-    _report_summary(report, plan_path)
-    return EXIT_OK if report.ok else EXIT_PROBLEMS
+    merged: MergeReport | None = None
+    if args.merge:
+        if plan_path.is_file():
+            # Geometry and text are all that matter here, so a source image
+            # that has changed since the old plan is not a reason to refuse.
+            previous = load_plan(plan_path, check_images=False)
+            plan, merged = merge_plans(previous, plan)
+        else:
+            log.info("--merge: no existing plan at %s, writing a fresh one", plan_path)
+
+    write_plan(plan, plan_path, force=args.force or args.merge)
+    _report_summary(report, plan_path, merged)
+    return EXIT_OK if report.ok and (merged is None or not merged.dropped) else EXIT_PROBLEMS
 
 
 def _apply_config(args: argparse.Namespace, plan: Plan) -> ApplyConfig:
