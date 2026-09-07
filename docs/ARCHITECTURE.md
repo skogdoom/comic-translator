@@ -83,16 +83,25 @@ size, then condense horizontally, never past the condensing floor, then shrink
 below the readable minimum as a last resort, then fail and name the region.
 
 That last stage is a deliberate departure from "then fail": text that will not
-fit at the readable minimum drops under it rather than being refused, because
-an empty balloon is worse than small lettering. It stops at
+fit at the size asked for drops under it rather than being refused, because an
+empty balloon is worse than small lettering. It stops at
 `font_size_floor_ratio`, and every region that used it is reported with the
 size it landed on, so the ones worth hand-tuning are visible rather than
 silently tiny.
 
-A region's own `font_size` is exempt. Overriding the size means asking for it,
-so a pinned size condenses but never shrinks: if the text will not fit, the
-region fails and names the override. Shrinking it anyway would make the
-override meaningless and hide the problem it was set to solve. Size is found by binary search, treating fit as monotonic —
+"The size asked for" is the readable minimum for an automatic fit, or a
+region's own `font_size` where one is pinned. A pinned size gets the same
+fallbacks: it is where the fit starts, not a wall, so an optimistic
+`font_size` still renders. What it does not get is silence — the result is
+flagged `undersized` against the pinned size, not against the readable
+minimum, so the gap between what the plan asked for and what the page got is
+always reported.
+
+Below the size asked for, the search is a binary search at full width rather
+than a descending scan, so it settles on the largest size that fits without
+condensing and only falls back to condensing at the floor. A pinned size can
+be far above what a balloon will take, and scanning down from it one pixel at
+a time would be needless work. Size is found by binary search, treating fit as monotonic —
 line breaking makes that not quite true at the margins, so the result is the
 largest size the search proved rather than the global maximum. That is a pixel
 of conservatism, never an overflow.

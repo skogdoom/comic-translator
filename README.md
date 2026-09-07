@@ -134,18 +134,21 @@ The strategy is fixed and ordered:
 
 1. shrink to the minimum readable size,
 2. then condense horizontally, never past the condensing floor,
-3. then, as a last resort, shrink *below* the readable minimum, down to
+3. then, as a last resort, shrink *below* the size asked for, down to
    `--font-size-floor` — small lettering beats an empty balloon,
 4. then fail and name the region.
 
-Nothing overflows silently. Regions that needed condensing, and regions that
-had to go below the readable minimum, are both listed at the end of a run
-with the size actually used, so you can hand-tune them.
+"The size asked for" is the readable minimum, or a region's own `font_size`
+where one is pinned. Nothing overflows silently: regions that needed
+condensing, and regions that had to go smaller than asked, are both listed at
+the end of a run with the size actually used, so you can hand-tune them.
 
 A region can pin its own size with `font_size` in the plan file. That is
-treated as an instruction, not a starting point: a pinned size is never
-quietly shrunk, so if the text will not fit at it the region fails and says
-so. `font_size` appears in the plan only when you put it there.
+where the fit starts rather than a wall: if the text will not fit at it, the
+same fallbacks apply — condense, then shrink below it — and the region is
+listed under **below min size** with the size actually used, so the gap
+between what you asked for and what you got is never silent. `font_size`
+appears in the plan only when you put it there.
 
 Emphasis is `**bold**` — never italic, and the oblique face is never used. A
 literal asterisk is `\*`. Line breaks in a translation are advisory; typeset

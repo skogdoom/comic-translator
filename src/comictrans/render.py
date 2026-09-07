@@ -159,11 +159,16 @@ def render_region(
             result.font_size,
         )
     if result.undersized:
+        asked = (
+            f"the {region.font_size}px it pins"
+            if region.font_size is not None
+            else "the readable minimum"
+        )
         log.warning(
-            "region %s: rendered at %dpx, below the readable minimum; "
-            "set font_size in the plan file to pin a size",
+            "region %s: rendered at %dpx, below %s",
             region.id,
             result.font_size,
+            asked,
         )
     return out, RegionOutcome(
         region.id,

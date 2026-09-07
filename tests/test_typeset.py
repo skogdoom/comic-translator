@@ -191,13 +191,19 @@ def test_a_fixed_size_is_used_as_given(face: FontFace) -> None:
 
 
 def test_a_fixed_size_still_refuses_to_overflow(face: FontFace) -> None:
+    # A pinned size may be shrunk to make the text fit, but whatever comes
+    # back must sit inside the polygon. Overflowing is never an option.
     result = _fit(
         "THIS WILL NOT FIT AT NINETY PIXELS NO MATTER HOW IT IS ARRANGED",
         Box(350, 380, 450, 420).as_polygon(),
         face,
         fixed_size=90,
     )
-    assert isinstance(result, FitFailure)
+    if isinstance(result, Layout):
+        assert result.font_size < 90
+        assert result.undersized
+        for line in result.lines:
+            assert line.width * result.condense <= line.band_width + 1
 
 
 def test_emphasis_is_carried_into_the_placed_runs(face: FontFace) -> None:
@@ -283,18 +289,34 @@ def test_the_floor_is_the_end_of_the_line(face: FontFace) -> None:
     assert str(round(cfg.font_size_floor_ratio * PAGE)) in result.reason
 
 
-def test_a_pinned_size_is_never_quietly_shrunk(face: FontFace) -> None:
-    # Overriding the size means asking for it. Shrinking anyway would make the
-    # override meaningless and hide the problem.
+def test_a_pinned_size_shrinks_as_a_fallback_and_says_so(face: FontFace) -> None:
+    # A pinned size is where the fit starts, not a wall: an optimistic
+    # font_size still renders, and the gap is reported rather than silent.
     result = _fit(
-        "MUCH MORE TEXT THAN WILL EVER GO INTO THIS BOX AT NINETY PIXELS",
+        "MUCH MORE TEXT THAN WILL EVER GO INTO THIS SHAPE AT NINETY PIXELS",
+        _ellipse(400, 400, 220, 140),
+        face,
+        fixed_size=90,
+    )
+    assert isinstance(result, Layout)
+    assert result.undersized
+    assert result.font_size < 90
+    for line in result.lines:
+        assert line.width * result.condense <= line.band_width + 1
+
+
+def test_a_pinned_size_that_cannot_fit_even_at_the_floor_fails(face: FontFace) -> None:
+    cfg = TypesetConfig(font_size_floor_ratio=0.09, hyphenate=False)
+    result = _fit(
+        "FAR MORE WORDS THAN COULD EVER BE SET INTO THIS TINY BOX AT ANY SIZE "
+        "THIS SIDE OF THE FLOOR, HOWEVER THEY ARE ARRANGED",
         Box(350, 380, 450, 420).as_polygon(),
         face,
+        cfg=cfg,
         fixed_size=90,
     )
     assert isinstance(result, FitFailure)
     assert "90px this region asks for" in result.reason
-    assert "font_size override" in result.reason
 
 
 def test_a_pinned_size_that_fits_is_used_exactly(face: FontFace) -> None:

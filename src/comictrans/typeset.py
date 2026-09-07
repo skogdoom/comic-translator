@@ -81,7 +81,8 @@ class Layout:
     condense: float
     line_height: int
     undersized: bool = False
-    """Set below the readable minimum to make the text fit at all."""
+    """Fitted below the size asked for: the readable minimum, or a region's
+    own ``font_size`` where one is pinned."""
 
     @property
     def condensed(self) -> bool:
@@ -318,7 +319,10 @@ def layout_text(
 
     ``fixed_size`` comes from a region's ``font_size`` override: that size is
     used as given rather than searched, because overriding it means asking for
-    it. Condensing still applies, so the text cannot overflow either way.
+    it. If the text will not fit at it, the same fallbacks apply as to an
+    automatic fit — condense, then shrink below it — and the result is flagged
+    ``undersized`` so the gap between what was asked for and what was used is
+    reported rather than silent.
     """
     if not tokens:
         return FitFailure("no text to place")
@@ -330,8 +334,10 @@ def layout_text(
     hyphenator = _hyphenator(cfg)
     minimum = max(1, round(cfg.font_size_min_ratio * page_height))
 
+    # What was asked for: the pinned size, or the smallest comfortable one.
+    requested = fixed_size if fixed_size is not None else minimum
+
     if fixed_size is not None:
-        smallest = fixed_size
         attempt = _attempt(tokens, mask, fixed_size, 1.0, face, cfg, hyphenator)
         if attempt is not None:
             return attempt
@@ -341,36 +347,28 @@ def layout_text(
         best = _search(tokens, mask, minimum, largest, face, cfg, hyphenator)
         if best is not None:
             return best
-        smallest = minimum
 
-    # Only now, at the smallest size allowed, start condensing.
-    condensed = _condense_down(tokens, mask, smallest, face, cfg, hyphenator)
+    # Only now, at the smallest size asked for, start condensing.
+    condensed = _condense_down(tokens, mask, requested, face, cfg, hyphenator)
     if condensed is not None:
         return condensed
 
-    if fixed_size is not None:
-        # A pinned size is an instruction, not a starting point. Quietly
-        # shrinking it would make the override meaningless.
-        return FitFailure(
-            f"will not fit at the {fixed_size}px this region asks for, even "
-            f"condensed to {cfg.condense_min:.0%}; raise the polygon, shorten "
-            "the translation, or remove the font_size override"
-        )
-
-    # Last resort: below the readable minimum. Small lettering beats an empty
-    # balloon, and the region is reported so it can be hand-tuned.
+    # Last resort: below what was asked for. Small lettering beats an empty
+    # balloon. Applies to a pinned size too, so a region whose font_size is
+    # optimistic still renders; it is reported either way.
     floor = max(1, round(cfg.font_size_floor_ratio * page_height))
-    for size in range(minimum - 1, floor - 1, -1):
-        attempt = _attempt(tokens, mask, size, 1.0, face, cfg, hyphenator)
-        if attempt is None:
-            attempt = _condense_down(tokens, mask, size, face, cfg, hyphenator)
-        if attempt is not None:
-            log.info("fitted at %dpx, below the readable minimum of %dpx", size, minimum)
-            return replace(attempt, undersized=True)
+    if floor < requested:
+        smaller = _search(tokens, mask, floor, requested - 1, face, cfg, hyphenator)
+        if smaller is None:
+            smaller = _condense_down(tokens, mask, floor, face, cfg, hyphenator)
+        if smaller is not None:
+            log.info("fitted at %dpx, below the %dpx asked for", smaller.font_size, requested)
+            return replace(smaller, undersized=True)
 
+    asked = f"the {fixed_size}px this region asks for" if fixed_size else f"{minimum}px"
     return FitFailure(
-        f"will not fit even at {floor}px condensed to {cfg.condense_min:.0%}; "
-        "shorten the translation or enlarge the polygon"
+        f"will not fit at {asked}, nor at the {floor}px floor condensed to "
+        f"{cfg.condense_min:.0%}; shorten the translation or enlarge the polygon"
     )
 
 
