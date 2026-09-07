@@ -118,3 +118,53 @@ def test_help_lists_both_subcommands(capsys: pytest.CaptureFixture[str]) -> None
         main(["--help"])
     out = capsys.readouterr().out
     assert "extract" in out and "apply" in out
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["-v", "extract", "PAGES"],
+        ["extract", "PAGES", "-v"],
+        ["extract", "-v", "PAGES"],
+        ["extract", "PAGES", "--verbose"],
+    ],
+)
+def test_verbose_is_accepted_on_either_side_of_the_subcommand(
+    argv: list[str], page_dir: Path, font_dir: Path
+) -> None:
+    resolved = [str(page_dir) if arg == "PAGES" else arg for arg in argv]
+    assert main([*resolved, "--force"]) == EXIT_OK
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["-q", "extract", "PAGES"], ["extract", "PAGES", "-q"]],
+)
+def test_quiet_is_accepted_on_either_side_of_the_subcommand(
+    argv: list[str], page_dir: Path, font_dir: Path
+) -> None:
+    resolved = [str(page_dir) if arg == "PAGES" else arg for arg in argv]
+    assert main([*resolved, "--force"]) == EXIT_OK
+
+
+def test_verbosity_flags_reach_the_log_level(page_dir: Path, font_dir: Path) -> None:
+    import logging
+
+    main(["extract", str(page_dir), "-q", "--force"])
+    assert logging.getLogger().level == logging.WARNING
+    main(["extract", str(page_dir), "-v", "--force"])
+    assert logging.getLogger().level == logging.DEBUG
+    main(["extract", str(page_dir), "--force"])
+    assert logging.getLogger().level == logging.INFO
+
+
+def test_verbose_and_quiet_together_are_rejected_on_one_parser(page_dir: Path) -> None:
+    with pytest.raises(SystemExit):
+        main(["extract", str(page_dir), "-v", "-q"])
+
+
+def test_verbose_does_not_turn_on_third_party_debug_logging(page_dir: Path, font_dir: Path) -> None:
+    import logging
+
+    main(["extract", str(page_dir), "-v", "--force"])
+    assert logging.getLogger("PIL").level == logging.INFO

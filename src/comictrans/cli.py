@@ -41,9 +41,38 @@ EXIT_PROBLEMS = 1
 EXIT_FATAL = 2
 
 
+def _verbosity_parser() -> argparse.ArgumentParser:
+    """Verbosity flags, shared so they work on either side of the subcommand.
+
+    ``comictrans -v extract pages/`` and ``comictrans extract pages/ -v`` are
+    the same thing. The defaults are SUPPRESS so an unset flag on one parser
+    cannot clobber the same flag set on the other; ``build_parser`` supplies
+    the real defaults once.
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="log detection detail",
+    )
+    group.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="warnings and errors only",
+    )
+    return parser
+
+
 def build_parser() -> argparse.ArgumentParser:
+    verbosity = _verbosity_parser()
     parser = argparse.ArgumentParser(
         prog="comictrans",
+        parents=[verbosity],
         description=(
             "Translate scanned comic pages in two passes: 'extract' writes a plan "
             "file of the Italian text, you translate it by hand, 'apply' renders "
@@ -51,19 +80,21 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--version", action="version", version=f"comictrans {__version__}")
-    verbosity = parser.add_mutually_exclusive_group()
-    verbosity.add_argument("-v", "--verbose", action="store_true", help="log detection detail")
-    verbosity.add_argument("-q", "--quiet", action="store_true", help="warnings and errors only")
+    parser.set_defaults(verbose=False, quiet=False)
 
     subparsers = parser.add_subparsers(dest="command", required=True)
-    _add_extract(subparsers)
-    _add_apply(subparsers)
+    _add_extract(subparsers, verbosity)
+    _add_apply(subparsers, verbosity)
     return parser
 
 
-def _add_extract(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def _add_extract(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    verbosity: argparse.ArgumentParser,
+) -> None:
     extract_parser = subparsers.add_parser(
         "extract",
+        parents=[verbosity],
         help="detect and OCR text regions, write a plan file (produces no images)",
         description=(
             "Reads a single image or a directory of images (non-recursive, natural "
@@ -149,9 +180,13 @@ def _add_extract(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
     )
 
 
-def _add_apply(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def _add_apply(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    verbosity: argparse.ArgumentParser,
+) -> None:
     apply_parser = subparsers.add_parser(
         "apply",
+        parents=[verbosity],
         help="render translated pages from a plan file (milestone 2)",
         description="Not implemented yet; lands in milestone 2.",
     )
@@ -159,12 +194,17 @@ def _add_apply(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
 
 def configure_logging(*, verbose: bool, quiet: bool) -> None:
+    """Set the root log level. ``-v`` wins if both somehow arrive set."""
     level = logging.DEBUG if verbose else logging.WARNING if quiet else logging.INFO
     # force: main() can be called more than once in a process (tests, the
     # future GUI), and basicConfig is otherwise a no-op after the first call.
     logging.basicConfig(
         level=level, format="%(levelname)s %(message)s", stream=sys.stderr, force=True
     )
+    # -v is for detection detail. Pillow's debug log dumps every PNG chunk,
+    # which buries exactly what you turned -v on to read.
+    for noisy in ("PIL", "matplotlib"):
+        logging.getLogger(noisy).setLevel(max(level, logging.INFO))
 
 
 def _build_config(args: argparse.Namespace) -> ExtractConfig:
@@ -224,8 +264,6 @@ def run_extract(args: argparse.Namespace) -> int:
             f"{exc}\nNo font file ships with comictrans. Add a directory to "
             f"{FONT_PATH_ENV} if your fonts live somewhere non-standard."
         ) from exc
-    log.info("font %r resolved to %s", face.family, face.regular.path)
-
     recognizer = get_recognizer(config.ocr)
     log.info("OCR backend: %s", recognizer.name)
 
