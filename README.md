@@ -102,6 +102,11 @@ A region that will not fit is reported by id and left **completely** alone —
 not erased, not half-drawn. The page stays readable in the source language
 rather than becoming a blank balloon.
 
+Every region is erased before any text is drawn, so two overlapping polygons
+cannot cut into each other's lettering. They will still draw over each other,
+which no rendering order can fix, so overlapping regions are named in a
+warning.
+
 | flag | what it does |
 | --- | --- |
 | `--font NAME` | override the font for every region; logged, because the plan file is the record |

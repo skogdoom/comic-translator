@@ -116,6 +116,26 @@ markup run separately puts a space before that comma. Only single-weight words
 are hyphenated: splitting across a boundary would have to divide the segments
 too, and shrinking the font is the better answer.
 
+## Erase before draw
+
+`render_page` works in two passes: it decides what every region will do and
+lays out its text without touching a pixel, then erases every region it is
+going to render, then draws all of them.
+
+One pass would be simpler and is wrong. Erasing and drawing a region at a
+time lets a later region's erase wipe lettering an earlier one already drew,
+wherever two polygons overlap — silently, because both regions still report
+success. Overlaps are not rare: on the fixture pages a junk region overlaps a
+real balloon, and fragments sit entirely inside one.
+
+Erasing first cannot stop two overlapping polygons from drawing over each
+other, which is a plan file problem rather than a rendering one, so regions
+sharing more than 15% of the smaller one's area are named in a warning.
+
+Planning before touching pixels is also what keeps the promise that a region
+which will not fit is left completely alone: it produces no layout, so it is
+never erased either.
+
 ## What apply does not do
 
 It does not re-run detection or OCR, so it cannot disagree with the plan file.

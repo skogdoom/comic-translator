@@ -12,13 +12,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import numpy as np
 from PIL import Image, ImageDraw
 
 from .config import ApplyConfig
 from .erase import erase
 from .fonts import FontFace
-from .imaging import PageImage, RgbArray
+from .imaging import PageImage
 from .markup import MarkupError, tokenize
 from .model import Color, Region, TextCase
 from .typeset import FitFailure, Layout, layout_text
@@ -102,27 +101,40 @@ def draw_layout(image: Image.Image, layout: Layout, style: RegionStyle, color: C
         image.paste(layer, (left, line.top), layer)
 
 
-def render_region(
-    rgb: RgbArray,
+@dataclass(frozen=True, slots=True)
+class PlannedRegion:
+    """A region that will be rendered, and the layout it will be rendered with."""
+
+    region: Region
+    style: RegionStyle
+    layout: Layout
+
+
+def plan_region(
     region: Region,
     style: RegionStyle,
     cfg: ApplyConfig,
     *,
     page_width: int,
     page_height: int,
-) -> tuple[RgbArray, RegionOutcome]:
-    """Erase one region's lettering and typeset its translation in place."""
+) -> tuple[Layout | None, RegionOutcome]:
+    """Decide what happens to a region, without touching a single pixel.
+
+    Separating the decision from the drawing is what lets every erase happen
+    before any text is drawn. A region that will not fit returns no layout, so
+    it is never erased either.
+    """
     if region.skip:
-        return rgb, RegionOutcome(region.id, "skipped_flag", "marked skip: true")
+        return None, RegionOutcome(region.id, "skipped_flag", "marked skip: true")
     if not region.translation.strip():
-        return rgb, RegionOutcome(region.id, "skipped_empty", "no translation")
+        return None, RegionOutcome(region.id, "skipped_empty", "no translation")
 
     try:
         tokens = tokenize(region.translation, case=style.case)
     except MarkupError as exc:
-        return rgb, RegionOutcome(region.id, "failed", str(exc))
+        return None, RegionOutcome(region.id, "failed", str(exc))
     if not tokens:
-        return rgb, RegionOutcome(region.id, "skipped_empty", "translation is only markup")
+        return None, RegionOutcome(region.id, "skipped_empty", "translation is only markup")
 
     result = layout_text(
         tokens,
@@ -137,12 +149,7 @@ def render_region(
         # Nothing is drawn and nothing is erased: a region that will not fit
         # is left exactly as it was, so the page stays readable in the source
         # language rather than becoming a blank balloon.
-        return rgb, RegionOutcome(region.id, "failed", result.reason)
-
-    erased = erase(rgb, region, cfg.erase, page_height=page_height)
-    image = Image.fromarray(erased)
-    draw_layout(image, result, style, region.text_color)
-    out = np.asarray(image, dtype=np.uint8)
+        return None, RegionOutcome(region.id, "failed", result.reason)
 
     if region.is_untranslated:
         log.warning(
@@ -150,7 +157,6 @@ def render_region(
             "the original text is being re-lettered",
             region.id,
         )
-
     if result.condensed:
         log.info(
             "region %s: condensed to %.0f%% at %dpx to fit",
@@ -164,13 +170,9 @@ def render_region(
             if region.font_size is not None
             else "the readable minimum"
         )
-        log.warning(
-            "region %s: rendered at %dpx, below %s",
-            region.id,
-            result.font_size,
-            asked,
-        )
-    return out, RegionOutcome(
+        log.warning("region %s: rendered at %dpx, below %s", region.id, result.font_size, asked)
+
+    return result, RegionOutcome(
         region.id,
         "rendered",
         condense=result.condense,
@@ -180,18 +182,46 @@ def render_region(
     )
 
 
+def _warn_about_overlaps(planned: list[PlannedRegion]) -> None:
+    """Note regions that share pixels, since their text will overlap.
+
+    Erasing every region before drawing any of them stops one region's erase
+    from cutting into another's lettering. It cannot stop two overlapping
+    polygons from drawing over each other, and that is a plan file problem —
+    so say which ones rather than let it be a surprise on the page.
+    """
+    for index, first in enumerate(planned):
+        for second in planned[index + 1 :]:
+            shared = first.region.bounds.intersection(second.region.bounds)
+            if shared is None:
+                continue
+            smaller = min(first.region.bounds.area, second.region.bounds.area)
+            if smaller > 0 and shared.area / smaller > 0.15:
+                log.warning(
+                    "regions %s and %s overlap; their text will be drawn over each other",
+                    first.region.id,
+                    second.region.id,
+                )
+
+
 def render_page(
     page: PageImage,
     regions: tuple[Region, ...],
     styles: dict[str, RegionStyle],
     cfg: ApplyConfig,
 ) -> tuple[Image.Image, list[RegionOutcome]]:
-    """Apply every region belonging to one page."""
-    rgb = page.rgb
+    """Apply every region belonging to one page.
+
+    Two passes on purpose. Erasing and drawing one region at a time lets a
+    later region's erase wipe lettering an earlier one already drew, wherever
+    two polygons overlap — silently, since both regions still report success.
+    Every erase therefore happens first, against pixels that hold only the
+    original artwork, and only then is any text drawn.
+    """
+    planned: list[PlannedRegion] = []
     outcomes: list[RegionOutcome] = []
     for region in sorted(regions, key=lambda r: r.order):
-        rgb, outcome = render_region(
-            rgb,
+        layout, outcome = plan_region(
             region,
             styles[region.id],
             cfg,
@@ -199,4 +229,16 @@ def render_page(
             page_height=page.height,
         )
         outcomes.append(outcome)
-    return Image.fromarray(rgb), outcomes
+        if layout is not None:
+            planned.append(PlannedRegion(region, styles[region.id], layout))
+
+    _warn_about_overlaps(planned)
+
+    rgb = page.rgb
+    for entry in planned:
+        rgb = erase(rgb, entry.region, cfg.erase, page_height=page.height)
+
+    image = Image.fromarray(rgb)
+    for entry in planned:
+        draw_layout(image, entry.layout, entry.style, entry.region.text_color)
+    return image, outcomes
