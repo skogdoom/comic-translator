@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from comictrans.errors import InputError
 from comictrans.imaging import collect_inputs, load_page
@@ -81,3 +82,24 @@ def test_load_page_reports_a_corrupt_image(tmp_path: Path) -> None:
     path.write_bytes(b"not really a png")
     with pytest.raises(InputError, match="cannot read image"):
         load_page(path)
+
+
+def test_transparency_is_flattened_onto_white_not_dropped(tmp_path: Path) -> None:
+    # Transparent pixels whose colour channels are black: dropping alpha would
+    # turn them into a solid black band and shift every threshold on the page.
+    rgba = np.zeros((10, 10, 4), dtype=np.uint8)
+    rgba[:, :, 3] = 0
+    rgba[4:6, 4:6] = (10, 20, 30, 255)
+    path = tmp_path / "alpha.png"
+    Image.fromarray(rgba, mode="RGBA").save(path)
+
+    page = load_page(path)
+
+    assert page.meta.had_alpha
+    assert tuple(page.rgb[0, 0]) == (255, 255, 255), "transparent area flattened to white"
+    assert tuple(page.rgb[4, 4]) == (10, 20, 30), "opaque pixels untouched"
+
+
+def test_opaque_images_report_no_alpha(tmp_path: Path) -> None:
+    path = save_page(_blank(), tmp_path / "page.png")
+    assert load_page(path).meta.had_alpha is False

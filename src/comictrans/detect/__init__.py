@@ -97,16 +97,17 @@ def find_regions(
     regions: list[DetectedRegion] = []
 
     for index, members in grouped.items():
-        polygon = candidates[index].polygon
-        geometry = Geometry.EXACT
         boxes = tuple(line.box for line in members)
-        if _text_fills_contour(boxes, polygon, cfg):
-            # The contour hugs the glyphs; it is a text blob, not a balloon.
+        polygon = candidates[index].polygon(cfg)
+        geometry = Geometry.EXACT
+        if polygon is None or _text_fills_contour(boxes, polygon, cfg):
+            # Either no usable polygon came out of the contour, or the contour
+            # hugs the glyphs and is a text blob rather than a balloon.
             polygon = approximate_polygon(boxes, cfg, width=page.width, height=page.height)
             geometry = Geometry.APPROXIMATE
         regions.append(_build(page, polygon, geometry, members))
 
-    for cluster in cluster_lines(loose, cfg):
+    for cluster in cluster_lines(loose, cfg, width=page.width, height=page.height):
         boxes = tuple(line.box for line in cluster)
         polygon = approximate_polygon(boxes, cfg, width=page.width, height=page.height)
         regions.append(_build(page, polygon, Geometry.APPROXIMATE, cluster))

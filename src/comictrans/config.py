@@ -29,6 +29,9 @@ DEFAULT_MAX_CONTOUR_AREA_RATIO = 0.25
 DEFAULT_MIN_SOLIDITY = 0.80
 """Minimum contour area / convex hull area for a balloon."""
 
+DEFAULT_MAX_EXTENT_RATIO = 0.75
+"""Largest share of the page a region may span in either direction."""
+
 
 @dataclass(frozen=True, slots=True)
 class OcrConfig:
@@ -64,6 +67,13 @@ class DetectConfig:
 
     max_fill_ratio: float = 0.90
     """Text must not fill more than this share of its balloon."""
+
+    max_extent_ratio: float = DEFAULT_MAX_EXTENT_RATIO
+    """A balloon must not span more than this share of the page in either
+    direction. Area alone does not catch a band of flat artwork that happens
+    to hold a caption — a sand or sky band is thin enough to pass the area
+    test while running the full width of the page. Measured balloons sit at
+    0.25-0.45; escapes sit near 0.9."""
 
     approx_epsilon_ratio: float = 0.004
     """approxPolyDP epsilon as a fraction of contour perimeter."""

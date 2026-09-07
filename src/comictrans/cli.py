@@ -21,6 +21,7 @@ from .config import (
     DEFAULT_FONT_SIZE_MIN_RATIO,
     DEFAULT_LANGUAGES,
     DEFAULT_MAX_CONTOUR_AREA_RATIO,
+    DEFAULT_MAX_EXTENT_RATIO,
     DEFAULT_MIN_SOLIDITY,
     DetectConfig,
     ExtractConfig,
@@ -173,6 +174,14 @@ def _add_extract(
         "(default: %(default)s)",
     )
     extract_parser.add_argument(
+        "--max-extent-ratio",
+        type=float,
+        default=DEFAULT_MAX_EXTENT_RATIO,
+        metavar="F",
+        help="largest share of the page a region may span in either direction; "
+        "lower it when a region swallows a band of artwork (default: %(default)s)",
+    )
+    extract_parser.add_argument(
         "--debug-dir",
         type=Path,
         metavar="DIR",
@@ -218,6 +227,7 @@ def _build_config(args: argparse.Namespace) -> ExtractConfig:
         detect=DetectConfig(
             max_contour_area_ratio=args.max_region_area,
             min_solidity=args.min_solidity,
+            max_extent_ratio=args.max_extent_ratio,
         ),
         font_size_min_ratio=args.min_font_ratio,
         condense_min=args.condense_min,

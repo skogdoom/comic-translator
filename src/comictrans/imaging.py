@@ -35,6 +35,8 @@ class PageMeta:
     mode: str
     dpi: tuple[float, float] | None
     icc_profile: bytes | None
+    had_alpha: bool = False
+    """The source carried transparency, which was flattened onto white."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +63,26 @@ class PageImage:
         return self.width * self.height
 
 
+def _has_alpha(image: Image.Image) -> bool:
+    return image.mode in {"RGBA", "LA", "PA"} or "transparency" in image.info
+
+
+def flatten_to_rgb(image: Image.Image) -> Image.Image:
+    """Convert to RGB, compositing any transparency onto white.
+
+    A transparent pixel's colour channels are undefined and in practice are
+    often zero, so ``convert("RGB")`` alone turns whatever the artist left
+    transparent into solid black. A black band across a page shifts the Otsu
+    threshold and poisons colour sampling. Pages are paper: white is the
+    right ground to flatten onto.
+    """
+    if not _has_alpha(image):
+        return image.convert("RGB")
+    rgba = image.convert("RGBA")
+    background = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+    return Image.alpha_composite(background, rgba).convert("RGB")
+
+
 def load_page(path: Path) -> PageImage:
     """Decode a source image read-only, capturing metadata for the apply pass."""
     try:
@@ -69,7 +91,8 @@ def load_page(path: Path) -> PageImage:
             original_mode = image.mode
             dpi_raw = image.info.get("dpi")
             icc = image.info.get("icc_profile")
-            rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
+            had_alpha = _has_alpha(image)
+            rgb = np.asarray(flatten_to_rgb(image), dtype=np.uint8)
     except (UnidentifiedImageError, OSError) as exc:
         raise InputError(f"cannot read image {path}: {exc}") from exc
 
@@ -85,6 +108,7 @@ def load_page(path: Path) -> PageImage:
         mode=original_mode,
         dpi=dpi,
         icc_profile=icc if isinstance(icc, bytes) else None,
+        had_alpha=had_alpha,
     )
     return PageImage(path=path, rgb=rgb, sha256=sha256_file(path), meta=meta)
 

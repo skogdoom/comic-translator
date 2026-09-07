@@ -8,10 +8,17 @@ from comictrans.detect.color import glyph_mask, polygon_mask
 from comictrans.detect.contour import build_candidates, enclosing_candidate
 from comictrans.detect.fallback import approximate_polygon, cluster_lines
 from comictrans.imaging import PageImage, PageMeta
-from comictrans.model import Box, Geometry, polygon_area, polygon_bounds
+from comictrans.model import Box, Geometry, polygon_area, polygon_bounds, polygon_is_simple
 from comictrans.ocr.base import OcrLine
 
-from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, lines_for, make_page_array
+from .conftest import (
+    ART_DARK,
+    ART_LIGHT,
+    BALLOON_WHITE,
+    INK_BLACK,
+    lines_for,
+    make_page_array,
+)
 
 CFG = DetectConfig()
 
@@ -169,7 +176,7 @@ def test_cluster_lines_groups_stacked_lines_only() -> None:
         OcrLine("DUE", Box(100, 135, 200, 165), 0.9),
     ]
     far_away = OcrLine("TRE", Box(100, 600, 200, 630), 0.9)
-    clusters = cluster_lines([*stacked, far_away], CFG)
+    clusters = cluster_lines([*stacked, far_away], CFG, width=600, height=800)
     assert [len(c) for c in clusters] == [2, 1]
 
 
@@ -180,6 +187,8 @@ def test_cluster_lines_keeps_side_by_side_text_apart() -> None:
             OcrLine("DX", Box(400, 105, 500, 135), 0.9),
         ],
         CFG,
+        width=600,
+        height=800,
     )
     assert [len(c) for c in clusters] == [1, 1]
 
@@ -199,3 +208,103 @@ def test_glyph_mask_finds_ink_as_the_minority_class(
     mask = glyph_mask(array, region, tuple(boxes))
     ink = int(np.count_nonzero(mask))
     assert 0 < ink < sum(box.area for box in boxes) * 0.6
+
+
+def test_simplify_never_returns_a_self_intersecting_polygon() -> None:
+    # A bowtie: approxPolyDP can fold a ragged contour over itself, and the
+    # plan file reader rejects a self-intersecting polygon, so extract must
+    # never emit one. The convex hull is the fallback.
+    import numpy as np
+
+    from comictrans.detect.contour import _simplify
+
+    bowtie = np.array([[[0, 0]], [[100, 100]], [[100, 0]], [[0, 100]]], dtype=np.int32)
+    polygon = _simplify(bowtie, CFG)
+
+    assert polygon is not None
+    assert polygon_is_simple(polygon)
+
+
+def test_simplify_keeps_a_well_behaved_contour_intact() -> None:
+    import numpy as np
+
+    from comictrans.detect.contour import _simplify
+
+    square = np.array([[[0, 0]], [[100, 0]], [[100, 100]], [[0, 100]]], dtype=np.int32)
+    polygon = _simplify(square, CFG)
+    assert polygon is not None
+    assert set(polygon) == {(0, 0), (100, 0), (100, 100), (0, 100)}
+
+
+def test_a_band_of_artwork_spanning_the_page_is_not_a_balloon() -> None:
+    # Text on a wide flat band: the band is solid, convex and under the area
+    # cap, so only the extent guard stops it being taken for a balloon and
+    # erased wholesale.
+    boxes = [Box(200, 690, 400, 714)]
+    array = make_page_array(
+        (600, 800),
+        ART_LIGHT,
+        [("rect", Box(10, 650, 590, 760), (240, 220, 180), INK_BLACK, boxes)],
+    )
+    regions = find_regions(_page(array), lines_for(boxes, ["ON THE SAND"]), CFG)
+
+    assert len(regions) == 1
+    assert regions[0].geometry is Geometry.APPROXIMATE
+    assert regions[0].bounds.width < 600 * CFG.max_extent_ratio
+
+
+def test_a_normal_balloon_is_unaffected_by_the_extent_guard(
+    balloon_page: tuple[np.ndarray, list[Box]],
+) -> None:
+    array, boxes = balloon_page
+    region = find_regions(_page(array), lines_for(boxes, ["A", "B"]), CFG)[0]
+    assert region.geometry is Geometry.EXACT
+    assert region.bounds.width < 600 * CFG.max_extent_ratio
+
+
+def test_candidate_bounds_reject_boxes_outside_them_cheaply(
+    balloon_page: tuple[np.ndarray, list[Box]],
+) -> None:
+    from cv2 import COLOR_RGB2GRAY, cvtColor
+
+    candidates = build_candidates(cvtColor(balloon_page[0], COLOR_RGB2GRAY), CFG)
+    far_away = Box(10, 10, 40, 40)
+    for candidate in candidates:
+        if not candidate.bounds.intersection(far_away):
+            assert not candidate.contains_box(far_away)
+
+
+def test_sampled_colors_never_come_back_indistinguishable() -> None:
+    # A flat region with no real glyphs: whatever the sampler measures, apply
+    # must not end up drawing text in the same colour as the fill.
+    from comictrans.detect.color import sample_colors
+    from comictrans.model import Color
+
+    flat = make_page_array((200, 200), (128, 128, 128), [])
+    fill, text = sample_colors(
+        flat, Box(20, 20, 180, 180).as_polygon(), (Box(50, 90, 150, 110),), page_height=200
+    )
+    assert isinstance(fill, Color) and isinstance(text, Color)
+    assert (
+        abs(
+            (0.299 * fill.r + 0.587 * fill.g + 0.114 * fill.b)
+            - (0.299 * text.r + 0.587 * text.g + 0.114 * text.b)
+        )
+        >= 32.0
+    )
+
+
+def test_clusters_do_not_chain_across_the_page() -> None:
+    # Adjacency is transitive: each line overlaps the next, so without the
+    # extent cap these would fuse into one region spanning the whole page.
+    chain = [
+        OcrLine(f"L{i}", Box(x, 100, x + 120, 130), 0.9) for i, x in enumerate(range(0, 560, 80))
+    ]
+    clusters = cluster_lines(chain, CFG, width=600, height=800)
+
+    assert len(clusters) > 1
+    for cluster in clusters:
+        union = cluster[0].box
+        for line in cluster[1:]:
+            union = union.union(line.box)
+        assert union.width <= 600 * CFG.max_extent_ratio

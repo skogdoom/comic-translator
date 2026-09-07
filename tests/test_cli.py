@@ -168,3 +168,36 @@ def test_verbose_does_not_turn_on_third_party_debug_logging(page_dir: Path, font
 
     main(["extract", str(page_dir), "-v", "--force"])
     assert logging.getLogger("PIL").level == logging.INFO
+
+
+def test_detection_tuning_flags_reach_the_config(
+    page_dir: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, float] = {}
+
+    import comictrans.cli as cli_module
+
+    original = cli_module._build_config
+
+    def capture(args: object) -> object:
+        config = original(args)  # type: ignore[arg-type]
+        seen["extent"] = config.detect.max_extent_ratio
+        seen["solidity"] = config.detect.min_solidity
+        seen["area"] = config.detect.max_contour_area_ratio
+        return config
+
+    monkeypatch.setattr(cli_module, "_build_config", capture)
+    main(
+        [
+            "extract",
+            str(page_dir),
+            "--force",
+            "--max-extent-ratio",
+            "0.5",
+            "--min-solidity",
+            "0.6",
+            "--max-region-area",
+            "0.3",
+        ]
+    )
+    assert seen == {"extent": 0.5, "solidity": 0.6, "area": 0.3}

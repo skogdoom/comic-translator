@@ -61,6 +61,7 @@ Useful when detection misbehaves:
 | flag | when |
 | --- | --- |
 | `--max-region-area` | lower it when a broken balloon outline lets a contour escape into the artwork |
+| `--max-extent-ratio` | lower it when a region swallows a band of artwork; balloons measure 0.25-0.45 of page width |
 | `--min-solidity` | lower it for irregular or spiky balloons |
 | `--confidence-threshold` | raise it to flag more regions for checking |
 | `--ocr tesseract` | force the fallback backend |

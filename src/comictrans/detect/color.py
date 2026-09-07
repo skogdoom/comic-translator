@@ -20,6 +20,19 @@ MaskArray = NDArray[np.uint8]
 
 _MIN_SAMPLE_PIXELS = 12
 
+_MIN_CONTRAST = 32.0
+"""Minimum luminance gap between a region's fill and text colours. Below this
+the two are indistinguishable and apply would draw invisible text."""
+
+
+def luminance(color: Color) -> float:
+    """Rec. 601 luma, 0-255."""
+    return 0.299 * color.r + 0.587 * color.g + 0.114 * color.b
+
+
+def _luminance_gap(a: Color, b: Color) -> float:
+    return abs(luminance(a) - luminance(b))
+
 
 def polygon_mask(polygon: Polygon, height: int, width: int) -> MaskArray:
     """Filled 0/255 mask of a polygon."""
@@ -96,8 +109,9 @@ def sample_colors(
 
     if fill is None:
         fill = Color(255, 255, 255)
-    if text is None:
-        # No usable glyph sample: pick whichever end of the scale contrasts.
-        luminance = 0.299 * fill.r + 0.587 * fill.g + 0.114 * fill.b
-        text = Color(0, 0, 0) if luminance >= 128 else Color(255, 255, 255)
+    if text is None or _luminance_gap(fill, text) < _MIN_CONTRAST:
+        # Either no usable glyph sample, or one so close to the fill that
+        # apply would render the translation invisible. Fall back to whichever
+        # end of the scale contrasts; the value is in the plan file to edit.
+        text = Color(0, 0, 0) if luminance(fill) >= 128 else Color(255, 255, 255)
     return fill, text

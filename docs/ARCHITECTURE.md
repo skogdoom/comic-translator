@@ -175,31 +175,70 @@ worse failure than refusing.
 
 ## Known weak points on real scans
 
-In rough order of how often they will bite:
+Rewritten against the fixture pages in `tests/fixtures/`, which is why some of
+this contradicts what I expected before running it.
 
-1. **Contour escape.** A balloon whose outline is broken, open, or touching
-   the panel frame gives a contour that is the whole panel. `--max-region-area`
-   and `--min-solidity` guard it; tight crops will still misfire.
-2. **Joined balloons.** Two balloons sharing an edge trace as one contour and
-   merge into one region, contrary to the two-balloons-two-regions rule.
-   Detectable (two well-separated line clusters in one contour), not reliably
-   splittable.
-3. **Screentone.** Otsu on halftoned art fragments contours into confetti. The
-   morphological close helps; it is not a fix.
-4. **Borderless captions.** No contour, so `geometry: approximate`, and the
-   cheap fill erase will smear artwork. This is what the inpainting hook is
-   for.
-5. **Vision on comic lettering.** It is trained on prose. Expect I/l/1
-   confusion, dropped accents, and mangled Italian elisions
-   (`dell'uomo` → `dell uomo`), often at high confidence — so the 0.5 threshold
-   will not catch them.
-6. **Skew.** One or two degrees inflates axis-aligned boxes and loosens the
+1. **Contour escape — confirmed, now guarded.** Text sitting on a flat band of
+   artwork (a strip of sand, a block of sky) selects the whole band: it is
+   solid, convex, and under the area cap. Erasing it would wipe the art.
+   Area alone does not catch it, because a band is thin. `max_extent_ratio`
+   does: measured balloons span 0.25–0.45 of page width, the escape spanned
+   0.88. The same cap now applies to fallback clustering, where adjacency is
+   transitive and a row of spurious OCR lines could otherwise chain across a
+   page into one region.
+2. **Joined balloons — did not reproduce.** Balloons joined by a tail and
+   balloons sharing an edge both detect as separate regions. The ink outline
+   keeps their white interiors separate as connected components, and the
+   interior is what gets traced. Still expect trouble from borderless
+   balloons of the same colour that touch.
+3. **Balloons breaking the panel border — did not reproduce.** A balloon
+   crossing the gutter or hanging out through the panel edge traces cleanly,
+   for the same reason.
+4. **A caption box flush against the panel frame — confirmed.** Same colour,
+   touching, so they are one connected component and the merged blob is too
+   large to be a balloon. Falls back to `approximate` and is flagged. Arguably
+   correct: there is no visual boundary between the caption's edge and the
+   panel's. Colours still round-trip, which is what matters for erase.
+5. **Screentone — confirmed, and the failure is in OCR, not detection.** Both
+   real balloons on the halftoned fixture trace perfectly; Tesseract reads the
+   dot rows as ~25 phantom lines of text, and each becomes a region. Neither
+   confidence nor line height separates the noise (noise confidence reaches
+   0.82, real text sits at 0.92; heights overlap), so there is no cheap filter
+   worth adding. This is measured against Tesseract with `--psm 11`; whether
+   Apple Vision does the same is unknown and worth checking on a real
+   screentoned page before anyone tunes anything.
+6. **Transparency — found by the fixtures.** An RGBA source whose transparent
+   pixels carry black colour channels became a solid black band under a plain
+   `convert("RGB")`, shifting the Otsu threshold across the whole page.
+   `imaging.flatten_to_rgb` composites onto white instead.
+7. **Self-intersecting polygons — found by the fixtures.** `approxPolyDP` can
+   fold a ragged contour over itself. The plan file reader rejects such a
+   polygon, so extract was capable of writing a plan it could not load back.
+   `_simplify` now falls back to the convex hull, which cannot self-intersect.
+8. **Vision on comic lettering.** Untested here — no Mac in the loop. It is
+   trained on prose, so expect I/l/1 confusion, dropped accents, and mangled
+   Italian elisions (`dell'uomo` → `dell uomo`), often at high confidence, so
+   the 0.5 threshold will not catch them.
+9. **Skew.** One or two degrees inflates axis-aligned boxes and loosens the
    polygon fit, long before it counts as "rotated text".
-7. **Gradient or textured balloon interiors** make a single `fill_color` a
-   lie; erase leaves a flat patch.
-8. **Metadata round-trip.** ICC and DPI survive Pillow for 8-bit RGB
-   PNG/TIFF. PNG stores resolution as integer pixels per metre, so 300 dpi
-   round-trips as 299.9994. 16-bit and CMYK TIFF do not round-trip cleanly;
-   milestone 2 should detect and refuse rather than silently downconvert.
-9. **Bleed-through** from thin paper reads as faint text and produces phantom
-   low-confidence regions.
+10. **Gradient or textured balloon interiors** make a single `fill_color` a
+    lie; erase leaves a flat patch. Where the sampled text colour comes back
+    within 32 luma of the fill, the text colour is snapped to black or white
+    so apply cannot draw invisible text; the value is in the plan file to
+    correct by hand.
+11. **Metadata round-trip.** ICC and DPI survive Pillow for 8-bit RGB
+    PNG/TIFF. PNG stores resolution as integer pixels per metre, so 300 dpi
+    round-trips as 299.9994. 16-bit and CMYK TIFF do not round-trip cleanly;
+    milestone 2 should detect and refuse rather than silently downconvert.
+
+## Performance
+
+Detection is roughly 0.1–0.3 s per page, and 2.8 s on the screentoned fixture,
+which yields 5476 contour candidates against 56–280 for a clean page.
+
+Two things keep that from being much worse. Candidates carry only what is
+cheap to compute for every contour — bounds and area — and build their
+simplified polygon on demand, since at most a handful are ever chosen.
+And `contains_box` rejects on bounding box before running any
+`pointPolygonTest`. Simplifying every candidate eagerly cost 13 s on the same
+page.

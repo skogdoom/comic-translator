@@ -19,7 +19,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..config import DetectConfig
-from ..model import Box, Polygon
+from ..model import Box, Polygon, polygon_is_simple
 
 GrayArray = NDArray[np.uint8]
 
@@ -30,22 +30,40 @@ GrayArray = NDArray[np.uint8]
 class ContourCandidate:
     """A blob that might be a balloon.
 
-    ``points`` is the raw contour, kept for exact containment tests;
-    ``polygon`` is the simplified version that ends up in the plan file.
+    Holds only what is cheap to compute for every contour on the page. The
+    simplified polygon is built on demand by :meth:`polygon`, because a
+    screentoned page produces thousands of candidates and at most a handful
+    are ever chosen — simplifying all of them costs seconds per page.
     """
 
     points: NDArray[np.int32]
-    polygon: Polygon
+    bounds: Box
     area: float
     inverted: bool
     """True when found on the inverted threshold, i.e. a dark balloon."""
 
     def contains_box(self, box: Box) -> bool:
-        """True when every corner of ``box`` is inside the contour."""
+        """True when every corner of ``box`` is inside the contour.
+
+        The bounding-box test first: a screentoned page yields thousands of
+        candidates and pointPolygonTest is far too expensive to run on all of
+        them when a coordinate comparison rejects most.
+        """
+        if (
+            box.left < self.bounds.left
+            or box.top < self.bounds.top
+            or box.right > self.bounds.right
+            or box.bottom > self.bounds.bottom
+        ):
+            return False
         return all(
             cv2.pointPolygonTest(self.points, (float(x), float(y)), False) >= 0
             for x, y in box.corners()
         )
+
+    def polygon(self, cfg: DetectConfig) -> Polygon | None:
+        """The plan-file polygon for this contour, or None if none is usable."""
+        return _simplify(self.points, cfg)
 
 
 def binarise(gray: GrayArray, cfg: DetectConfig, *, inverted: bool) -> GrayArray:
@@ -64,8 +82,19 @@ def binarise(gray: GrayArray, cfg: DetectConfig, *, inverted: bool) -> GrayArray
     return cast(GrayArray, cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel))
 
 
-def _simplify(contour: NDArray[np.int32], cfg: DetectConfig) -> Polygon:
-    """approxPolyDP down to a hand-editable number of integer pixel vertices."""
+def _points_to_polygon(points: NDArray[np.int32]) -> Polygon:
+    return tuple((int(point[0][0]), int(point[0][1])) for point in points)
+
+
+def _simplify(contour: NDArray[np.int32], cfg: DetectConfig) -> Polygon | None:
+    """approxPolyDP down to a hand-editable number of integer pixel vertices.
+
+    Simplifying a ragged contour can fold it over itself, and a
+    self-intersecting polygon is both meaningless to erase against and
+    rejected by the plan file reader — extract must never write one. When that
+    happens we fall back to the convex hull, which cannot self-intersect and
+    is a fair stand-in for a shape that already passed the solidity test.
+    """
     perimeter = float(cv2.arcLength(contour, True))
     epsilon = cfg.approx_epsilon_ratio * perimeter
     approx: NDArray[np.int32] = contour
@@ -74,7 +103,16 @@ def _simplify(contour: NDArray[np.int32], cfg: DetectConfig) -> Polygon:
         if len(approx) <= cfg.max_polygon_points:
             break
         epsilon *= 1.6
-    return tuple((int(point[0][0]), int(point[0][1])) for point in approx)
+
+    polygon = _points_to_polygon(approx)
+    if len(polygon) >= 3 and polygon_is_simple(polygon):
+        return polygon
+
+    hull = cast("NDArray[np.int32]", cv2.convexHull(contour))
+    hull_polygon = _points_to_polygon(hull)
+    if len(hull_polygon) >= 3 and polygon_is_simple(hull_polygon):
+        return hull_polygon
+    return None
 
 
 def build_candidates(gray: GrayArray, cfg: DetectConfig) -> list[ContourCandidate]:
@@ -83,8 +121,10 @@ def build_candidates(gray: GrayArray, cfg: DetectConfig) -> list[ContourCandidat
     Filtered by area (a contour covering a quarter of the page is a panel, not
     a balloon) and by solidity (balloons are convex-ish; artwork is not).
     """
-    page_area = float(gray.shape[0] * gray.shape[1])
-    max_area = page_area * cfg.max_contour_area_ratio
+    height, width = gray.shape[0], gray.shape[1]
+    max_area = float(height * width) * cfg.max_contour_area_ratio
+    max_width = width * cfg.max_extent_ratio
+    max_height = height * cfg.max_extent_ratio
     candidates: list[ContourCandidate] = []
 
     for inverted in (False, True):
@@ -99,13 +139,13 @@ def build_candidates(gray: GrayArray, cfg: DetectConfig) -> list[ContourCandidat
             hull_area = float(cv2.contourArea(cv2.convexHull(contour)))
             if hull_area <= 0.0 or area / hull_area < cfg.min_solidity:
                 continue
-            polygon = _simplify(cast("NDArray[np.int32]", contour), cfg)
-            if len(polygon) < 3:
-                continue
+            left, top, box_width, box_height = cv2.boundingRect(contour)
+            if box_width > max_width or box_height > max_height:
+                continue  # a band of artwork spanning the page, not a balloon
             candidates.append(
                 ContourCandidate(
                     points=contour.astype(np.int32),
-                    polygon=polygon,
+                    bounds=Box(left, top, left + box_width, top + box_height),
                     area=area,
                     inverted=inverted,
                 )
