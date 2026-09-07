@@ -352,3 +352,44 @@ def test_languages_are_recorded_from_the_arguments(
     )
     assert plan.header.source_language == "ja"
     assert plan.header.target_language == "de"
+
+
+def test_a_region_whose_text_is_an_artefact_is_not_seeded(tmp_path: Path) -> None:
+    # OCR finds "text" in artwork. Those regions stay in the plan so they can
+    # be checked, but seeding them would make apply erase the art to letter
+    # nonsense onto it.
+    directory = tmp_path / "pages"
+    directory.mkdir()
+    boxes = [Box(160, 140, 360, 164)]
+    _write_balloon_page(directory / "page1.png", boxes)
+    recognizer = FakeRecognizer({"page1.png": lines_for(boxes, ["o ©"])})
+
+    plan, report = _run(directory, recognizer)
+
+    region = plan.regions[0]
+    assert region.source_text == "o ©", "the reading is kept for inspection"
+    assert region.translation == "", "but it is not seeded"
+    assert not region.is_actionable
+    assert report.artefacts == 1
+
+
+def test_real_lettering_is_still_seeded(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    plan, report = _run(directory, recognizer)
+    assert all(r.translation == r.source_text for r in plan.regions)
+    assert report.artefacts == 0
+
+
+def test_a_one_word_balloon_is_not_mistaken_for_an_artefact(tmp_path: Path) -> None:
+    directory = tmp_path / "pages"
+    directory.mkdir()
+    boxes = [Box(160, 140, 360, 164)]
+    _write_balloon_page(directory / "page1.png", boxes)
+    recognizer = FakeRecognizer({"page1.png": lines_for(boxes, ["BASTA!"])})
+
+    plan, report = _run(directory, recognizer)
+
+    assert plan.regions[0].translation == "BASTA!"
+    assert report.artefacts == 0

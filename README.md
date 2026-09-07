@@ -213,7 +213,8 @@ regions:
 ```
 
 - `translation` is seeded with the extracted source text so you can edit it
-  in place rather than retyping into a blank field.
+  in place rather than retyping into a blank field — unless the reading does
+  not look like text at all, in which case it is left empty (see below).
 - Clearing `translation` leaves the region untouched and reports it as
   skipped, which fails the run. `skip: true` says you meant it, and passes
   quietly.
@@ -235,6 +236,12 @@ regions:
   text's own background colour and grows it by colour distance.
 - `low_confidence: true` appears on regions whose worst OCR line scored below
   `--confidence-threshold` (default 0.5).
+- OCR finds "text" in artwork — a window frame, an eye, the dots of a halftone
+  screen — and reports things like `(6` or `o ©`. Those regions are kept so you
+  can see them, but their `translation` is left empty, so `apply` leaves the
+  art alone instead of erasing it to letter nonsense on top. They are counted
+  under **not text-like** at the end of an extract run. Delete them, or set
+  `skip: true`.
 - Per-region `font` and `font_size` override the header.
 
 Loading validates: unknown keys, malformed or self-intersecting polygons, bad

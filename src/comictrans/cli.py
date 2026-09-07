@@ -361,6 +361,7 @@ def _report_summary(
     print(f"  regions found:     {report.regions}")
     print(f"  low confidence:    {report.low_confidence}")
     print(f"  approximate shape: {report.approximate}")
+    print(f"  not text-like:     {report.artefacts}")
     for path, reason in report.skipped_inputs:
         print(f"  skipped input:     {path.name} ({reason})")
     for path in report.empty_pages:
@@ -377,6 +378,12 @@ def _report_summary(
             f"\n{len(merged.dropped)} region(s) from the previous plan had "
             "translations or notes with nowhere to go. Recover them from your "
             "backup or version control before re-running."
+        )
+    if report.artefacts:
+        print(
+            f"\n{report.artefacts} region(s) hold something that does not read "
+            "as text; their translation was left empty so apply leaves the art "
+            "alone. Check them, then delete them or set skip: true."
         )
     if report.approximate:
         print(

@@ -103,3 +103,40 @@ def test_region_confidence_is_the_worst_line() -> None:
 def test_median_line_height() -> None:
     assert median_line_height([_line("A", 0, 0), _line("B", 0, 40)]) == 30.0
     assert median_line_height([]) == 0.0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "NON CI POSSO CREDERE!",
+        "STOP!",  # a one-word balloon is ordinary comic lettering
+        "NO",
+        "PERCHÉ?",  # accents count as letters
+        "私は",  # ... in any script python knows about
+        "a b cd",
+    ],
+)
+def test_real_lettering_reads_as_text(text: str) -> None:
+    from comictrans.ocr.grouping import looks_like_text
+
+    assert looks_like_text(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "(6",  # a face, read as text
+        "o ©",  # an eye
+        "<= 4 \\ \\ 7 \\/",  # dashes of a balloon outline
+        "_",
+        "/",
+        "",
+        "   ",
+        "0 0 0 0 0 0",  # halftone dots
+        "!!! ... ?",
+    ],
+)
+def test_artefacts_do_not_read_as_text(text: str) -> None:
+    from comictrans.ocr.grouping import looks_like_text
+
+    assert not looks_like_text(text)

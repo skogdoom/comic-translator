@@ -39,6 +39,32 @@ def utterance_text(lines: Sequence[OcrLine]) -> str:
     return "\n".join(line.text.strip() for line in sort_lines(lines) if line.text.strip())
 
 
+MIN_WORD_LETTERS = 2
+"""Letters needed for a token to count as a word.
+
+Two, not more: a balloon holding one short exclamation is ordinary comic
+lettering, and demanding a sentence would flag it. This only has to tell text
+from things that are not text at all.
+"""
+
+
+def looks_like_text(text: str) -> bool:
+    """True when this reads as language rather than as an artefact.
+
+    OCR finds "text" in artwork — a window frame, an eye, the dots of a
+    halftone screen — and returns things like ``(6``, ``o ©`` or ``<= 4``.
+    Those regions are worth keeping in the plan file so they can be checked,
+    but they should not be lettered back onto the page by default.
+
+    The test is deliberately weak: one run of letters is enough. Anything
+    stricter starts refusing real one-word balloons.
+    """
+    return any(
+        sum(character.isalpha() for character in token) >= MIN_WORD_LETTERS
+        for token in text.split()
+    )
+
+
 def utterance_confidence(lines: Sequence[OcrLine]) -> float:
     """Confidence for a whole region: the *worst* of its lines.
 

@@ -143,6 +143,21 @@ It does not touch a region it cannot render: a fit failure leaves the region
 exactly as it was, erased no more than it is drawn, so the page stays readable
 in the source language rather than becoming a blank balloon.
 
+A region whose OCR reading contains no run of two or more letters is not
+seeded. OCR reports "text" in artwork, and once extract began seeding
+translations every one of those phantom regions became actionable, so apply
+would erase a window frame or a character's eye and letter `(6` onto it. The
+region still goes in the plan file — the spec is explicit that suspect regions
+are kept and flagged rather than dropped — but with an empty translation, so
+apply skips it and the run says so.
+
+The test is deliberately weak: one run of letters is enough to pass. Anything
+stricter starts refusing real one-word balloons, and `BASTA!` is ordinary
+comic lettering. It costs a false negative — a three-letter fragment like
+`INA` reads as a word and is still seeded — and separating that from a real
+fragment would need a dictionary. Measured across the fixture pages it catches
+13 phantom regions with no false positives.
+
 An empty translation and `skip: true` are deliberately different. The first is
 unfinished work and fails the run; the second is a decision and passes.
 

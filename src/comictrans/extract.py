@@ -24,7 +24,7 @@ from .errors import ComictransError
 from .imaging import PageImage, collect_inputs, load_page
 from .model import Geometry, Plan, PlanHeader, Region, TextCase
 from .ocr import TextRecognizer
-from .ocr.grouping import utterance_confidence, utterance_text
+from .ocr.grouping import looks_like_text, utterance_confidence, utterance_text
 from .planfile.schema import PLAN_VERSION
 from .util import relative_posix, slugify
 
@@ -39,6 +39,8 @@ class ExtractReport:
     regions: int = 0
     low_confidence: int = 0
     approximate: int = 0
+    artefacts: int = 0
+    """Regions whose OCR text does not read as language, left unseeded."""
     empty_pages: list[Path] = field(default_factory=list)
     skipped_inputs: list[tuple[Path, str]] = field(default_factory=list)
     failures: list[tuple[Path, str]] = field(default_factory=list)
@@ -72,6 +74,11 @@ def _to_region(
     # file on disk are the same thing.
     confidence = round(utterance_confidence(detected.lines), 3)
     source_text = utterance_text(detected.lines)
+    # A region whose "text" is an artefact — a window frame, an eye, halftone
+    # dots — is kept so it can be checked, but not seeded: seeding would make
+    # it actionable, and apply would erase the artwork to letter nonsense onto
+    # it. Left empty, apply leaves it alone and the run says so.
+    readable = looks_like_text(source_text)
     return Region(
         id=_region_id(page, order),
         image=relative_posix(page.path, plan_dir),
@@ -87,7 +94,7 @@ def _to_region(
         # language in place rather than retyped into a blank field. Until it
         # is, the region still reads as untranslated: apply reports every
         # translation that is still identical to its source_text.
-        translation=source_text,
+        translation=source_text if readable else "",
         notes="",
         low_confidence=confidence < config.ocr.confidence_threshold,
     )
@@ -150,6 +157,7 @@ def extract(
         report.regions += len(page_regions)
         report.low_confidence += sum(1 for r in page_regions if r.low_confidence)
         report.approximate += sum(1 for r in page_regions if r.geometry is Geometry.APPROXIMATE)
+        report.artefacts += sum(1 for r in page_regions if not r.translation)
         log.info("%s: %d region(s)", path.name, len(page_regions))
 
     header = PlanHeader(
