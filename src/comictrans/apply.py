@@ -54,6 +54,11 @@ class ApplyReport:
         return self._count("failed")
 
     @property
+    def undersized(self) -> list[tuple[str, RegionOutcome]]:
+        """Regions rendered below the readable minimum to make the text fit."""
+        return [(i, o) for i, o in self.outcomes if o.undersized]
+
+    @property
     def unedited(self) -> list[tuple[str, RegionOutcome]]:
         """Rendered regions whose translation is still the extracted source."""
         return [(i, o) for i, o in self.outcomes if o.unedited]

@@ -238,3 +238,67 @@ def test_the_hyphenation_language_is_the_target_language(face: FontFace) -> None
     cfg = TypesetConfig(hyphenation_language="sv", font_size_min_ratio=0.03)
     result = _fit("OERHORT", Box(300, 340, 500, 460).as_polygon(), face, cfg=cfg)
     assert isinstance(result, Layout | FitFailure)
+
+
+def test_text_too_long_for_the_minimum_shrinks_below_it_rather_than_failing(
+    face: FontFace,
+) -> None:
+    # An empty balloon is worse than small lettering, so the last resort is to
+    # go under the readable minimum and say so.
+    cfg = TypesetConfig(font_size_min_ratio=0.06, font_size_floor_ratio=0.004, hyphenate=False)
+    minimum = round(cfg.font_size_min_ratio * PAGE)
+    result = _fit(
+        "A GREAT DEAL MORE DIALOGUE THAN THIS PARTICULAR BALLOON WAS EVER "
+        "DRAWN TO HOLD AT A COMFORTABLE READING SIZE",
+        _ellipse(400, 400, 240, 150),
+        face,
+        cfg=cfg,
+    )
+
+    assert isinstance(result, Layout), "should have shrunk instead of failing"
+    assert result.undersized
+    assert result.font_size < minimum
+    assert result.font_size >= round(cfg.font_size_floor_ratio * PAGE)
+    for line in result.lines:
+        assert line.width * result.condense <= line.band_width + 1
+
+
+def test_a_comfortable_fit_is_not_flagged_undersized(face: FontFace) -> None:
+    result = _fit("SHORT", _ellipse(400, 400, 240, 150), face)
+    assert isinstance(result, Layout)
+    assert not result.undersized
+    assert result.font_size >= round(CFG.font_size_min_ratio * PAGE)
+
+
+def test_the_floor_is_the_end_of_the_line(face: FontFace) -> None:
+    cfg = TypesetConfig(font_size_min_ratio=0.05, font_size_floor_ratio=0.045, hyphenate=False)
+    result = _fit(
+        "FAR MORE WORDS THAN COULD EVER BE SET INTO THIS SHAPE AT FORTY "
+        "PIXELS A GLYPH NO MATTER HOW THEY ARE ARRANGED ON THE PAGE",
+        _ellipse(400, 400, 200, 120),
+        face,
+        cfg=cfg,
+    )
+    assert isinstance(result, FitFailure)
+    assert str(round(cfg.font_size_floor_ratio * PAGE)) in result.reason
+
+
+def test_a_pinned_size_is_never_quietly_shrunk(face: FontFace) -> None:
+    # Overriding the size means asking for it. Shrinking anyway would make the
+    # override meaningless and hide the problem.
+    result = _fit(
+        "MUCH MORE TEXT THAN WILL EVER GO INTO THIS BOX AT NINETY PIXELS",
+        Box(350, 380, 450, 420).as_polygon(),
+        face,
+        fixed_size=90,
+    )
+    assert isinstance(result, FitFailure)
+    assert "90px this region asks for" in result.reason
+    assert "font_size override" in result.reason
+
+
+def test_a_pinned_size_that_fits_is_used_exactly(face: FontFace) -> None:
+    result = _fit("PINNED", _ellipse(400, 400, 240, 150), face, fixed_size=28)
+    assert isinstance(result, Layout)
+    assert result.font_size == 28
+    assert not result.undersized

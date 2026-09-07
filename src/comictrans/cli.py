@@ -21,6 +21,7 @@ from .config import (
     DEFAULT_CONDENSE_MIN,
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_ERASE_STRATEGY,
+    DEFAULT_FONT_SIZE_FLOOR_RATIO,
     DEFAULT_FONT_SIZE_MIN_RATIO,
     DEFAULT_MAX_CONTOUR_AREA_RATIO,
     DEFAULT_MAX_EXTENT_RATIO,
@@ -282,6 +283,14 @@ def _add_apply(
         "(default: the plan file's font_size_min_ratio)",
     )
     apply_parser.add_argument(
+        "--font-size-floor",
+        type=float,
+        metavar="F",
+        help="absolute floor on glyph height as a fraction of image height, "
+        "below which a region fails instead of shrinking further "
+        f"(default: {DEFAULT_FONT_SIZE_FLOOR_RATIO})",
+    )
+    apply_parser.add_argument(
         "--condense-min",
         type=float,
         metavar="F",
@@ -398,6 +407,7 @@ def _apply_config(args: argparse.Namespace, plan: Plan) -> ApplyConfig:
     return ApplyConfig(
         typeset=TypesetConfig(
             font_size_min_ratio=args.min_font_ratio or header.font_size_min_ratio,
+            font_size_floor_ratio=args.font_size_floor or DEFAULT_FONT_SIZE_FLOOR_RATIO,
             condense_min=args.condense_min or header.condense_min,
             hyphenate=not args.no_hyphenation,
             # Hyphenation follows the language being written, not a fixed one.
@@ -415,6 +425,9 @@ def _apply_summary(report: ApplyReport, output: Path) -> None:
     print(f"  skipped (skip:):   {report.skipped_flag}")
     print(f"  failed to fit:     {report.failed}")
     print(f"  same as source:    {len(report.unedited)}")
+    print(f"  below min size:    {len(report.undersized)}")
+    for image, outcome in report.undersized:
+        print(f"  SMALL {outcome.font_size:>3}px:      {outcome.region_id} ({image})")
     for image, outcome in report.condensed:
         print(f"  CONDENSED {outcome.condense:.0%}:  {outcome.region_id} ({image})")
     for image, outcome in report.outcomes:
@@ -430,6 +443,12 @@ def _apply_summary(report: ApplyReport, output: Path) -> None:
         print(
             f"\n{len(report.unedited)} region(s) still hold the extracted "
             "source text and were re-lettered as-is."
+        )
+    if report.undersized:
+        print(
+            f"\n{len(report.undersized)} region(s) were rendered below the "
+            "readable minimum to make the text fit. Pin a size with font_size "
+            "in the plan file, or shorten the translation."
         )
     if report.condensed:
         print(

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol, cast
 
 import cv2
@@ -80,6 +80,8 @@ class Layout:
     font_size: int
     condense: float
     line_height: int
+    undersized: bool = False
+    """Set below the readable minimum to make the text fit at all."""
 
     @property
     def condensed(self) -> bool:
@@ -342,18 +344,52 @@ def layout_text(
         smallest = minimum
 
     # Only now, at the smallest size allowed, start condensing.
+    condensed = _condense_down(tokens, mask, smallest, face, cfg, hyphenator)
+    if condensed is not None:
+        return condensed
+
+    if fixed_size is not None:
+        # A pinned size is an instruction, not a starting point. Quietly
+        # shrinking it would make the override meaningless.
+        return FitFailure(
+            f"will not fit at the {fixed_size}px this region asks for, even "
+            f"condensed to {cfg.condense_min:.0%}; raise the polygon, shorten "
+            "the translation, or remove the font_size override"
+        )
+
+    # Last resort: below the readable minimum. Small lettering beats an empty
+    # balloon, and the region is reported so it can be hand-tuned.
+    floor = max(1, round(cfg.font_size_floor_ratio * page_height))
+    for size in range(minimum - 1, floor - 1, -1):
+        attempt = _attempt(tokens, mask, size, 1.0, face, cfg, hyphenator)
+        if attempt is None:
+            attempt = _condense_down(tokens, mask, size, face, cfg, hyphenator)
+        if attempt is not None:
+            log.info("fitted at %dpx, below the readable minimum of %dpx", size, minimum)
+            return replace(attempt, undersized=True)
+
+    return FitFailure(
+        f"will not fit even at {floor}px condensed to {cfg.condense_min:.0%}; "
+        "shorten the translation or enlarge the polygon"
+    )
+
+
+def _condense_down(
+    tokens: tuple[Token, ...],
+    mask: MaskArray,
+    size: int,
+    face: FontFace,
+    cfg: TypesetConfig,
+    hyphenator: Hyphenator | None,
+) -> Layout | None:
+    """Step the condense factor down to the floor at one font size."""
     condense = 1.0 - cfg.condense_step
     while condense >= cfg.condense_min - 1e-9:
-        attempt = _attempt(tokens, mask, smallest, round(condense, 4), face, cfg, hyphenator)
+        attempt = _attempt(tokens, mask, size, round(condense, 4), face, cfg, hyphenator)
         if attempt is not None:
             return attempt
         condense -= cfg.condense_step
-
-    return FitFailure(
-        f"will not fit at {smallest}px even condensed to "
-        f"{cfg.condense_min:.0%}; shorten the translation, enlarge the polygon, "
-        f"or lower font_size_min_ratio"
-    )
+    return None
 
 
 def _search(

@@ -108,6 +108,7 @@ rather than becoming a blank balloon.
 | `--format {png,jpeg,tiff}` | override the output format |
 | `--erase {flat,polygon,inpaint}` | how to remove the old lettering (see below) |
 | `--min-font-ratio` / `--condense-min` | override the plan header's fit limits |
+| `--font-size-floor` | absolute floor below which a region fails instead of shrinking further |
 | `--no-hyphenation` | never hyphenate to make a line fit |
 | `--skip-hash-check` | render against a changed source; almost always wrong |
 
@@ -129,10 +130,22 @@ vertical band the usable width is the widest horizontal run inside the polygon
 on every row of that band. That is what keeps a line from running out through
 the curve of a balloon.
 
-The strategy is fixed and ordered: shrink to the minimum readable size, then
-condense horizontally, never past the floor, then fail and name the region.
-Nothing overflows silently, and every region that needed condensing is listed
-at the end of the run so you can hand-tune it.
+The strategy is fixed and ordered:
+
+1. shrink to the minimum readable size,
+2. then condense horizontally, never past the condensing floor,
+3. then, as a last resort, shrink *below* the readable minimum, down to
+   `--font-size-floor` — small lettering beats an empty balloon,
+4. then fail and name the region.
+
+Nothing overflows silently. Regions that needed condensing, and regions that
+had to go below the readable minimum, are both listed at the end of a run
+with the size actually used, so you can hand-tune them.
+
+A region can pin its own size with `font_size` in the plan file. That is
+treated as an instruction, not a starting point: a pinned size is never
+quietly shrunk, so if the text will not fit at it the region fails and says
+so. `font_size` appears in the plan only when you put it there.
 
 Emphasis is `**bold**` — never italic, and the oblique face is never used. A
 literal asterisk is `\*`. Line breaks in a translation are advisory; typeset

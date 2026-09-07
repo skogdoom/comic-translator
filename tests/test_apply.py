@@ -196,7 +196,11 @@ def test_a_region_that_will_not_fit_is_reported_and_left_alone(
     project: tuple[Path, Path, Plan], font_dir: Path
 ) -> None:
     plan_path, output, plan = project
-    config = ApplyConfig(typeset=TypesetConfig(font_size_min_ratio=0.25, hyphenate=False))
+    # The floor is raised too, so shrinking below the readable minimum cannot
+    # rescue it either: this is a region that genuinely will not fit.
+    config = ApplyConfig(
+        typeset=TypesetConfig(font_size_min_ratio=0.25, font_size_floor_ratio=0.22, hyphenate=False)
+    )
     long = plan.regions[0].with_translation(
         "A TRANSLATION FAR TOO LONG TO EVER FIT INSIDE THIS BALLOON AT THAT SIZE"
     )
@@ -382,3 +386,30 @@ def test_whitespace_only_edits_do_not_count_as_translated(
     seeded = _region("page-001.png", plan.regions[0].image_sha256, translation="  CIAO A TUTTI\n")
     report = _apply(project, plan=Plan(header=plan.header, regions=(seeded,)))
     assert len(report.unedited) == 1
+
+
+def test_a_region_rendered_below_the_minimum_is_reported(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    _, _, plan = project
+    config = ApplyConfig(
+        typeset=TypesetConfig(font_size_min_ratio=0.12, font_size_floor_ratio=0.01, hyphenate=False)
+    )
+    long = plan.regions[0].with_translation(
+        "CONSIDERABLY MORE DIALOGUE THAN THIS BALLOON WAS DRAWN TO HOLD AT THAT SIZE"
+    )
+    report = _apply(project, plan=Plan(header=plan.header, regions=(long,)), config=config)
+
+    assert report.rendered == 1, "it should render small rather than fail"
+    assert report.failed == 0
+    ((_, outcome),) = report.undersized
+    assert outcome.region_id == "page-001"
+    assert 0 < outcome.font_size < round(0.12 * 400)
+
+
+def test_a_comfortable_region_is_not_reported_as_undersized(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    report = _apply(project)
+    assert report.rendered == 1
+    assert report.undersized == []

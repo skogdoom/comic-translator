@@ -51,6 +51,10 @@ class RegionOutcome:
 
     detail: str = ""
     condense: float = 1.0
+    font_size: int = 0
+    undersized: bool = False
+    """Rendered below the readable minimum size to make the text fit."""
+
     unedited: bool = False
     """The translation is still identical to the extracted source text."""
 
@@ -154,10 +158,19 @@ def render_region(
             result.condense * 100,
             result.font_size,
         )
+    if result.undersized:
+        log.warning(
+            "region %s: rendered at %dpx, below the readable minimum; "
+            "set font_size in the plan file to pin a size",
+            region.id,
+            result.font_size,
+        )
     return out, RegionOutcome(
         region.id,
         "rendered",
         condense=result.condense,
+        font_size=result.font_size,
+        undersized=result.undersized,
         unedited=region.is_untranslated,
     )
 

@@ -13,7 +13,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 DEFAULT_FONT_SIZE_MIN_RATIO = 0.012
-"""Smallest legible glyph height, as a fraction of image height."""
+"""Smallest comfortably legible glyph height, as a fraction of image height."""
+
+DEFAULT_FONT_SIZE_FLOOR_RATIO = 0.006
+"""Absolute floor on glyph height, as a fraction of image height.
+
+Text that will not fit at the readable minimum even condensed drops below it
+rather than failing outright: small lettering beats an empty balloon, and the
+region is reported so it can be dealt with by hand. Half the readable minimum
+by default."""
 
 DEFAULT_CONDENSE_MIN = 0.9
 """Hard floor on horizontal condensing. Never lower this by accident."""
@@ -193,6 +201,7 @@ class TypesetConfig:
     text does not sit against the balloon outline."""
 
     font_size_min_ratio: float = DEFAULT_FONT_SIZE_MIN_RATIO
+    font_size_floor_ratio: float = DEFAULT_FONT_SIZE_FLOOR_RATIO
     max_size_ratio: float = 0.6
     """Cap on font size as a fraction of the polygon's height."""
 

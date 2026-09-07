@@ -78,9 +78,21 @@ that is inside the polygon on *every* row of that band. Taking the widest run
 on any row would let a line near the top of an ellipse use the chord from the
 middle of it and run out through the curve.
 
-The fit order is fixed by the spec and not reorderable: shrink to the minimum
-readable size, then condense horizontally, never past the floor, then fail and
-name the region. Size is found by binary search, treating fit as monotonic —
+The fit order is fixed and not reorderable: shrink to the minimum readable
+size, then condense horizontally, never past the condensing floor, then shrink
+below the readable minimum as a last resort, then fail and name the region.
+
+That last stage is a deliberate departure from "then fail": text that will not
+fit at the readable minimum drops under it rather than being refused, because
+an empty balloon is worse than small lettering. It stops at
+`font_size_floor_ratio`, and every region that used it is reported with the
+size it landed on, so the ones worth hand-tuning are visible rather than
+silently tiny.
+
+A region's own `font_size` is exempt. Overriding the size means asking for it,
+so a pinned size condenses but never shrinks: if the text will not fit, the
+region fails and names the override. Shrinking it anyway would make the
+override meaningless and hide the problem it was set to solve. Size is found by binary search, treating fit as monotonic —
 line breaking makes that not quite true at the margins, so the result is the
 largest size the search proved rather than the global maximum. That is a pixel
 of conservatism, never an overflow.
