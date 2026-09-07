@@ -20,3 +20,5 @@ Useful things to add, roughly in order of how much they will teach you:
 - the same page scanned at two resolutions (ratios, not pixel constants)
 - a multi-panel page where each panel is small relative to the page, which
   is what defeats guards expressed as a fraction of the page
+- a balloon clipped by a panel corner, so part of its outline is the panel
+  border rather than its own

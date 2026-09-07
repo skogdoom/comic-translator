@@ -266,7 +266,11 @@ of this contradicts what I expected before running it.
    balloons of the same colour that touch.
 3. **Balloons breaking the panel border — did not reproduce.** A balloon
    crossing the gutter or hanging out through the panel edge traces cleanly,
-   for the same reason.
+   for the same reason. Nor does a balloon clipped by a panel corner, where
+   two sides of the shape are the panel's border rather than the balloon's
+   own outline: the interior is still one connected region, so the traced
+   polygon simply runs along the border and stops there instead of bulging
+   past it.
 4. **Burst and scalloped balloons — was broken, now fixed.** A shout balloon
    with a spiked outline measures 0.64 solidity, and the old 0.80 threshold
    rejected it, falling back to a box around the text and discarding the very

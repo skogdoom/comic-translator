@@ -125,6 +125,11 @@ ROUND_TRIP_FIXTURES = (
     "1-plain_white_balloon_on_flat_art.png",
     "2-white_on_black_caption_box.png",
     "9-burst_balloon_with_lightning_tail.png",
+    # A balloon clipped by the panel corner is the hardest shape to typeset
+    # into: two sides are the balloon's own curve and two are straight
+    # borrowed edges, so a layout fitted to the bounding box would spill over
+    # the curve.
+    "12-large_balloon_clipped_by_top_right_corner.png",
 )
 
 
