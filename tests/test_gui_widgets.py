@@ -743,3 +743,166 @@ def test_selecting_another_region_ends_the_current_undo_run(
     window._on_undo()
 
     assert window.document.region("page-001-001").translation == "FIRST"  # type: ignore[union-attr]
+
+
+def _shown_window(plan: Path) -> MainWindow:
+    """A window laid out for real, so the view has a viewport to scale into."""
+    window = MainWindow()
+    window.resize(900, 500)
+    window.show()
+    QTest.qWaitForWindowExposed(window)
+    window.open_plan(plan)
+    return window
+
+
+def test_zooming_in_and_out_moves_the_scale_and_leaves_fit_mode(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    assert canvas.fitting, "a page opens fitted to the window"
+
+    fitted = canvas.zoom
+    canvas.zoom_in()
+
+    assert canvas.zoom > fitted
+    assert not canvas.fitting, "a chosen zoom stops following the window"
+
+    canvas.zoom_out()
+    assert canvas.zoom == pytest.approx(fitted)
+
+
+def test_actual_size_is_one_screen_pixel_per_page_pixel(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._canvas.zoom_actual()
+    assert window._canvas.zoom == pytest.approx(1.0)
+
+
+def test_fit_to_window_goes_back_to_following_the_window(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    canvas.zoom_actual()
+    assert not canvas.fitting
+
+    canvas.fit()
+
+    assert canvas.fitting
+    assert canvas.zoom != pytest.approx(1.0), "the page is wider than the viewport"
+
+
+def test_zoom_is_clamped_at_both_ends(qapp: object, two_page_plan: Path) -> None:
+    from comictrans.gui.canvas import ZOOM_MAX, ZOOM_MIN
+
+    window = _shown_window(two_page_plan)  # held, or its canvas goes with it
+    canvas = window._canvas
+
+    canvas.set_zoom(1000.0)
+    assert canvas.zoom == pytest.approx(ZOOM_MAX)
+
+    canvas.set_zoom(0.0001)
+    assert canvas.zoom == pytest.approx(ZOOM_MIN)
+
+
+def test_resizing_the_window_keeps_a_chosen_zoom(qapp: object, two_page_plan: Path) -> None:
+    """The bug this milestone exists to avoid: a resize used to refit always."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    canvas.set_zoom(2.0)
+
+    window.resize(700, 420)
+    QTest.qWait(10)
+
+    assert canvas.zoom == pytest.approx(2.0)
+    assert not canvas.fitting
+
+
+def test_resizing_the_window_still_refits_while_fitting(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    before = canvas.zoom
+
+    window.resize(500, 300)
+    QTest.qWait(10)
+
+    assert canvas.fitting
+    assert canvas.zoom != pytest.approx(before), "a fitted page follows the window"
+
+
+def test_a_chosen_zoom_survives_turning_the_page(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._canvas.set_zoom(2.0)
+
+    window._pages.select_image("page-002.png")
+
+    assert window._canvas.zoom == pytest.approx(2.0)
+    assert window._current_image == "page-002.png"
+
+
+def test_a_chosen_zoom_survives_the_preview_round_trip(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """Comparing overlay against rendered output is the point of holding it."""
+    window = _shown_window(two_page_plan)
+    window._canvas.set_zoom(2.0)
+
+    window._on_render_preview()
+    assert window._showing_preview
+    assert window._canvas.zoom == pytest.approx(2.0)
+
+    window._on_back_to_overlay()
+    assert window._canvas.zoom == pytest.approx(2.0)
+
+
+def test_ctrl_and_the_wheel_zooms_while_the_wheel_alone_scrolls(
+    qapp: object, two_page_plan: Path
+) -> None:
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QWheelEvent
+
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    canvas.set_zoom(1.0)
+
+    def wheel(modifier: Qt.KeyboardModifier) -> QWheelEvent:
+        centre = QPointF(canvas.viewport().rect().center())
+        return QWheelEvent(
+            centre,
+            canvas.viewport().mapToGlobal(centre),
+            QPoint(0, 0),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            modifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+
+    canvas.wheelEvent(wheel(Qt.KeyboardModifier.ControlModifier))
+    assert canvas.zoom > 1.0, "Ctrl and the wheel zooms in"
+
+    zoomed = canvas.zoom
+    canvas.wheelEvent(wheel(Qt.KeyboardModifier.NoModifier))
+    assert canvas.zoom == pytest.approx(zoomed), "the wheel alone scrolls, it does not zoom"
+
+
+def test_the_status_bar_reports_the_zoom(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    assert "(fit)" in window._zoom_label.text()
+
+    window._canvas.zoom_actual()
+
+    assert window._zoom_label.text() == "100%"
+
+
+def test_the_zoom_actions_need_a_page(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    assert not window._zoom_in_action.isEnabled()
+
+    window.open_plan(two_page_plan)
+
+    for action in (
+        window._zoom_in_action,
+        window._zoom_out_action,
+        window._zoom_fit_action,
+        window._zoom_actual_action,
+    ):
+        assert action.isEnabled()

@@ -534,6 +534,20 @@ put text back that the widget never saw leave, and a window-level `Ctrl+Z`
 reaches only one of them anyway. Consecutive edits to the same region and
 field collapse into one step, or every keystroke would be its own.
 
+**Why zoom is a mode and not just a number.** The canvas either follows the
+window or holds a factor the reader chose, and `resizeEvent` refits only in
+the first. Refitting unconditionally, which is what it used to do, would
+make a chosen zoom vanish the moment the window was resized. Replacing the
+page keeps the factor and roughly where they were looking, for the same
+reason: turning a page or switching to the rendered preview and snapping
+back to fit would make zoom useless for the two things it is for — reading
+small lettering across a chapter, and comparing the overlay against what
+apply would write, at the same magnification.
+
+Zoom costs nothing because the scene holds page pixels at their own
+coordinates and only the view scales. That is the same property that makes a
+polygon drawn on the canvas exactly the polygon apply would erase into.
+
 **Where "the next region" is decided.** In `document.py`, not in the window,
 as `adjacent_region` over the plan's own region order. Which region comes
 after this one is a question about a plan, not about a widget, and asking it

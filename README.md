@@ -229,6 +229,14 @@ region that will not fit, needs condensing, or overlaps another one shows up
 here before you run `apply` for real. **Back to Overlay** returns to the
 polygon view.
 
+The page starts fitted to the window. `Ctrl+=` and `Ctrl+-` zoom, `Ctrl+0`
+fits again and `Ctrl+1` is actual size; Ctrl and the wheel zooms about the
+pointer, and on a Mac trackpad pinch works too. A zoom you choose is yours
+until you ask to fit again — resizing the window, turning the page and
+switching to the preview all keep it, which is what makes the overlay and
+the rendered page comparable at the same magnification. The status bar
+shows the current level.
+
 Reviewing a chapter means walking every balloon on every page, so the
 regions are walkable: `Ctrl+Down` and `Ctrl+Up` step to the next and
 previous region, carrying on to the following page rather than stopping at

@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.15 | Zoom | S |
 | 4.11 | Font selection dropdown | S–M |
 | 4.12 | Plan header editing | S–M |
 | 4.5 | Region editing | XL |
@@ -45,8 +44,8 @@ Three things decide this order.
 
 **Cheap and immediately felt comes first.** 4.1 to 4.3 were small and
 visible the moment the window opened, which is why they went first, and
-4.15, 4.11 and 4.12 are the same shape: each one is felt on every page of
-every review, and none of them waits on anything.
+4.11 and 4.12 are the same shape, as 4.15 was: each one is felt on every
+page of every review, and none of them waits on anything.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
@@ -56,7 +55,7 @@ after the UI stops moving.
 **Foundations come before what stands on them.** 4.4 went first for that
 reason: undo built for five text fields would have needed rewriting the
 moment a polygon could move, so it snapshots whole plans instead and 4.5
-inherits it. Zoom comes before 4.5 for a plainer reason: dragging a polygon
+inherits it. Zoom went before 4.5 for a plainer reason: dragging a polygon
 vertex accurately means being able to see it.
 
 Two orderings are judgement calls rather than dependencies.
@@ -74,34 +73,6 @@ safe to call off the main thread — and the more valuable, because reviewing
 a plan and then leaving for a terminal to render it is the obvious hole in
 the window as it stands. Build the threading on the easy case; extract
 reuses it with the harder question on top.
-
-## 4.15 Zoom
-
-Zoom in, zoom out, zoom to fit, actual size.
-
-Half the groundwork is already there: `PageCanvas` sets
-`AnchorUnderMouse`, which is what makes wheel zoom land where the pointer
-is, and `ScrollHandDrag` already pans.
-
-**The real work is a fit-versus-manual mode flag.** `resizeEvent` calls
-`fit()` unconditionally, and so does `show_page`. Without a mode, resizing
-the window or turning a page silently throws the zoom away.
-
-**Preserve the zoom level across pages and into preview**, resetting only
-the pan. Reviewing a chapter at 200% and having it snap back on every page
-would be worse than no zoom at all, and holding the zoom through `Ctrl+R`
-is exactly what makes the overlay and the rendered page comparable.
-
-Qt has `StandardKey.ZoomIn` and `ZoomOut`; Ctrl+0 and Ctrl+1 are the
-conventional pair for fit and actual size. Clamp both ends. Zoom is a view
-transform over a scene held in unscaled page pixels, so it costs nothing
-and re-renders nothing — the property `canvas.py`'s module docstring
-already relies on.
-
-**One thing the suite cannot check.** A trackpad pinch on macOS arrives as
-`QNativeGestureEvent`, not as a wheel event. Wheel-with-modifier is
-testable under the offscreen platform; pinch is not, and needs trying by
-hand on the Mac.
 
 ## 4.11 Font selection dropdown
 

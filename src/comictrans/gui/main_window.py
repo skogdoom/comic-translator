@@ -21,6 +21,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QToolBar,
@@ -93,7 +94,13 @@ class MainWindow(QMainWindow):
 
         self._pages.image_selected.connect(self._on_image_selected)
         self._canvas.region_selected.connect(self._on_region_selected)
+        self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._inspector.edited.connect(self._on_edited)
+
+        # A permanent widget, so the zoom stays readable behind the transient
+        # messages the status bar shows for saves and preview results.
+        self._zoom_label = QLabel()
+        self.statusBar().addPermanentWidget(self._zoom_label)
 
         self._build_menus()
         self._build_toolbar()
@@ -165,6 +172,28 @@ class MainWindow(QMainWindow):
         self._overlay_action = QAction("Back to &Overlay", self)
         self._overlay_action.triggered.connect(self._on_back_to_overlay)
         view_menu.addAction(self._overlay_action)
+
+        view_menu.addSeparator()
+
+        self._zoom_in_action = QAction("Zoom &In", self)
+        self._zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
+        self._zoom_in_action.triggered.connect(self._canvas.zoom_in)
+        view_menu.addAction(self._zoom_in_action)
+
+        self._zoom_out_action = QAction("Zoom &Out", self)
+        self._zoom_out_action.setShortcut(QKeySequence.StandardKey.ZoomOut)
+        self._zoom_out_action.triggered.connect(self._canvas.zoom_out)
+        view_menu.addAction(self._zoom_out_action)
+
+        self._zoom_fit_action = QAction("&Fit to Window", self)
+        self._zoom_fit_action.setShortcut(QKeySequence("Ctrl+0"))
+        self._zoom_fit_action.triggered.connect(self._canvas.fit)
+        view_menu.addAction(self._zoom_fit_action)
+
+        self._zoom_actual_action = QAction("&Actual Size", self)
+        self._zoom_actual_action.setShortcut(QKeySequence("Ctrl+1"))
+        self._zoom_actual_action.triggered.connect(self._canvas.zoom_actual)
+        view_menu.addAction(self._zoom_actual_action)
 
         view_menu.addSeparator()
 
@@ -264,6 +293,13 @@ class MainWindow(QMainWindow):
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
         self._overlay_action.setEnabled(has_image and self._showing_preview)
+        for action in (
+            self._zoom_in_action,
+            self._zoom_out_action,
+            self._zoom_fit_action,
+            self._zoom_actual_action,
+        ):
+            action.setEnabled(has_image)
 
         # Disabled at the ends of the plan rather than silently doing
         # nothing, so the toolbar says where you are.
@@ -522,6 +558,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"preview: {len(preview.problems)} problem(s) — {names}")
         else:
             self.statusBar().showMessage("preview: everything fits")
+
+    def _on_zoom_changed(self, factor: float) -> None:
+        fitting = " (fit)" if self._canvas.fitting else ""
+        self._zoom_label.setText(f"{round(factor * 100)}%{fitting}")
 
     def _on_about(self) -> None:
         AboutDialog(self).exec()
