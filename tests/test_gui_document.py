@@ -393,3 +393,104 @@ def test_the_history_is_capped() -> None:
         doc.end_edit_run()
 
     assert len(doc._undo) == UNDO_LIMIT
+
+
+def test_header_setters_touch_only_their_own_field(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.set_header_font("Chalkboard SE")
+    doc.set_header_case(TextCase.PRESERVE)
+    doc.set_header_condense_min(0.8)
+    doc.set_header_target_language("sv")
+
+    header = doc.plan.header
+    assert header.font == "Chalkboard SE"
+    assert header.case is TextCase.PRESERVE
+    assert header.condense_min == pytest.approx(0.8)
+    assert header.target_language == "sv"
+    assert header.source_language == "it", "untouched"
+    assert doc.dirty
+
+
+def test_a_header_edit_is_undone_like_any_other(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.set_header_font("Chalkboard SE")
+
+    assert doc.undo()
+
+    assert doc.plan.header.font == "Comic Sans MS"
+    assert not doc.dirty
+
+
+def test_a_header_edit_and_a_region_edit_are_separate_undo_steps(project: Path) -> None:
+    """The run key tells them apart; no region id can be None."""
+    doc = PlanDocument.open(project)
+    doc.set_header_font("Chalkboard SE")
+    doc.set_font("page-001-001", "Marker Felt")
+
+    doc.undo()
+
+    assert doc.region("page-001-001").font is None
+    assert doc.plan.header.font == "Chalkboard SE", "the header edit is still a step back"
+
+
+def test_typing_a_header_font_is_one_undo_step(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    for text in ("C", "Ch", "Cha", "Chalkboard SE"):
+        doc.set_header_font(text)
+
+    doc.undo()
+
+    assert doc.plan.header.font == "Comic Sans MS"
+    assert not doc.can_undo
+
+
+def test_the_header_refuses_a_value_the_reader_would_reject(project: Path) -> None:
+    """A rejected edit beats a plan file that will not open again."""
+    doc = PlanDocument.open(project)
+
+    for call in (
+        lambda: doc.set_header_font("   "),
+        lambda: doc.set_header_source_language(""),
+        lambda: doc.set_header_target_language(" "),
+    ):
+        with pytest.raises(ValueError, match="cannot be empty"):
+            call()
+
+    with pytest.raises(ValueError, match="between"):
+        doc.set_header_condense_min(0.4)  # the schema floor is 0.5
+    with pytest.raises(ValueError, match="between"):
+        doc.set_header_font_size_min_ratio(1.5)
+
+    assert not doc.dirty, "nothing was recorded by any of that"
+
+
+def test_a_header_edit_that_changes_nothing_is_not_an_edit(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.set_header_font(doc.plan.header.font)
+    assert not doc.dirty
+    assert not doc.can_undo
+
+
+def test_an_edited_header_still_loads_back(project: Path, tmp_path: Path) -> None:
+    """The whole point of validating: what the GUI writes, the reader reads."""
+    doc = PlanDocument.open(project)
+    doc.set_header_font("Chalkboard SE")
+    doc.set_header_case(TextCase.PRESERVE)
+    doc.set_header_font_size_min_ratio(0.02)
+    doc.set_header_condense_min(0.75)
+    doc.save()
+
+    reloaded = load_plan(project, check_images=False).header
+    assert reloaded.font == "Chalkboard SE"
+    assert reloaded.case is TextCase.PRESERVE
+    assert reloaded.font_size_min_ratio == pytest.approx(0.02)
+    assert reloaded.condense_min == pytest.approx(0.75)
+
+
+def test_regions_using_header_font_counts_the_ones_without_an_override(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    assert doc.regions_using_header_font() == 2
+
+    doc.set_font("page-001-001", "Marker Felt")
+
+    assert doc.regions_using_header_font() == 1

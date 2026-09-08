@@ -8,6 +8,16 @@ from __future__ import annotations
 
 PLAN_VERSION = 1
 
+FONT_SIZE_MIN_RATIO_RANGE = (0.0001, 1.0)
+CONDENSE_MIN_RANGE = (0.5, 1.0)
+"""What the header's two fit limits may be set to.
+
+Named here rather than written into the reader, because the review GUI edits
+these and has to offer exactly the range the reader will accept. A widget
+that allowed one value more than the reader does would write a plan file it
+could not then reopen.
+"""
+
 HEADER_KEY_ORDER: tuple[str, ...] = (
     "version",
     "generator",

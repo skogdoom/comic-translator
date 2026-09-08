@@ -33,6 +33,7 @@ from ..model import Geometry, Region
 from .about_dialog import AboutDialog
 from .canvas import COLOR_APPROXIMATE, COLOR_EXACT, PageCanvas, RegionAppearance, ViewState
 from .document import PlanDocument
+from .header_dialog import HeaderDialog
 from .inspector import RegionInspector
 from .page_list import PageList
 from .preview import render_preview
@@ -170,6 +171,11 @@ class MainWindow(QMainWindow):
         self._redo_action.triggered.connect(self._on_redo)
         edit_menu.addAction(self._redo_action)
 
+        edit_menu.addSeparator()
+        self._header_action = QAction("Plan &Header…", self)
+        self._header_action.triggered.connect(self._on_edit_header)
+        edit_menu.addAction(self._header_action)
+
         view_menu = self.menuBar().addMenu("&View")
         self._preview_action = QAction("&Render Preview", self)
         self._preview_action.setShortcut(QKeySequence("Ctrl+R"))
@@ -293,7 +299,12 @@ class MainWindow(QMainWindow):
 
     def _update_actions_enabled(self) -> None:
         has_document = self.document is not None
-        for action in (self._save_action, self._save_as_action, self._reload_action):
+        for action in (
+            self._save_action,
+            self._save_as_action,
+            self._reload_action,
+            self._header_action,
+        ):
             action.setEnabled(has_document)
         self._undo_action.setEnabled(has_document and self.document.can_undo)  # type: ignore[union-attr]
         self._redo_action.setEnabled(has_document and self.document.can_redo)  # type: ignore[union-attr]
@@ -581,6 +592,29 @@ class MainWindow(QMainWindow):
     def _on_zoom_changed(self, factor: float) -> None:
         fitting = " (fit)" if self._canvas.fitting else ""
         self._zoom_label.setText(f"{round(factor * 100)}%{fitting}")
+
+    def _on_edit_header(self) -> None:
+        """Edit the settings every region is drawn under.
+
+        Modal, and writing through as it is edited. Modal keeps it simple:
+        nothing else can change the plan underneath it, so the fields cannot
+        go stale while it is open. Closing applies nothing, because every
+        change applied as it was made; Ctrl+Z afterwards takes them back one
+        at a time.
+        """
+        if self.document is None:
+            return
+        dialog = HeaderDialog(self.document, self)
+        dialog.edited.connect(self._on_header_edited)
+        dialog.exec()
+
+    def _on_header_edited(self) -> None:
+        """The header decides every region without an override of its own."""
+        self._update_title()
+        if self._current_image is not None and self._showing_preview:
+            # What is on screen was rendered under the old header.
+            self._on_render_preview()
+        self._update_actions_enabled()
 
     def _on_about(self) -> None:
         AboutDialog(self).exec()

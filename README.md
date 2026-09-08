@@ -258,6 +258,16 @@ declared dependency that is actually installed, with its version — read from
 the installed package at the time you open it, not written down anywhere. It
 does not check for updates, and nothing else here does either.
 
+**Edit > Plan Header…** changes the settings every region is drawn under:
+the font, the case, the two fit limits, and the language pair. It reports how
+many regions actually follow the header font, since any of them can override
+it. Fields write through as you type, like the region fields, and each one is
+its own undo step. What the tool *recorded* — which OCR engine ran, what wrote
+the plan and when — is shown there but cannot be edited: a plan that names an
+engine that never ran is a plan that lies about where its text came from. The
+dialog only offers values the plan file reader will accept, so a header you
+edit here always loads again.
+
 `Ctrl+Z` and `Ctrl+Shift+Z` step back and forward through your edits, one
 change at a time — a run of typing in one field counts as one change, not
 one per keystroke. There is a single history covering everything, so undo

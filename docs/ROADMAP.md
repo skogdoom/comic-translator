@@ -25,7 +25,6 @@ one section can refer to another without ambiguity.
 | # | Milestone | Size |
 |---|-----------|------|
 | 4.11 | Font selection dropdown | S–M |
-| 4.12 | Plan header editing | S–M |
 | 4.5 | Region editing | XL |
 | 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
@@ -44,8 +43,8 @@ Three things decide this order.
 
 **Cheap and immediately felt comes first.** 4.1 to 4.3 were small and
 visible the moment the window opened, which is why they went first, and
-4.11 and 4.12 are the same shape, as 4.15 was: each one is felt on every
-page of every review, and none of them waits on anything.
+4.11 is the same shape, as 4.12 and 4.15 were: felt on every page of every
+review, and waiting on nothing.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
@@ -108,24 +107,8 @@ rescan for when a font is installed mid-session.
 The list needs an explicit "(plan default)" entry meaning `None`, which the
 empty line edit expresses today only by accident.
 
-## 4.12 Plan header editing
-
-The plan header — `font`, `case`, `font_size_min_ratio`, `condense_min`,
-`source_language`, `target_language`, `ocr_engine` — cannot be changed in
-the GUI at all. The inspector edits regions; the header is hand-edit-the-
-YAML. This is the milestone that actually delivers "set the font for this
-comic".
-
-A dialog, or a third dock. `PlanDocument` gains `set_header_*` beside the
-region setters: the same `dataclasses.replace`, the same dirty flag, and
-the snapshot undo 4.4 built covers it without a line of undo code.
-
-Reuses 4.11's dropdown for the header font, which is why it sits directly
-after it.
-
-One thing to decide: changing the header font changes every region that has
-no override, so a preview changes wholesale. Worth a confirmation, or at
-least a status line saying how many regions it moves.
+The header font field in the plan header dialog wants the same dropdown, and
+is a plain line edit until this lands.
 
 ## 4.5 Region editing
 

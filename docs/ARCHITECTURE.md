@@ -490,6 +490,7 @@ canvas.py      the page: a pixmap, and clickable region outlines over it
 inspector.py   one region's fields, writing straight through to the document
 page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
+header_dialog.py the settings every region is drawn under
 main_window.py wires the four widgets together; the only module that
                knows about all of them at once
 app.py         available() / run() — the CLI's entry point
@@ -555,6 +556,23 @@ same magnification.
 Zoom costs nothing because the scene holds page pixels at their own
 coordinates and only the view scales. That is the same property that makes a
 polygon drawn on the canvas exactly the polygon apply would erase into.
+
+**Why the header dialog validates and the region setters do not.** A
+region's fields carry no invariants of their own, so the schema is enforced
+once, at load time, by the reader. The header's fields do carry them — an
+empty font, a condensing floor under the schema's — and a plan written with
+one would be a plan the GUI cannot reopen. So `_update_header` checks, and
+raises rather than recording. The limits themselves live in
+`planfile/schema.py` and are used by both the reader and the dialog's spin
+boxes, because a widget offering one value more than the reader accepts is
+the same defect wearing a different hat.
+
+**What the header dialog will not let you edit.** `generator`, `created`,
+`ocr_engine` and `version` describe what produced the plan rather than what
+it should look like. Nothing downstream reads `ocr_engine` at all — it is
+provenance — and the reviewer is not the authority on which engine ran. They
+are shown, because knowing what made a plan is useful, and they are labels
+rather than fields, because there is nothing to decide.
 
 **Where "the next region" is decided.** In `document.py`, not in the window,
 as `adjacent_region` over the plan's own region order. Which region comes

@@ -27,7 +27,14 @@ from ..model import (
     polygon_is_simple,
 )
 from ..util import sha256_file
-from .schema import PLAN_VERSION, REGION_KEYS, REQUIRED_REGION_KEYS, TOP_LEVEL_KEYS
+from .schema import (
+    CONDENSE_MIN_RANGE,
+    FONT_SIZE_MIN_RATIO_RANGE,
+    PLAN_VERSION,
+    REGION_KEYS,
+    REQUIRED_REGION_KEYS,
+    TOP_LEVEL_KEYS,
+)
 
 _VALID_GEOMETRY = {str(value) for value in Geometry}
 _VALID_CASE = {str(value) for value in TextCase}
@@ -238,8 +245,14 @@ def _parse_header(node: Any, path: Path | None) -> PlanHeader:
         ocr_engine=cursor.string("ocr_engine"),
         font=cursor.string("font", allow_empty=False),
         case=TextCase(cursor.choice("case", _VALID_CASE)),
-        font_size_min_ratio=cursor.number("font_size_min_ratio", minimum=0.0001, maximum=1.0),
-        condense_min=cursor.number("condense_min", minimum=0.5, maximum=1.0),
+        font_size_min_ratio=cursor.number(
+            "font_size_min_ratio",
+            minimum=FONT_SIZE_MIN_RATIO_RANGE[0],
+            maximum=FONT_SIZE_MIN_RATIO_RANGE[1],
+        ),
+        condense_min=cursor.number(
+            "condense_min", minimum=CONDENSE_MIN_RANGE[0], maximum=CONDENSE_MIN_RANGE[1]
+        ),
     )
 
 
