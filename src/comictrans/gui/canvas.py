@@ -75,6 +75,23 @@ class RegionAppearance:
     flagged: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ViewState:
+    """Where the canvas was looking at a page: how far in, and at what.
+
+    Held by whoever knows which page is which, so that going back to a page
+    goes back to how it was being read rather than to a default.
+    """
+
+    zoom: float
+    fitting: bool
+    """True when the page was following the window rather than a chosen zoom.
+    Restoring that refits to the window as it is now, not to the old factor."""
+
+    centre: tuple[float, float]
+    """The scene point at the middle of the viewport. Ignored when fitting."""
+
+
 class RegionItem(QGraphicsPolygonItem):
     """One region's outline. Knows its own id so a click can be reported."""
 
@@ -116,17 +133,12 @@ class PageCanvas(QGraphicsView):
         self._fit_to_window = True
 
     def show_page(self, pixmap: QPixmap, regions: Sequence[RegionAppearance] = ()) -> None:
-        """Replace the page and its overlay.
+        """Replace the page and its overlay, fitted to the window.
 
-        A zoom the reader chose survives this, and so does roughly where they
-        were looking. Turning a page or switching to the rendered preview and
-        snapping back to fit would make zoom useless for the two things it is
-        for: reading small lettering across a chapter, and comparing the
-        overlay against what apply would write.
+        Fitted, because the canvas does not know which page it is being handed
+        and so cannot know what zoom that page was last read at. Whoever does
+        know follows this with :meth:`apply_view_state`.
         """
-        keep_view = not self._fit_to_window and self._pixmap_item is not None
-        centre = self.mapToScene(self.viewport().rect().center()) if keep_view else None
-
         self._scene.clear()
         self._items.clear()
         self._appearances.clear()
@@ -143,10 +155,7 @@ class PageCanvas(QGraphicsView):
             self._items[appearance.region_id] = item
             self._appearances[appearance.region_id] = appearance
 
-        if centre is not None:
-            self.centerOn(centre)
-        else:
-            self.fit()
+        self.fit()
 
     def set_appearance(self, appearance: RegionAppearance) -> None:
         """Restyle one region in place, without touching the pixmap, pan, or zoom.
@@ -215,6 +224,24 @@ class PageCanvas(QGraphicsView):
         if self._pixmap_item is not None:
             self.fitInView(self._pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
         self.zoom_changed.emit(self.zoom)
+
+    def view_state(self) -> ViewState:
+        """What the caller needs to bring this page back exactly as it is now."""
+        centre = self.mapToScene(self.viewport().rect().center())
+        return ViewState(
+            zoom=self.zoom, fitting=self._fit_to_window, centre=(centre.x(), centre.y())
+        )
+
+    def apply_view_state(self, state: ViewState | None) -> None:
+        """Restore a page's zoom and position. ``None`` leaves it fitted.
+
+        ``None`` is a page that has not been opened before, which has no zoom
+        of its own to go back to.
+        """
+        if state is None or state.fitting:
+            return
+        self.set_zoom(state.zoom)
+        self.centerOn(QPointF(*state.centre))
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)

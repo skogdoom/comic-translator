@@ -231,11 +231,16 @@ polygon view.
 
 The page starts fitted to the window. `Ctrl+=` and `Ctrl+-` zoom, `Ctrl+0`
 fits again and `Ctrl+1` is actual size; Ctrl and the wheel zooms about the
-pointer, and on a Mac trackpad pinch works too. A zoom you choose is yours
-until you ask to fit again — resizing the window, turning the page and
-switching to the preview all keep it, which is what makes the overlay and
-the rendered page comparable at the same magnification. The status bar
-shows the current level.
+pointer, and on a Mac trackpad pinch works too. The status bar shows the
+current level.
+
+**The zoom is per page.** Each page keeps the level and position you left it
+at and comes back to them, so reading one page of dense captions close up
+does not decide how the splash opposite it opens. A page you have not opened
+yet starts fitted, and a page you left fitted comes back fitted to the window
+as it is now rather than to the factor it happened to have. Switching to the
+rendered preview and back holds your place, which is what makes the overlay
+and the output comparable at the same magnification.
 
 Reviewing a chapter means walking every balloon on every page, so the
 regions are walkable: `Ctrl+Down` and `Ctrl+Up` step to the next and

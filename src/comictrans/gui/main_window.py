@@ -31,7 +31,7 @@ from ..errors import ComictransError
 from ..imaging import load_page
 from ..model import Geometry, Region
 from .about_dialog import AboutDialog
-from .canvas import COLOR_APPROXIMATE, COLOR_EXACT, PageCanvas, RegionAppearance
+from .canvas import COLOR_APPROXIMATE, COLOR_EXACT, PageCanvas, RegionAppearance, ViewState
 from .document import PlanDocument
 from .inspector import RegionInspector
 from .page_list import PageList
@@ -77,6 +77,13 @@ class MainWindow(QMainWindow):
         self._current_region: str | None = None
         self._showing_preview = False
         self._settings = settings
+        self._views: dict[str, ViewState] = {}
+        """How each page was last being read, keyed by image.
+
+        Zoom is per page, not per window: pages differ in size and in how much
+        of one you need to see at once, and a level chosen for a dense page of
+        captions is the wrong one for the splash opposite it.
+        """
 
         self._pages = PageList()
         self._canvas = PageCanvas()
@@ -358,6 +365,7 @@ class MainWindow(QMainWindow):
         self._current_image = None
         self._current_region = None
         self._showing_preview = False
+        self._views.clear()  # a different plan, a different set of pages
         self._pages.set_document(document)
         self._inspector.set_region(None, None)
         self._canvas.show_page(to_pixmap(Image.new("RGB", (1, 1))))
@@ -433,9 +441,15 @@ class MainWindow(QMainWindow):
 
     # -- viewing ---------------------------------------------------------
 
+    def _remember_view(self) -> None:
+        """Store how the page on screen is being read, before it leaves."""
+        if self._current_image is not None:
+            self._views[self._current_image] = self._canvas.view_state()
+
     def _on_image_selected(self, image: str) -> None:
         if self.document is None:
             return
+        self._remember_view()  # the outgoing page, while it is still current
         self._current_image = image
         self._current_region = None
         self._showing_preview = False
@@ -448,6 +462,7 @@ class MainWindow(QMainWindow):
         regions = self.document.regions_for(image)
         appearances = [_appearance_for(region, self.document) for region in regions]
         self._canvas.show_page(to_pixmap(Image.fromarray(page.rgb)), appearances)
+        self._canvas.apply_view_state(self._views.get(image))
         self._inspector.set_region(None, None)
         self._update_actions_enabled()
         summary = self.document.summary(image)
@@ -550,7 +565,11 @@ class MainWindow(QMainWindow):
         except ComictransError as exc:
             QMessageBox.critical(self, "Could not render preview", str(exc))
             return
+        # The same page, rendered: hold the reader's place across the swap,
+        # which is what makes the overlay and the output comparable.
+        self._remember_view()
         self._canvas.show_page(to_pixmap(preview.image))
+        self._canvas.apply_view_state(self._views.get(self._current_image))
         self._showing_preview = True
         self._update_actions_enabled()
         if preview.problems:

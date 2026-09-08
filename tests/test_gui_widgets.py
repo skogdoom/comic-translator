@@ -828,14 +828,64 @@ def test_resizing_the_window_still_refits_while_fitting(qapp: object, two_page_p
     assert canvas.zoom != pytest.approx(before), "a fitted page follows the window"
 
 
-def test_a_chosen_zoom_survives_turning_the_page(qapp: object, two_page_plan: Path) -> None:
+def test_a_page_not_opened_before_starts_fitted(qapp: object, two_page_plan: Path) -> None:
+    """Zoom is per page: a page has no level until it has been read at one."""
     window = _shown_window(two_page_plan)
     window._canvas.set_zoom(2.0)
 
     window._pages.select_image("page-002.png")
 
-    assert window._canvas.zoom == pytest.approx(2.0)
     assert window._current_image == "page-002.png"
+    assert window._canvas.fitting
+    assert window._canvas.zoom != pytest.approx(2.0)
+
+
+def test_each_page_keeps_its_own_zoom(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+
+    canvas.set_zoom(2.0)  # page 1 read close up
+    window._pages.select_image("page-002.png")
+    canvas.set_zoom(0.5)  # page 2 read at a distance
+
+    window._pages.select_image("page-001.png")
+    assert canvas.zoom == pytest.approx(2.0)
+    assert not canvas.fitting
+
+    window._pages.select_image("page-002.png")
+    assert canvas.zoom == pytest.approx(0.5)
+
+
+def test_a_page_left_fitted_comes_back_fitted_to_the_window_as_it_is_now(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Restoring "it was fitted" refits, rather than pinning the old factor."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    assert canvas.fitting
+    fitted_wide = canvas.zoom
+
+    window._pages.select_image("page-002.png")
+    canvas.set_zoom(2.0)
+    window.resize(600, 380)
+    QTest.qWait(10)
+
+    window._pages.select_image("page-001.png")
+
+    assert canvas.fitting
+    assert canvas.zoom < fitted_wide, "refitted to the smaller window it came back to"
+
+
+def test_opening_another_plan_forgets_the_zoom_levels(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._canvas.set_zoom(2.0)
+    window._pages.select_image("page-002.png")
+    assert window._views, "page one's level was captured on the way out"
+
+    window.open_plan(two_page_plan)
+
+    assert window._views == {}, "no zoom levels carried over from the old session"
+    assert window._canvas.fitting
 
 
 def test_a_chosen_zoom_survives_the_preview_round_trip(
