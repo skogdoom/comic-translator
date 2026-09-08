@@ -154,10 +154,36 @@ class DetectConfig:
     uniformity_tolerance: float = 24.0
     """Euclidean RGB distance counted as 'the same colour' for the above."""
 
-    duplicate_iou: float = 0.9
-    """Two candidates overlapping by more than this are the same shape found
-    on both threshold polarities. Keeping both splits one balloon's lines
-    across two regions."""
+    same_shape_containment: float = 0.8
+    """Fraction of the smaller region's polygon that must lie inside the larger
+    one for the two to count as the same balloon found twice.
+
+    A balloon is traced on both threshold polarities — as its own light
+    interior and as the hole inside its dark outline — and one of those traces
+    can come back truncated, cut off partway down the balloon. Measured on a
+    real page: two traces of one balloon, 98% of the smaller inside the larger,
+    yet only 0.64 IoU, because the smaller stopped short of the tail. Keeping
+    both splits one utterance across two regions and apply then typesets both
+    into the same balloon, one on top of the other.
+
+    Containment rather than IoU because that is the invariant that holds:
+    balloons do not overlap, so one polygon sitting inside another means one
+    balloon, however differently the two traces end."""
+
+    same_shape_area_ratio: float = 0.55
+    """How close in size the two must also be, smaller over larger.
+
+    Containment alone says nothing about scale, and things that are not
+    balloons do enclose things that are: on a screentoned page, halftone dots
+    read as text and turn a whole panel into a region, with a real caption box
+    sitting wholly inside it. Merging there would hand the caption the panel's
+    outline and erase the artwork around it.
+
+    Two traces of one shape stay close in size — measured at 0.99 for a pair
+    found on opposite threshold polarities, and 0.66 for a trace truncated
+    partway down its balloon. A caption inside a panel measured 0.20. The gap
+    is wide but not endless: a trace cut off much past halfway is left alone,
+    and apply warns that the two regions overlap."""
 
     approx_epsilon_ratio: float = 0.004
     """approxPolyDP epsilon as a fraction of contour perimeter."""

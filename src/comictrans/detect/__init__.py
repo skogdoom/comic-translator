@@ -310,12 +310,54 @@ def _cover_lines(page: PageImage, region: DetectedRegion, cfg: DetectConfig) -> 
     return replace(region, polygon=polygon)
 
 
-def _box_iou(a: Box, b: Box) -> float:
-    overlap = a.intersection(b)
-    if overlap is None:
+def _containment(inner: DetectedRegion, outer: DetectedRegion, threshold: float) -> float:
+    """Fraction of ``inner``'s polygon that lies inside ``outer``'s.
+
+    Rasterised inside ``inner``'s own bounding box, never the page's: a
+    full-page mask is tens of megabytes on a large scan and there is a pair of
+    them per comparison.
+
+    Returns 0.0 as soon as the bounding boxes make ``threshold`` unreachable,
+    which is the common case and costs no allocation at all: the overlap of
+    the two polygons cannot exceed the overlap of their boxes.
+    """
+    window = inner.bounds.intersection(outer.bounds)
+    if window is None or window.area < threshold * polygon_area(inner.polygon):
         return 0.0
-    union = a.area + b.area - overlap.area
-    return overlap.area / union if union > 0 else 0.0
+
+    origin = inner.bounds
+    shape = (origin.bottom - origin.top + 1, origin.right - origin.left + 1)
+
+    def mask(region: DetectedRegion) -> MaskArray:
+        canvas = np.zeros(shape, dtype=np.uint8)
+        shifted = np.array(
+            [(x - origin.left, y - origin.top) for x, y in region.polygon], dtype=np.int32
+        )
+        cv2.fillPoly(canvas, [shifted], 1)
+        return cast("MaskArray", canvas)
+
+    inner_mask = mask(inner)
+    area = int(inner_mask.sum())
+    if area == 0:
+        return 0.0
+    return float((inner_mask & mask(outer)).sum()) / area
+
+
+def _contains_centers(polygon: Polygon, lines: Sequence[OcrLine]) -> bool:
+    """True when the centre of every line's box falls inside the polygon.
+
+    Looser than :func:`_covers`, which wants the whole box in. Used where the
+    question is which lines a polygon speaks for rather than whether it covers
+    them pixel for pixel, so lettering grazing the outline still counts.
+
+    Tested point by point rather than by rasterising, for the same reason
+    :func:`_containment` keeps its masks small.
+    """
+    outline = np.array(polygon, dtype=np.int32)
+    return all(
+        cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0
+        for x, y in (line.box.center for line in lines)
+    )
 
 
 def _merge_overlapping(
@@ -324,9 +366,16 @@ def _merge_overlapping(
     """Fold together regions that trace the same shape.
 
     A balloon shows up on both threshold polarities — as its own light
-    interior, and as the hole inside its dark outline — and the two contours
-    are near identical. When one line matches the first and the next line
-    matches the second, a single utterance arrives split across two regions.
+    interior, and as the hole inside its dark outline. When one line matches
+    the first trace and the next line matches the second, a single utterance
+    arrives split across two regions, and apply then typesets both into the
+    one balloon, one on top of the other.
+
+    The two traces are usually near identical, but need not be: one can come
+    back cut off partway down the balloon, keeping only the lines above the
+    cut. So the test is containment and relative size — one shape inside
+    another, of much the same size, is one balloon found twice — rather than
+    overlap, which a truncated trace fails.
 
     Merged here rather than by discarding one of the candidates up front,
     because the candidate that looks redundant may be the only one that
@@ -336,10 +385,26 @@ def _merge_overlapping(
     merged: list[DetectedRegion] = []
     for region in regions:
         for index, kept in enumerate(merged):
-            if _box_iou(region.bounds, kept.bounds) <= cfg.duplicate_iou:
+            inner, outer = (
+                (region, kept)
+                if polygon_area(region.polygon) <= polygon_area(kept.polygon)
+                else (kept, region)
+            )
+            if polygon_area(inner.polygon) < cfg.same_shape_area_ratio * polygon_area(
+                outer.polygon
+            ):
                 continue
-            tighter = kept.polygon if kept.bounds.area <= region.bounds.area else region.polygon
-            merged[index] = _build(page, tighter, kept.geometry, [*kept.lines, *region.lines])
+            if _containment(inner, outer, cfg.same_shape_containment) < cfg.same_shape_containment:
+                continue
+            lines = [*kept.lines, *region.lines]
+            # The tighter trace is the balloon's interior, inside its own dark
+            # outline, and is what apply should erase and typeset into. It is
+            # only the better polygon while it still speaks for every line: a
+            # trace that stopped partway down the balloon does not, and keeping
+            # it would push the lines it missed outside the region that owns
+            # them.
+            winner = inner if _contains_centers(inner.polygon, lines) else outer
+            merged[index] = _build(page, winner.polygon, winner.geometry, lines)
             break
         else:
             merged.append(region)
@@ -390,22 +455,13 @@ def _absorb_strays(page: PageImage, regions: list[DetectedRegion]) -> list[Detec
 
 
 def _host_for(stray: DetectedRegion, hosts: list[DetectedRegion]) -> DetectedRegion | None:
-    """The region whose polygon holds the centre of every one of ``stray``'s lines.
-
-    Tested point by point against the polygon rather than by rasterising it:
-    a full-page mask per region is tens of megabytes on a large scan, and
-    there is one per region on the page.
-    """
+    """The region whose polygon holds the centre of every one of ``stray``'s lines."""
     for host in hosts:
         if host is stray:
             continue
         if not host.bounds.intersection(stray.bounds):
             continue
-        outline = np.array(host.polygon, dtype=np.int32)
-        if all(
-            cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0
-            for x, y in (line.box.center for line in stray.lines)
-        ):
+        if _contains_centers(host.polygon, stray.lines):
             return host
     return None
 

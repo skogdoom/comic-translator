@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 from comictrans.config import DetectConfig
-from comictrans.detect import find_regions, reading_order
+from comictrans.detect import _build, _merge_overlapping, find_regions, reading_order
 from comictrans.detect.color import glyph_mask, polygon_mask
 from comictrans.detect.contour import build_candidates, enclosing_candidate
 from comictrans.detect.fallback import approximate_polygon, cluster_lines
@@ -420,6 +420,117 @@ def test_regions_tracing_the_same_shape_are_merged(
     regions = find_regions(_page(array), lines_for(boxes, ["ONE", "TWO"]), CFG)
     assert len(regions) == 1
     assert [line.text for line in regions[0].lines] == ["ONE", "TWO"]
+
+
+def test_a_trace_that_stops_partway_down_a_balloon_merges_into_the_whole_one() -> None:
+    # Measured on a real page, from Apple Vision: one balloon came back as two
+    # exact regions. The second traced the same outline but stopped at a
+    # horizontal cut two thirds of the way down, taking the balloon's opening
+    # line with it and leaving the rest behind. 98% of it sat inside the full
+    # trace, yet only 0.64 IoU, so a duplicate test on bounding boxes let both
+    # through and apply typeset two translations into the one balloon, one on
+    # top of the other.
+    boxes = [
+        Box(160, 120, 380, 148),  # the opening line, above the cut
+        Box(160, 160, 380, 188),
+        Box(160, 200, 380, 228),  # below it, reached only by the full trace
+    ]
+    page = _page(
+        make_page_array(
+            (600, 800),
+            ART_DARK,
+            [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes)],
+        )
+    )
+
+    whole = (
+        (124, 180),
+        (150, 125),
+        (220, 104),
+        (320, 104),
+        (396, 128),
+        (416, 180),
+        (396, 232),
+        (320, 256),
+        (270, 300),
+        (260, 252),
+        (180, 232),
+    )
+    # Cut above the last line's centre, so the truncated trace does not speak
+    # for it. 0.67 of the full polygon's area, close to the 0.66 measured on
+    # the page this came from.
+    cut = 202
+    truncated = (*(p for p in whole if p[1] <= cut), (396, cut), (150, cut))
+
+    lines = lines_for(boxes, ["OPENING LINE", "SECOND LINE", "THIRD LINE"])
+    regions = [
+        _build(page, truncated, Geometry.EXACT, lines[:1]),
+        _build(page, whole, Geometry.EXACT, lines[1:]),
+    ]
+
+    merged = _merge_overlapping(page, regions, CFG)
+
+    assert len(merged) == 1, "one balloon must not survive as two regions"
+    assert [line.text for line in merged[0].lines] == [
+        "OPENING LINE",
+        "SECOND LINE",
+        "THIRD LINE",
+    ], "the opening line must rejoin the rest of the utterance, in reading order"
+    # The truncated trace is the smaller polygon, but it stops above the last
+    # line. Keeping it would leave that line outside the region meant to erase
+    # and typeset it.
+    assert merged[0].polygon == whole
+
+
+def test_merging_two_traces_of_one_balloon_keeps_the_tighter_polygon() -> None:
+    # The other way round: when both traces hold every line, the tighter one is
+    # the balloon's interior, inside its own dark outline, and is what apply
+    # should erase into. The looser one has the outline itself inside it.
+    boxes = [Box(160, 140, 360, 168), Box(160, 180, 360, 208)]
+    page = _page(
+        make_page_array(
+            (600, 800),
+            ART_DARK,
+            [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes)],
+        )
+    )
+
+    inner = (
+        (130, 180),
+        (155, 128),
+        (225, 108),
+        (320, 108),
+        (395, 130),
+        (412, 180),
+        (395, 230),
+        (320, 252),
+        (225, 252),
+        (155, 230),
+    )
+    outer = (
+        (124, 180),
+        (150, 122),
+        (222, 102),
+        (322, 102),
+        (400, 124),
+        (418, 180),
+        (400, 236),
+        (322, 258),
+        (222, 258),
+        (150, 236),
+    )
+
+    lines = lines_for(boxes, ["ONE", "TWO"])
+    regions = [
+        _build(page, outer, Geometry.EXACT, lines[:1]),
+        _build(page, inner, Geometry.EXACT, lines[1:]),
+    ]
+
+    merged = _merge_overlapping(page, regions, CFG)
+
+    assert len(merged) == 1
+    assert [line.text for line in merged[0].lines] == ["ONE", "TWO"]
+    assert merged[0].polygon == inner
 
 
 def test_a_polygon_grows_to_cover_text_assigned_to_it() -> None:
