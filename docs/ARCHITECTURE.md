@@ -178,10 +178,26 @@ apply skips it and the run says so.
 
 The test is deliberately weak: one run of letters is enough to pass. Anything
 stricter starts refusing real one-word balloons, and `BASTA!` is ordinary
-comic lettering. It costs a false negative — a three-letter fragment like
-`INA` reads as a word and is still seeded — and separating that from a real
-fragment would need a dictionary. Measured across the fixture pages it catches
-13 phantom regions with no false positives.
+comic lettering. Measured across the fixture pages it catches 13 phantom
+regions with no false positives.
+
+It is not enough on its own, because artwork sometimes spells a word. A window
+frame came back as `INA`, read as language, and was seeded; apply then
+flat-filled every pixel near the frame's own colour and lettered `INA` across
+the hole, destroying 28% of that region's pixels. So a second test asks
+whether the lettering is *sized* like lettering. Comic lettering on one page
+is consistent, so the page is its own yardstick — nothing absolute would do,
+since a scan's resolution is unknown. Every real region across the fixtures
+measures 0.94 to 1.10 times its page's median line height; the frame measured
+6.06.
+
+Size alone would be wrong too. On the screentoned page, halftone noise drags
+the median down to 16px until four genuine captions look oversized at 3.3-3.6.
+What separates them from the frame is what they sit on, so an oversized region
+is only condemned when its interior is also not a flat ground: those captions
+score 0.83 to 0.95 for interior uniformity, the frame 0.68. Neither test would
+do by itself — size throws out the captions, a non-flat interior throws out a
+borderless caption lettered straight onto artwork, which measures 0.57.
 
 An empty translation and `skip: true` are deliberately different. The first is
 unfinished work and fails the run; the second is a decision and passes.
