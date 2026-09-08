@@ -484,18 +484,20 @@ decides, and what draws.
 ```
 document.py   the loaded plan, its edits, and where they save — no Qt
 preview.py     render_page called on the current document — no Qt
+about.py       version, author, licence and installed libraries — no Qt
 qimage.py      the one function that turns a Pillow image into a QPixmap
 canvas.py      the page: a pixmap, and clickable region outlines over it
 inspector.py   one region's fields, writing straight through to the document
 page_list.py   one row per page, with a region-and-flag-count summary
+about_dialog.py  what about.py found, plus the Python and Qt versions
 main_window.py wires the four widgets together; the only module that
                knows about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py` and `preview.py` need no display and import no Qt; they are
-tested directly, the same as any other module. The five widget modules do —
-`main_window.py` is the only one that imports more than one of the others,
+`document.py`, `preview.py` and `about.py` need no display and import no Qt;
+they are tested directly, the same as any other module. The widget modules do
+— `main_window.py` is the only one that imports more than one of the others,
 which is what keeps an edit's ripple effects (the window title's dirty
 marker, another region's overlap flag, the page list's flag count) in one
 place instead of three widgets each guessing at the other two's state.

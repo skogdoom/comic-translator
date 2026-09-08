@@ -240,6 +240,11 @@ The **Window** menu closes and reopens the two panels, and **Reset Layout**
 puts them back where they started. The layout is remembered between
 sessions — the only thing this tool stores outside a plan file.
 
+**Help > About** reports the version, the author, the licence, and every
+declared dependency that is actually installed, with its version — read from
+the installed package at the time you open it, not written down anywhere. It
+does not check for updates, and nothing else here does either.
+
 `Ctrl+S` saves back to the file it was opened from; **Save As** writes
 elsewhere and refuses to overwrite an existing file without confirming.
 Closing the window, reloading, or opening a different plan while there are

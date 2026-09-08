@@ -19,7 +19,6 @@ table; when a whole milestone ships, say so in the Status section of
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.3 | Help menu and About | S |
 | 4.4 | Undo and redo | M |
 | 4.5 | Region editing | XL |
 | 4.6 | Extract from the GUI | L |
@@ -35,8 +34,8 @@ bottom because nothing else waits on it, not because it matters least.
 
 Three things decide this order.
 
-**Cheap and immediately felt comes first.** 4.3 is small and visible the
-moment the window opens, as 4.1 and 4.2 were before it.
+**Cheap and immediately felt comes first.** 4.1 to 4.3 were small and
+visible the moment the window opened, which is why they went first.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
@@ -54,33 +53,6 @@ from a terminal, once per chapter. A bad polygon cannot be fixed anywhere
 at all today — not in the GUI, and not without hand-editing pixel
 coordinates in YAML. Given what `known-bugs.md` already records about
 detection, editing earns its place first despite being the larger job.
-
-## 4.3 Help menu and About
-
-The Help menu itself, and an About dialog stating the version, the licence,
-the author, and the libraries in use with their versions.
-
-Instructions are deliberately not here; they are 4.7.
-
-Three things to get right:
-
-- **The version has two sources of truth.** `comictrans.__version__` and
-  the `version` field in `pyproject.toml` both say `0.1.0` and nothing
-  keeps them in step. Fix that as part of this — read
-  `importlib.metadata.version`, or point hatch's version at the code.
-- **Derive the library list at runtime**, with `importlib.metadata`. A
-  hardcoded list is wrong the first time a resolve moves a version. Show
-  PySide6's binding version and `qVersion()` separately; they differ.
-- **Do not read `LICENSE` off disk.** That works in a source checkout and
-  breaks in a wheel and in an application bundle. Embed the text or reach
-  it through `importlib.resources`.
-
-One invariant to state before anyone reaches for it: **no update check**,
-here or anywhere. The pipeline makes no network calls, and an About dialog
-is where that idea usually turns up first.
-
-Confirm the author name before it is shown. The name in `LICENSE` was taken
-from the repository's git author, not given.
 
 ## 4.4 Undo and redo
 

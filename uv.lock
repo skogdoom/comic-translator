@@ -81,7 +81,6 @@ wheels = [
 
 [[package]]
 name = "comictrans"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -120,7 +119,7 @@ requires-dist = [
     { name = "pytesseract", marker = "extra == 'tesseract'", specifier = ">=0.3.10" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
 ]
-provides-extras = ["tesseract", "gui"]
+provides-extras = ["gui", "tesseract"]
 
 [package.metadata.requires-dev]
 dev = [

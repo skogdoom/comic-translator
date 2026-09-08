@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from ..errors import ComictransError
 from ..imaging import load_page
 from ..model import Geometry, Region
+from .about_dialog import AboutDialog
 from .canvas import COLOR_APPROXIMATE, COLOR_EXACT, PageCanvas, RegionAppearance
 from .document import PlanDocument
 from .inspector import RegionInspector
@@ -177,6 +178,11 @@ class MainWindow(QMainWindow):
         self._reset_layout_action = QAction("&Reset Layout", self)
         self._reset_layout_action.triggered.connect(self._on_reset_layout)
         window_menu.addAction(self._reset_layout_action)
+
+        help_menu = self.menuBar().addMenu("&Help")
+        self._about_action = QAction("&About comictrans review", self)
+        self._about_action.triggered.connect(self._on_about)
+        help_menu.addAction(self._about_action)
 
     def _build_toolbar(self) -> None:
         """The same actions the menus hold, not a second set of them.
@@ -458,6 +464,9 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"preview: {len(preview.problems)} problem(s) — {names}")
         else:
             self.statusBar().showMessage("preview: everything fits")
+
+    def _on_about(self) -> None:
+        AboutDialog(self).exec()
 
     def _on_back_to_overlay(self) -> None:
         if self._current_image is not None:

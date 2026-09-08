@@ -25,7 +25,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QLabel, QMessageBox
 
 from comictrans.gui.main_window import MainWindow
 
@@ -594,3 +594,44 @@ def test_translating_the_last_flagged_region_switches_next_flagged_off(
     window._on_region_selected("page-001-001")
 
     assert not window._next_flagged_action.isEnabled(), "nothing left to check"
+
+
+def test_the_help_menu_offers_about(qapp: object) -> None:
+    from PySide6.QtWidgets import QMenu
+
+    window = MainWindow()
+    menu = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Help")
+    assert window._about_action in menu.actions()
+
+
+def test_about_reports_the_version_author_licence_and_libraries(qapp: object) -> None:
+    from comictrans.gui import about
+    from comictrans.gui.about_dialog import AboutDialog
+
+    dialog = AboutDialog()
+    shown = " ".join(label.text() for label in dialog.findChildren(QLabel))
+
+    assert about.package_version() in shown
+    assert about.author() in shown
+    assert "MIT" in shown
+    assert "PySide6" in shown, "the binding and the Qt it wraps are versioned apart"
+
+    listed = dialog._libraries.toPlainText()
+    for library in about.libraries():
+        assert library.name in listed
+        assert library.version in listed
+
+
+def test_the_about_action_actually_opens_the_dialog(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from comictrans.gui.about_dialog import AboutDialog
+
+    opened: list[bool] = []
+    # exec() would block on a real modal loop; everything up to it is real.
+    monkeypatch.setattr(AboutDialog, "exec", lambda self: opened.append(True) or 0)
+
+    window = MainWindow()
+    window._about_action.trigger()
+
+    assert opened

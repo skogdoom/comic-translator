@@ -1,10 +1,13 @@
 [project]
 name = "comictrans"
-version = "0.1.0"
+# Read from src/comictrans/__init__.py by hatch, below. One version, in the
+# place that can report it without the package having been installed.
+dynamic = ["version"]
 description = "Two-pass comic page translation tool for macOS: extract, translate by hand, apply."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+authors = [{ name = "David Andreasson" }]
 
 dependencies = [
     "pillow>=10.3",
@@ -37,6 +40,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/comictrans/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/comictrans"]
