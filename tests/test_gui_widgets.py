@@ -179,12 +179,15 @@ def test_editing_the_translation_marks_the_document_dirty(
     window.open_plan(two_page_plan)
 
     assert not window.document.dirty  # type: ignore[union-attr]
-    assert "*" not in window.windowTitle()
+    assert not window.isWindowModified()
 
     window._inspector._translation.setPlainText("HELLO THERE")
 
     assert window.document.dirty  # type: ignore[union-attr]
-    assert "*" in window.windowTitle()
+    # Qt substitutes the [*] placeholder in the title from this, so the
+    # title string itself carries the placeholder either way.
+    assert window.isWindowModified()
+    assert "[*]" in window.windowTitle()
     assert window.document.region("page-001-001").translation == "HELLO THERE"  # type: ignore[union-attr]
 
 
@@ -211,7 +214,7 @@ def test_save_writes_the_edit_and_clears_the_dirty_marker(
     window._on_save()
 
     assert not window.document.dirty  # type: ignore[union-attr]
-    assert "*" not in window.windowTitle()
+    assert not window.isWindowModified()
     on_disk = load_plan(two_page_plan, check_images=False)
     assert on_disk.regions[0].translation == "HELLO THERE"
 
@@ -635,3 +638,321 @@ def test_the_about_action_actually_opens_the_dialog(
     window._about_action.trigger()
 
     assert opened
+
+
+def test_undo_puts_the_text_back_in_the_inspector_too(qapp: object, two_page_plan: Path) -> None:
+    """The change did not come from the fields, so they have to be repopulated."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("HELLO THERE")
+
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation == "HELLO"  # type: ignore[union-attr]
+    assert window._inspector._translation.toPlainText() == "HELLO"
+    assert not window.isWindowModified()
+
+    window._on_redo()
+
+    assert window._inspector._translation.toPlainText() == "HELLO THERE"
+    assert window.isWindowModified()
+
+
+def test_undoing_does_not_write_itself_straight_back_out(qapp: object, two_page_plan: Path) -> None:
+    """Repopulating the fields must not read as a fresh edit.
+
+    Without blocked signals the restored text would be written back through
+    textChanged, leaving the document dirty and the undo stack one deeper
+    than the user's actions.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("HELLO THERE")
+
+    window._on_undo()
+
+    assert not window.document.dirty  # type: ignore[union-attr]
+    assert not window.document.can_undo  # type: ignore[union-attr]
+    assert window.document.can_redo  # type: ignore[union-attr]
+
+
+def test_the_undo_actions_switch_off_when_there_is_nothing_to_undo(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    assert not window._undo_action.isEnabled(), "no document at all"
+
+    window.open_plan(two_page_plan)
+    assert not window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+    window._inspector._translation.setPlainText("HELLO THERE")
+    assert window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+    window._on_undo()
+    assert not window._undo_action.isEnabled()
+    assert window._redo_action.isEnabled()
+
+
+def test_undo_refreshes_the_page_list_and_the_canvas(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    window._on_region_selected("page-001-002")  # held back, so flagged
+    window._inspector._translation.setPlainText("NOW TRANSLATED")
+    assert "1 flagged" not in window._pages.item(0).text()
+
+    window._on_undo()
+
+    assert "1 flagged" in window._pages.item(0).text(), "the flag came back"
+
+
+def test_the_edit_menu_and_toolbar_carry_undo(qapp: object) -> None:
+    from PySide6.QtWidgets import QMenu
+
+    window = MainWindow()
+    menu = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Edit")
+
+    assert window._undo_action in menu.actions()
+    assert window._redo_action in menu.actions()
+    assert window._undo_action in window._toolbar.actions()
+    assert window._redo_action in window._toolbar.actions()
+
+
+def test_the_prose_fields_keep_no_undo_history_of_their_own(qapp: object) -> None:
+    """One stack, so Ctrl+Z means the same thing wherever the focus is."""
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    assert not inspector._translation.isUndoRedoEnabled()
+    assert not inspector._notes.isUndoRedoEnabled()
+
+
+def test_selecting_another_region_ends_the_current_undo_run(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("FIRST")
+
+    window._on_region_selected("page-001-002")
+    window._on_region_selected("page-001-001")
+    window._inspector._translation.setPlainText("FIRST AND SECOND")
+
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation == "FIRST"  # type: ignore[union-attr]
+
+
+def _shown_window(plan: Path) -> MainWindow:
+    """A window laid out for real, so the view has a viewport to scale into."""
+    window = MainWindow()
+    window.resize(900, 500)
+    window.show()
+    QTest.qWaitForWindowExposed(window)
+    window.open_plan(plan)
+    return window
+
+
+def test_zooming_in_and_out_moves_the_scale_and_leaves_fit_mode(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    assert canvas.fitting, "a page opens fitted to the window"
+
+    fitted = canvas.zoom
+    canvas.zoom_in()
+
+    assert canvas.zoom > fitted
+    assert not canvas.fitting, "a chosen zoom stops following the window"
+
+    canvas.zoom_out()
+    assert canvas.zoom == pytest.approx(fitted)
+
+
+def test_actual_size_is_one_screen_pixel_per_page_pixel(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._canvas.zoom_actual()
+    assert window._canvas.zoom == pytest.approx(1.0)
+
+
+def test_fit_to_window_goes_back_to_following_the_window(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    canvas.zoom_actual()
+    assert not canvas.fitting
+
+    canvas.fit()
+
+    assert canvas.fitting
+    assert canvas.zoom != pytest.approx(1.0), "the page is wider than the viewport"
+
+
+def test_zoom_is_clamped_at_both_ends(qapp: object, two_page_plan: Path) -> None:
+    from comictrans.gui.canvas import ZOOM_MAX, ZOOM_MIN
+
+    window = _shown_window(two_page_plan)  # held, or its canvas goes with it
+    canvas = window._canvas
+
+    canvas.set_zoom(1000.0)
+    assert canvas.zoom == pytest.approx(ZOOM_MAX)
+
+    canvas.set_zoom(0.0001)
+    assert canvas.zoom == pytest.approx(ZOOM_MIN)
+
+
+def test_resizing_the_window_keeps_a_chosen_zoom(qapp: object, two_page_plan: Path) -> None:
+    """The bug this milestone exists to avoid: a resize used to refit always."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    canvas.set_zoom(2.0)
+
+    window.resize(700, 420)
+    QTest.qWait(10)
+
+    assert canvas.zoom == pytest.approx(2.0)
+    assert not canvas.fitting
+
+
+def test_resizing_the_window_still_refits_while_fitting(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    before = canvas.zoom
+
+    window.resize(500, 300)
+    QTest.qWait(10)
+
+    assert canvas.fitting
+    assert canvas.zoom != pytest.approx(before), "a fitted page follows the window"
+
+
+def test_a_page_not_opened_before_starts_fitted(qapp: object, two_page_plan: Path) -> None:
+    """Zoom is per page: a page has no level until it has been read at one."""
+    window = _shown_window(two_page_plan)
+    window._canvas.set_zoom(2.0)
+
+    window._pages.select_image("page-002.png")
+
+    assert window._current_image == "page-002.png"
+    assert window._canvas.fitting
+    assert window._canvas.zoom != pytest.approx(2.0)
+
+
+def test_each_page_keeps_its_own_zoom(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+
+    canvas.set_zoom(2.0)  # page 1 read close up
+    window._pages.select_image("page-002.png")
+    canvas.set_zoom(0.5)  # page 2 read at a distance
+
+    window._pages.select_image("page-001.png")
+    assert canvas.zoom == pytest.approx(2.0)
+    assert not canvas.fitting
+
+    window._pages.select_image("page-002.png")
+    assert canvas.zoom == pytest.approx(0.5)
+
+
+def test_a_page_left_fitted_comes_back_fitted_to_the_window_as_it_is_now(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Restoring "it was fitted" refits, rather than pinning the old factor."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    assert canvas.fitting
+    fitted_wide = canvas.zoom
+
+    window._pages.select_image("page-002.png")
+    canvas.set_zoom(2.0)
+    window.resize(600, 380)
+    QTest.qWait(10)
+
+    window._pages.select_image("page-001.png")
+
+    assert canvas.fitting
+    assert canvas.zoom < fitted_wide, "refitted to the smaller window it came back to"
+
+
+def test_opening_another_plan_forgets_the_zoom_levels(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._canvas.set_zoom(2.0)
+    window._pages.select_image("page-002.png")
+    assert window._views, "page one's level was captured on the way out"
+
+    window.open_plan(two_page_plan)
+
+    assert window._views == {}, "no zoom levels carried over from the old session"
+    assert window._canvas.fitting
+
+
+def test_a_chosen_zoom_survives_the_preview_round_trip(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """Comparing overlay against rendered output is the point of holding it."""
+    window = _shown_window(two_page_plan)
+    window._canvas.set_zoom(2.0)
+
+    window._on_render_preview()
+    assert window._showing_preview
+    assert window._canvas.zoom == pytest.approx(2.0)
+
+    window._on_back_to_overlay()
+    assert window._canvas.zoom == pytest.approx(2.0)
+
+
+def test_ctrl_and_the_wheel_zooms_while_the_wheel_alone_scrolls(
+    qapp: object, two_page_plan: Path
+) -> None:
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QWheelEvent
+
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    canvas.set_zoom(1.0)
+
+    def wheel(modifier: Qt.KeyboardModifier) -> QWheelEvent:
+        centre = QPointF(canvas.viewport().rect().center())
+        return QWheelEvent(
+            centre,
+            canvas.viewport().mapToGlobal(centre),
+            QPoint(0, 0),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            modifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+
+    canvas.wheelEvent(wheel(Qt.KeyboardModifier.ControlModifier))
+    assert canvas.zoom > 1.0, "Ctrl and the wheel zooms in"
+
+    zoomed = canvas.zoom
+    canvas.wheelEvent(wheel(Qt.KeyboardModifier.NoModifier))
+    assert canvas.zoom == pytest.approx(zoomed), "the wheel alone scrolls, it does not zoom"
+
+
+def test_the_status_bar_reports_the_zoom(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    assert "(fit)" in window._zoom_label.text()
+
+    window._canvas.zoom_actual()
+
+    assert window._zoom_label.text() == "100%"
+
+
+def test_the_zoom_actions_need_a_page(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    assert not window._zoom_in_action.isEnabled()
+
+    window.open_plan(two_page_plan)
+
+    for action in (
+        window._zoom_in_action,
+        window._zoom_out_action,
+        window._zoom_fit_action,
+        window._zoom_actual_action,
+    ):
+        assert action.isEnabled()

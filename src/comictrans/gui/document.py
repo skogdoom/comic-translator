@@ -20,6 +20,15 @@ from pathlib import Path
 from ..model import Geometry, Plan, Region
 from ..planfile import load_plan, write_plan
 
+UNDO_LIMIT = 500
+"""How many edits back the history goes.
+
+An entry is a tuple of pointers to regions that already exist, so the cost is
+a few kilobytes each and the cap is about not growing without bound in a long
+session rather than about memory being tight. Coalescing means an entry is one
+act of typing, not one keystroke, so 500 is a long way back.
+"""
+
 OVERLAP_BBOX_RATIO = 0.15
 """Share of the smaller region's bounding box that counts as an overlap.
 
@@ -106,18 +115,41 @@ class ImageSummary:
 
 
 class PlanDocument:
-    """A plan file open for editing.
+    """A plan file open for editing, with its undo history.
 
     Wraps a ``Plan`` exactly as loaded from disk. Every mutation goes through
     one of the ``set_*`` methods, which is what makes ``dirty`` reliable: it
     is not "has anything in the widget tree changed", it is "has anything
     passed through here".
+
+    **Undo is a stack of whole plans, not a stack of operations.** ``Plan``
+    is frozen and holds a tuple of frozen ``Region``s, and every edit already
+    builds a new one, so the plan as it stood before an edit *is* the undo
+    entry — a new tuple of pointers, not a copy of anything. The point of
+    doing it this way is what it costs to extend: an operation that adds,
+    deletes or reshapes a region needs no undo code of its own, because it
+    goes through the same place and leaves the same kind of entry behind.
     """
 
     def __init__(self, plan: Plan, path: Path) -> None:
         self.plan = plan
         self.path = path
-        self.dirty = False
+        self._clean = plan
+        self._undo: list[Plan] = []
+        self._redo: list[Plan] = []
+        self._run: tuple[str, str] | None = None
+
+    @property
+    def dirty(self) -> bool:
+        """Whether the plan differs from the one last written to disk.
+
+        Identity against the saved plan rather than a flag that only ever
+        goes true, so undoing back to the last save clears the marker
+        honestly. Retyping the same text by hand does not: that is a
+        different object and a different edit, and it is what every other
+        editor does too.
+        """
+        return self.plan is not self._clean
 
     @classmethod
     def open(cls, path: Path, *, check_images: bool = True) -> PlanDocument:
@@ -196,7 +228,7 @@ class PlanDocument:
         return ImageSummary(image=image, region_count=len(regions), flagged_count=flagged)
 
     def _update(self, region_id: str, **changes: object) -> Region:
-        """Replace one field on one region, in place in the plan, and mark dirty.
+        """Replace one field on one region, in place in the plan, and record it.
 
         Not validated beyond what ``Region`` itself enforces (its fields carry
         no invariants of their own) — the schema is enforced once, at load
@@ -204,15 +236,74 @@ class PlanDocument:
         would be caught there on the next load, the same as if you had typed
         it into the YAML by hand.
         """
-        updated = replace(self.region(region_id), **changes)  # type: ignore[arg-type]
-        self.plan = replace(
-            self.plan,
-            regions=tuple(
-                updated if region.id == region_id else region for region in self.plan.regions
+        current = self.region(region_id)
+        updated = replace(current, **changes)  # type: ignore[arg-type]
+        if updated == current:
+            # Nothing changed, so there is nothing to undo. Without this a
+            # field re-set to the value it already held would leave an undo
+            # step that appears to do nothing when taken.
+            return current
+
+        field = next(iter(changes))
+        self._record(
+            replace(
+                self.plan,
+                regions=tuple(
+                    updated if region.id == region_id else region for region in self.plan.regions
+                ),
             ),
+            run=(region_id, field),
         )
-        self.dirty = True
         return updated
+
+    def _record(self, plan: Plan, *, run: tuple[str, str] | None) -> None:
+        """Move to ``plan``, pushing the current one onto the undo stack.
+
+        ``run`` identifies what is being edited, as region and field.
+        Consecutive edits carrying the same one are the same act of typing
+        and collapse into a single undo step — without that, every keystroke
+        would be its own, since that is how the inspector writes them.
+        """
+        if run is None or run != self._run:
+            self._undo.append(self.plan)
+            del self._undo[: max(0, len(self._undo) - UNDO_LIMIT)]
+        self._redo.clear()
+        self._run = run
+        self.plan = plan
+
+    def end_edit_run(self) -> None:
+        """Break the current run, so the next edit starts a new undo step.
+
+        Called when the selection moves. Typing into one region, going to
+        look at another and coming back is two acts however identical the
+        field, and undo should not swallow the first with the second.
+        """
+        self._run = None
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    def undo(self) -> bool:
+        """Step back one edit. False when there is nothing left to undo."""
+        if not self._undo:
+            return False
+        self._redo.append(self.plan)
+        self.plan = self._undo.pop()
+        self._run = None
+        return True
+
+    def redo(self) -> bool:
+        if not self._redo:
+            return False
+        self._undo.append(self.plan)
+        self.plan = self._redo.pop()
+        self._run = None
+        return True
 
     def set_translation(self, region_id: str, translation: str) -> Region:
         return self._update(region_id, translation=translation)
@@ -234,7 +325,16 @@ class PlanDocument:
     def save(self) -> None:
         """Write back to the file this document was opened from."""
         write_plan(self.plan, self.path, force=True)
-        self.dirty = False
+        self._mark_saved()
+
+    def _mark_saved(self) -> None:
+        """This plan is now what is on disk. Undo history survives a save.
+
+        Stepping back past a save is allowed and leaves the document dirty
+        again, which is honest: the file still holds what was written.
+        """
+        self._clean = self.plan
+        self._run = None
 
     def save_as(self, path: Path, *, force: bool = False) -> None:
         """Write to a different path. Refuses to clobber unless ``force``.
@@ -245,4 +345,4 @@ class PlanDocument:
         """
         write_plan(self.plan, path, force=force)
         self.path = path
-        self.dirty = False
+        self._mark_saved()

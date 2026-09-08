@@ -229,6 +229,19 @@ region that will not fit, needs condensing, or overlaps another one shows up
 here before you run `apply` for real. **Back to Overlay** returns to the
 polygon view.
 
+The page starts fitted to the window. `Ctrl+=` and `Ctrl+-` zoom, `Ctrl+0`
+fits again and `Ctrl+1` is actual size; Ctrl and the wheel zooms about the
+pointer, and on a Mac trackpad pinch works too. The status bar shows the
+current level.
+
+**The zoom is per page.** Each page keeps the level and position you left it
+at and comes back to them, so reading one page of dense captions close up
+does not decide how the splash opposite it opens. A page you have not opened
+yet starts fitted, and a page you left fitted comes back fitted to the window
+as it is now rather than to the factor it happened to have. Switching to the
+rendered preview and back holds your place, which is what makes the overlay
+and the output comparable at the same magnification.
+
 Reviewing a chapter means walking every balloon on every page, so the
 regions are walkable: `Ctrl+Down` and `Ctrl+Up` step to the next and
 previous region, carrying on to the following page rather than stopping at
@@ -244,6 +257,13 @@ sessions — the only thing this tool stores outside a plan file.
 declared dependency that is actually installed, with its version — read from
 the installed package at the time you open it, not written down anywhere. It
 does not check for updates, and nothing else here does either.
+
+`Ctrl+Z` and `Ctrl+Shift+Z` step back and forward through your edits, one
+change at a time — a run of typing in one field counts as one change, not
+one per keystroke. There is a single history covering everything, so undo
+means the same thing wherever the cursor is. It lives in memory only:
+undoing past a save does not un-write the file, and the title's modified
+marker says so.
 
 `Ctrl+S` saves back to the file it was opened from; **Save As** writes
 elsewhere and refuses to overwrite an existing file without confirming.

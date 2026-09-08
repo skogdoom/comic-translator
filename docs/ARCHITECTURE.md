@@ -511,6 +511,51 @@ what makes "unsaved changes" one fact the window can trust, rather than
 something it would otherwise have to reconstruct by asking every widget
 whether it has touched anything.
 
+**Why undo is a stack of plans, not a stack of operations.** `Plan` is
+frozen and holds a tuple of frozen `Region`s, and every edit already builds
+a new one, so the plan as it stood before an edit *is* the undo entry — a
+new tuple of pointers, not a copy of anything. What that buys is what it
+costs to extend: an operation that adds, deletes or reshapes a region needs
+no undo code of its own, because it passes through the same `_record` and
+leaves the same kind of entry behind. A command-per-operation stack would
+need a new class for each.
+
+It also lets `dirty` stop being a flag that only ever goes true. It is
+identity against the plan last written to disk, so undoing back to the last
+save clears the marker and stepping past it sets it again — which is what
+the file actually holds. The window shows that through `[*]` and
+`setWindowModified` rather than editing the title itself, so the marker is
+whatever the platform's own is.
+
+**One undo history, not one per widget.** Every keystroke in the inspector
+is already a document edit, so the prose fields have their own histories
+switched off. Two stacks would disagree the moment a document-level undo
+put text back that the widget never saw leave, and a window-level `Ctrl+Z`
+reaches only one of them anyway. Consecutive edits to the same region and
+field collapse into one step, or every keystroke would be its own.
+
+**Why zoom is a mode and not just a number.** The canvas either follows the
+window or holds a factor the reader chose, and `resizeEvent` refits only in
+the first. Refitting unconditionally, which is what it used to do, would
+make a chosen zoom vanish the moment the window was resized.
+
+**Why the zoom belongs to the page and not to the canvas.** Pages differ in
+size and in how much of one you need to see at once, so a level chosen for a
+dense page of captions is the wrong one for the splash opposite it. The
+canvas is handed a pixmap and does not know which page it is, so it cannot
+answer that; `MainWindow` does, and keeps a `ViewState` per image, captured
+on the way out of a page and applied on the way in. `show_page` therefore
+fits, always, and whoever knows better follows it with `apply_view_state`.
+Restoring a page that was *fitting* refits to the window as it is now rather
+than pinning the factor it had, which is the difference between remembering
+a decision and remembering a number. Rendering the preview goes through the
+same save and restore, so the overlay and the output stay comparable at the
+same magnification.
+
+Zoom costs nothing because the scene holds page pixels at their own
+coordinates and only the view scales. That is the same property that makes a
+polygon drawn on the canvas exactly the polygon apply would erase into.
+
 **Where "the next region" is decided.** In `document.py`, not in the window,
 as `adjacent_region` over the plan's own region order. Which region comes
 after this one is a question about a plan, not about a widget, and asking it

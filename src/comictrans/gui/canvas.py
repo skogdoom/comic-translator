@@ -11,8 +11,19 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPixmap, QPolygonF, QResizeEvent
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QMouseEvent,
+    QNativeGestureEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPolygonF,
+    QResizeEvent,
+    QTransform,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsPolygonItem,
@@ -38,6 +49,16 @@ COLOR_SELECTED = QColor(30, 120, 230)
 _WIDTH_NORMAL = 2.0
 _WIDTH_SELECTED = 4.0
 
+ZOOM_MIN = 0.05
+ZOOM_MAX = 8.0
+ZOOM_STEP = 1.25
+"""Zoom is the view's scale factor, where 1.0 is one screen pixel per page pixel.
+
+The scene holds page pixels at their own coordinates and only the view scales,
+so zooming re-renders nothing and loses nothing — the same property that makes
+a polygon drawn here exactly the polygon apply would use.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class RegionAppearance:
@@ -52,6 +73,23 @@ class RegionAppearance:
     polygon: Polygon
     color: QColor
     flagged: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ViewState:
+    """Where the canvas was looking at a page: how far in, and at what.
+
+    Held by whoever knows which page is which, so that going back to a page
+    goes back to how it was being read rather than to a default.
+    """
+
+    zoom: float
+    fitting: bool
+    """True when the page was following the window rather than a chosen zoom.
+    Restoring that refits to the window as it is now, not to the old factor."""
+
+    centre: tuple[float, float]
+    """The scene point at the middle of the viewport. Ignored when fitting."""
 
 
 class RegionItem(QGraphicsPolygonItem):
@@ -78,6 +116,7 @@ class PageCanvas(QGraphicsView):
     """One page: a pixmap, and optionally a set of clickable region outlines."""
 
     region_selected = Signal(str)
+    zoom_changed = Signal(float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -91,9 +130,15 @@ class PageCanvas(QGraphicsView):
         self._items: dict[str, RegionItem] = {}
         self._appearances: dict[str, RegionAppearance] = {}
         self._selected_id: str | None = None
+        self._fit_to_window = True
 
     def show_page(self, pixmap: QPixmap, regions: Sequence[RegionAppearance] = ()) -> None:
-        """Replace the page and its overlay. Resets pan and zoom to fit."""
+        """Replace the page and its overlay, fitted to the window.
+
+        Fitted, because the canvas does not know which page it is being handed
+        and so cannot know what zoom that page was last read at. Whoever does
+        know follows this with :meth:`apply_view_state`.
+        """
         self._scene.clear()
         self._items.clear()
         self._appearances.clear()
@@ -145,13 +190,97 @@ class PageCanvas(QGraphicsView):
             item = item.parentItem()
         return item.region_id if isinstance(item, RegionItem) else None
 
+    # -- zoom -------------------------------------------------------------
+
+    @property
+    def zoom(self) -> float:
+        """The view's scale factor. 1.0 is one screen pixel per page pixel."""
+        return float(self.transform().m11())
+
+    @property
+    def fitting(self) -> bool:
+        """Whether the page is following the window rather than a chosen zoom."""
+        return self._fit_to_window
+
+    def set_zoom(self, factor: float) -> None:
+        """Zoom to an absolute factor, clamped, and stop following the window."""
+        clamped = max(ZOOM_MIN, min(ZOOM_MAX, factor))
+        self._fit_to_window = False
+        self.setTransform(QTransform.fromScale(clamped, clamped))
+        self.zoom_changed.emit(clamped)
+
+    def zoom_in(self) -> None:
+        self.set_zoom(self.zoom * ZOOM_STEP)
+
+    def zoom_out(self) -> None:
+        self.set_zoom(self.zoom / ZOOM_STEP)
+
+    def zoom_actual(self) -> None:
+        self.set_zoom(1.0)
+
     def fit(self) -> None:
+        """Scale the whole page into the viewport, and follow the window again."""
+        self._fit_to_window = True
         if self._pixmap_item is not None:
             self.fitInView(self._pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+        self.zoom_changed.emit(self.zoom)
+
+    def view_state(self) -> ViewState:
+        """What the caller needs to bring this page back exactly as it is now."""
+        centre = self.mapToScene(self.viewport().rect().center())
+        return ViewState(
+            zoom=self.zoom, fitting=self._fit_to_window, centre=(centre.x(), centre.y())
+        )
+
+    def apply_view_state(self, state: ViewState | None) -> None:
+        """Restore a page's zoom and position. ``None`` leaves it fitted.
+
+        ``None`` is a page that has not been opened before, which has no zoom
+        of its own to go back to.
+        """
+        if state is None or state.fitting:
+            return
+        self.set_zoom(state.zoom)
+        self.centerOn(QPointF(*state.centre))
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
-        self.fit()
+        # Only while following the window. Refitting unconditionally is what
+        # would make a chosen zoom vanish the moment the window was resized.
+        if self._fit_to_window:
+            self.fit()
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt override
+        """Ctrl (Command on macOS) and the wheel zooms; the wheel alone scrolls.
+
+        ``AnchorUnderMouse`` is set, so the point under the pointer is the one
+        that stays put.
+        """
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.zoom_in()
+            elif delta < 0:
+                self.zoom_out()
+            event.accept()
+            return
+        super().wheelEvent(event)
+
+    def event(self, event: QEvent) -> bool:
+        """Trackpad pinch, which arrives as a native gesture rather than a wheel.
+
+        Only macOS sends these, so nothing in the test suite reaches this
+        branch — the offscreen platform the widget tests run under has no
+        trackpad to pinch. Wheel zoom above is the path that is covered.
+        """
+        if (
+            event.type() == QEvent.Type.NativeGesture
+            and isinstance(event, QNativeGestureEvent)
+            and event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture
+        ):
+            self.set_zoom(self.zoom * (1.0 + event.value()))
+            return True
+        return bool(super().event(event))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
         region_id = self.region_at(event.position())
