@@ -37,6 +37,9 @@ Milestones 1, 2 and 4 are implemented: `extract` writes a plan file, `apply`
 renders translated pages from it, and `review` opens a plan file in a GUI to
 check both. Milestone 3 (CBZ/PDF input) is not started.
 
+`docs/ROADMAP.md` covers what is planned and not yet built, in the order it
+is worth building.
+
 ## Requirements
 
 - macOS on Apple Silicon, Python 3.12
