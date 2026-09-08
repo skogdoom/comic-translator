@@ -166,7 +166,7 @@ class PlanDocument:
         return cls(load_plan(path, check_images=check_images), path)
 
     def images(self) -> tuple[str, ...]:
-        return self.plan.images()
+        return self.plan.image_names()
 
     def regions_for(self, image: str) -> tuple[Region, ...]:
         return self.plan.regions_for(image)

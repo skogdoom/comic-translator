@@ -77,10 +77,47 @@ reuses it with the harder question on top.
 Edit a region's polygon, add a region, delete a region, merge two.
 
 The largest milestone on the list and the one that changes what the GUI is.
-Worth doing in four passes: model and schema decisions, then move and
-reshape, then add and delete, then merge.
+Four passes: model and schema, then move and reshape, then add and delete,
+then merge. **The model and schema pass is done** — what it settled is
+recorded below as done, not as a plan.
 
-### Settled
+### Done: model and schema
+
+Plan schema version 2. Each page's hash moved out of every region into a
+top-level `images` list, so a page with no text on it is in the plan and can
+be drawn on; `Geometry` gained `manual`, for a polygon a person drew.
+Version 1 files are upgraded as they are read — the images list is rebuilt
+from the regions, which carry the same facts — so no existing plan is
+orphaned. `README.md` and `ARCHITECTURE.md` carry the details.
+
+Note the compatibility direction: an older comictrans meeting `geometry:
+manual` or an `images` list fails with a `PlanError`. At `0.1.0` with one
+user that is cheap, and it will not stay cheap.
+
+### Settled, not yet built
+
+**A new region is drawn by hand, and gets no OCR.** The user draws the
+outline; `source_text` and `translation` are both typed in. Nothing in
+`review` re-reads the page for text, so an added region has no OCR
+confidence to report and `confidence` should say so rather than claim a
+measurement that was never made.
+
+**Colours come from the page or from a swatch.** A new region needs
+`fill_color` and `text_color`. Sampling inside the drawn polygon through
+`detect.color` is the default; clicking a pixel to sample it and picking
+from a small set of standard colours are the two overrides. Sampling pulls
+numpy and OpenCV in, which is fine for `review` — the invariant is that
+*`apply`* runs no detection — but it belongs in a new module and **never**
+in `gui/document.py`, which is deliberately free of both.
+
+**A delete is a delete.** Not a `skip: true` in disguise. Undo covers it
+within the session; after a save it is gone, the same as deleting the
+region's block by hand in the YAML.
+
+**Every one of these is undoable and redoable.** 4.4's snapshot stack
+already gives this for free: an add, a delete, a merge or a moved vertex is
+a new `Plan` pushed through the same `_record`, with no undo code of its
+own.
 
 **Merging is refused unless the polygons genuinely overlap.** With that
 gate, the merged polygon is the convex hull of both. This covers the case
@@ -99,41 +136,14 @@ where it stays free of OpenCV. `detect._contains_centers` is the same test
 but built on `cv2.pointPolygonTest`, so it cannot be reused from the
 document layer.
 
-**`Geometry` gains a `manual` value**, unless the first pass finds a reason
-not to. `exact` means traced from a balloon contour and `approximate` means
-OCR boxes plus a margin, which is what drives the orange "check this"
-badge. A hand-drawn polygon is neither: it is the most trustworthy geometry
-in the file, so `approximate` flags it wrongly and forever, while `exact`
-quietly makes the docstring untrue and loses the one thing worth knowing on
-a second pass — which regions were already fixed by hand.
-
-The cost is a plan file schema change: the reader's enum, the writer, and a
-decision on `header.version`, currently `1`. Note the compatibility
-direction — an older comictrans meeting `geometry: manual` fails with a
-`PlanError`. At `0.1.0` with one user that is cheap, and it will not stay
-cheap.
-
 ### Open
 
-- **A page with no regions is invisible.** `Plan.images()` derives from the
-  region list, so a page where detection found nothing is not in the plan at
-  all, and a region cannot be added to it. It is also where the
-  `image_sha256` for a new region would have come from. Either the header
-  gains a list of images, or the GUI lets the file be picked and hashes it.
-  Decide before the add-and-delete pass, not during it.
-- **Where new colours come from.** A new region needs `fill_color` and
-  `text_color`, which means sampling through `detect.color`. That is fine
-  for `review` — the invariant is that *`apply`* runs no detection — but it
-  pulls numpy and OpenCV in, so it belongs in a new module and **never** in
-  `gui/document.py`, which is deliberately free of both. Sampling inside
-  the new polygon, with a colour picker as an override, is the obvious
-  shape.
 - **Ids and order.** The reader enforces unique ids. Do not reuse the
   suffix of a deleted region; take `max + 1` per page. Merging two regions
   has to pick an order. Reordering by hand is out of scope here.
-- **Deleting loses the only record that OCR found text there.** Undo covers
-  it in the session; after a save it is gone. `skip: true` may be the
-  better default action, with delete kept explicit.
+- **What a hand-drawn region records for confidence.** `0.0` reads as a
+  terrible OCR result and would flag the region as low confidence forever;
+  the field is not optional. Decide during the add-and-delete pass.
 
 ### One correctness trap
 
@@ -313,7 +323,7 @@ exception that is worth settling before any of it is written.
 `PlanDocument.source_path` resolves an image as the plan's directory plus
 the image name, and `apply.source_for` does the same. Reading pages from
 inside an archive on demand breaks that assumption in `apply` and in
-`review` at once, and takes the `image_sha256` check with it.
+`review` at once, and takes the plan's per-page hash check with it.
 
 **Unpack to a sidecar directory** and everything downstream keeps working
 unchanged, including the invariant that source images are never written to

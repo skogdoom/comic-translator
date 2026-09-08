@@ -27,6 +27,14 @@ class Geometry(StrEnum):
     APPROXIMATE = "approximate"
     """Union of OCR boxes plus a margin; no clean contour was found."""
 
+    MANUAL = "manual"
+    """Drawn by hand in the review GUI.
+
+    Neither of the other two: nothing traced it and no OCR box bounded it.
+    Kept apart from ``exact`` because "someone drew this deliberately" is
+    worth knowing on a second pass, and apart from ``approximate`` because
+    that one means "check this", which a hand-drawn polygon does not."""
+
 
 class TextCase(StrEnum):
     """How ``translation`` is cased at render time."""
@@ -168,9 +176,12 @@ class Region:
 
     id: str
     image: str
-    """Source image path, relative to the plan file, POSIX separators."""
+    """Source image path, relative to the plan file, POSIX separators.
 
-    image_sha256: str
+    Names an entry in the plan's ``images``, which is where that file's hash
+    is recorded. The hash is per image, not per region, so it lives once
+    rather than once for every balloon on the page."""
+
     order: int
     geometry: Geometry
     polygon: Polygon
@@ -221,6 +232,11 @@ class PlanHeader:
     """Document-level settings, hand-editable."""
 
     version: int
+    """Schema version of the file this came from.
+
+    Always the current one in memory: the reader upgrades an older file as it
+    reads it, and the writer only knows how to write today's shape."""
+
     generator: str
     created: str
     source_language: str
@@ -233,18 +249,38 @@ class PlanHeader:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanImage:
+    """One source page the plan covers, and the file it was read from."""
+
+    name: str
+    """Path relative to the plan file, POSIX separators."""
+
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class Plan:
     """A parsed plan file."""
 
     header: PlanHeader
+    images: tuple[PlanImage, ...]
+    """Every page extract read, in the order it read them.
+
+    Including the ones it found no text on. A page with no regions is still
+    part of the comic: apply copies it to the output so a chapter comes out
+    whole, and the review GUI can show it so a missed balloon can be drawn on
+    it by hand."""
+
     regions: tuple[Region, ...]
 
-    def images(self) -> tuple[str, ...]:
-        """Distinct source images, in first-seen order."""
-        seen: dict[str, None] = {}
-        for region in self.regions:
-            seen.setdefault(region.image, None)
-        return tuple(seen)
+    def image_names(self) -> tuple[str, ...]:
+        return tuple(image.name for image in self.images)
+
+    def sha256_for(self, image: str) -> str | None:
+        for entry in self.images:
+            if entry.name == image:
+                return entry.sha256
+        return None
 
     def regions_for(self, image: str) -> tuple[Region, ...]:
         return tuple(r for r in self.regions if r.image == image)

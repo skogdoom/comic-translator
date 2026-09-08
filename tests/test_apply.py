@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -10,8 +11,18 @@ from comictrans.apply import ApplyReport, apply_plan, check_output_dir, resolve_
 from comictrans.config import ApplyConfig, EraseConfig, TypesetConfig
 from comictrans.errors import ComictransError, InputError
 from comictrans.imaging import load_page, output_format_for, output_path
-from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import (
+    Box,
+    Color,
+    Geometry,
+    Plan,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile import write_plan
+from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
 
 from .conftest import (
@@ -19,6 +30,7 @@ from .conftest import (
     BALLOON_WHITE,
     INK_BLACK,
     make_page_array,
+    make_plan,
     save_page,
 )
 
@@ -34,7 +46,7 @@ def _page_array() -> np.ndarray:
 
 def _header(**overrides: object) -> PlanHeader:
     base: dict[str, object] = {
-        "version": 1,
+        "version": PLAN_VERSION,
         "generator": "comictrans test",
         "created": "2026-09-07T12:00:00Z",
         "source_language": "it",
@@ -49,11 +61,10 @@ def _header(**overrides: object) -> PlanHeader:
     return PlanHeader(**base)  # type: ignore[arg-type]
 
 
-def _region(image: str, digest: str, **overrides: object) -> Region:
+def _region(image: str, **overrides: object) -> Region:
     base: dict[str, object] = {
         "id": "page-001",
         "image": image,
-        "image_sha256": digest,
         "order": 1,
         "geometry": Geometry.EXACT,
         "polygon": BALLOON.as_polygon(),
@@ -74,7 +85,7 @@ def project(tmp_path: Path) -> tuple[Path, Path, Plan]:
     source.mkdir()
     image = save_page(_page_array(), source / "page-001.png")
     plan_path = source / "comic-plan.yaml"
-    plan = Plan(header=_header(), regions=(_region("page-001.png", sha256_file(image)),))
+    plan = make_plan(_header(), (_region("page-001.png"),), {"page-001.png": sha256_file(image)})
     write_plan(plan, plan_path)
     return plan_path, tmp_path / "out", plan
 
@@ -101,6 +112,25 @@ def test_apply_writes_a_page_and_leaves_the_source_alone(
     assert sha256_file(source) == before, "source image was modified"
 
 
+def test_a_page_with_no_regions_is_copied_through_unchanged(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    # A page detection found nothing on is still a page of the chapter, and
+    # the plan lists it. Apply writes it out so the output is the whole comic.
+    plan_path, output, plan = project
+    blank = save_page(_page_array(), plan_path.parent / "page-002.png")
+    with_blank = replace(
+        plan, images=(*plan.images, PlanImage(name="page-002.png", sha256=sha256_file(blank)))
+    )
+
+    report = _apply(project, plan=with_blank)
+
+    assert report.ok
+    assert sorted(p.name for p in report.pages_written) == ["page-001.png", "page-002.png"]
+    written = np.asarray(Image.open(output / "page-002.png").convert("RGB"))
+    assert np.array_equal(written, np.asarray(Image.open(blank).convert("RGB")))
+
+
 def test_the_original_lettering_is_gone_and_new_text_is_drawn(
     project: tuple[Path, Path, Plan], font_dir: Path
 ) -> None:
@@ -125,7 +155,7 @@ def test_output_dimensions_and_metadata_survive(
     plan_path, output, plan = project
     source = plan_path.parent / "page-001.png"
     Image.fromarray(_page_array()).save(source, dpi=(300, 300))
-    plan = Plan(header=plan.header, regions=(_region("page-001.png", sha256_file(source)),))
+    plan = make_plan(plan.header, (_region("page-001.png"),), {"page-001.png": sha256_file(source)})
 
     _apply(project, plan=plan)
 
@@ -149,7 +179,7 @@ def test_editing_a_translation_changes_only_the_text(
     _apply(project)
     before = np.asarray(Image.open(output / "page-001.png").convert("RGB"), dtype=np.int16)
 
-    edited = Plan(header=plan.header, regions=(plan.regions[0].with_translation("SOMETHING ELSE"),))
+    edited = replace(plan, regions=(plan.regions[0].with_translation("SOMETHING ELSE"),))
     _apply(project, plan=edited, force=True)
     after = np.asarray(Image.open(output / "page-001.png").convert("RGB"), dtype=np.int16)
 
@@ -164,7 +194,7 @@ def test_an_empty_translation_is_skipped_and_fails_the_run(
     project: tuple[Path, Path, Plan], font_dir: Path
 ) -> None:
     plan_path, output, plan = project
-    blank = Plan(header=plan.header, regions=(plan.regions[0].with_translation("  "),))
+    blank = replace(plan, regions=(plan.regions[0].with_translation("  "),))
     report = _apply(project, plan=blank)
 
     assert report.skipped_empty == 1
@@ -180,10 +210,7 @@ def test_skip_true_is_deliberate_and_passes(
     project: tuple[Path, Path, Plan], font_dir: Path
 ) -> None:
     plan_path, output, plan = project
-    marked = Plan(
-        header=plan.header,
-        regions=(_region("page-001.png", plan.regions[0].image_sha256, skip=True),),
-    )
+    marked = replace(plan, regions=(_region("page-001.png", skip=True),))
     report = _apply(project, plan=marked)
 
     assert report.skipped_flag == 1
@@ -204,7 +231,7 @@ def test_a_region_that_will_not_fit_is_reported_and_left_alone(
     long = plan.regions[0].with_translation(
         "A TRANSLATION FAR TOO LONG TO EVER FIT INSIDE THIS BALLOON AT THAT SIZE"
     )
-    report = _apply(project, plan=Plan(header=plan.header, regions=(long,)), config=config)
+    report = _apply(project, plan=replace(plan, regions=(long,)), config=config)
 
     assert report.failed == 1
     assert not report.ok
@@ -219,7 +246,7 @@ def test_unbalanced_markup_fails_that_region_only(
 ) -> None:
     _, _, plan = project
     broken = plan.regions[0].with_translation("THIS **NEVER CLOSES")
-    report = _apply(project, plan=Plan(header=plan.header, regions=(broken,)))
+    report = _apply(project, plan=replace(plan, regions=(broken,)))
     assert report.failed == 1
     assert "unbalanced" in report.outcomes[0][1].detail
 
@@ -265,11 +292,11 @@ def test_check_output_dir_allows_a_sibling(tmp_path: Path) -> None:
 
 
 def test_font_precedence_is_cli_then_region_then_header(font_dir: Path) -> None:
-    plan = Plan(
-        header=_header(font="Comic Sans MS"),
-        regions=(
-            _region("a.png", "0" * 64, id="header-font"),
-            _region("a.png", "0" * 64, id="region-font", font="Marker Felt"),
+    plan = make_plan(
+        _header(font="Comic Sans MS"),
+        (
+            _region("a.png", id="header-font"),
+            _region("a.png", id="region-font", font="Marker Felt"),
         ),
     )
     styles = resolve_styles(plan, None, require_bold=False)
@@ -283,7 +310,7 @@ def test_font_precedence_is_cli_then_region_then_header(font_dir: Path) -> None:
 def test_a_missing_font_is_an_error_not_a_substitution(tmp_path: Path, font_dir: Path) -> None:
     pages = tmp_path / "pages"
     pages.mkdir()
-    plan = Plan(header=_header(font="Nonexistent Face"), regions=(_region("a.png", "0" * 64),))
+    plan = make_plan(_header(font="Nonexistent Face"), (_region("a.png"),))
     with pytest.raises(ComictransError, match="not found"):
         apply_plan(plan, pages / "plan.yaml", tmp_path / "out", ApplyConfig())
 
@@ -292,9 +319,7 @@ def test_region_font_size_override_is_honoured(
     project: tuple[Path, Path, Plan], font_dir: Path
 ) -> None:
     _, _, plan = project
-    styles = resolve_styles(
-        Plan(header=plan.header, regions=(_region("a.png", "0" * 64, font_size=17),)), None
-    )
+    styles = resolve_styles(make_plan(plan.header, (_region("a.png", font_size=17),)), None)
     assert styles["page-001"].size == 17
 
 
@@ -338,9 +363,10 @@ def test_output_is_written_flat_from_a_nested_source(tmp_path: Path, font_dir: P
     source.mkdir(parents=True)
     image = save_page(_page_array(), source / "page-001.png")
     plan_path = tmp_path / "plan.yaml"
-    plan = Plan(
-        header=_header(),
-        regions=(_region("chapter/pages/page-001.png", sha256_file(image)),),
+    plan = make_plan(
+        _header(),
+        (_region("chapter/pages/page-001.png"),),
+        {"chapter/pages/page-001.png": sha256_file(image)},
     )
     write_plan(plan, plan_path)
 
@@ -364,8 +390,8 @@ def test_an_unedited_translation_is_rendered_but_reported(
     # Extract seeds translation with source_text, so a balloon you never got
     # to renders its own Italian back onto the page. It must not pass silently.
     _, _, plan = project
-    seeded = _region("page-001.png", plan.regions[0].image_sha256, translation="CIAO A TUTTI")
-    report = _apply(project, plan=Plan(header=plan.header, regions=(seeded,)))
+    seeded = _region("page-001.png", translation="CIAO A TUTTI")
+    report = _apply(project, plan=replace(plan, regions=(seeded,)))
 
     assert report.rendered == 1, "a seeded region still renders"
     assert [outcome.region_id for _, outcome in report.unedited] == ["page-001"]
@@ -383,8 +409,8 @@ def test_whitespace_only_edits_do_not_count_as_translated(
     project: tuple[Path, Path, Plan], font_dir: Path
 ) -> None:
     _, _, plan = project
-    seeded = _region("page-001.png", plan.regions[0].image_sha256, translation="  CIAO A TUTTI\n")
-    report = _apply(project, plan=Plan(header=plan.header, regions=(seeded,)))
+    seeded = _region("page-001.png", translation="  CIAO A TUTTI\n")
+    report = _apply(project, plan=replace(plan, regions=(seeded,)))
     assert len(report.unedited) == 1
 
 
@@ -398,7 +424,7 @@ def test_a_region_rendered_below_the_minimum_is_reported(
     long = plan.regions[0].with_translation(
         "CONSIDERABLY MORE DIALOGUE THAN THIS BALLOON WAS DRAWN TO HOLD AT THAT SIZE"
     )
-    report = _apply(project, plan=Plan(header=plan.header, regions=(long,)), config=config)
+    report = _apply(project, plan=replace(plan, regions=(long,)), config=config)
 
     assert report.rendered == 1, "it should render small rather than fail"
     assert report.failed == 0

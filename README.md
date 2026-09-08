@@ -298,7 +298,7 @@ YAML, UTF-8, stable key order, hand-editable. One entry per detected region.
 Comments you add are preserved.
 
 ```yaml
-version: 1
+version: 2
 generator: comictrans 0.1.0
 created: 2026-09-06T19:22:04Z
 source_language: it
@@ -308,10 +308,14 @@ font: Comic Sans MS
 case: upper
 font_size_min_ratio: 0.012
 condense_min: 0.9
+images:
+  - name: page-001.png
+    sha256: 3ac70d…
+  - name: page-002.png
+    sha256: 9f2b1c…
 regions:
   - id: page-002-003
     image: page-002.png
-    image_sha256: 9f2b1c…
     order: 3
     geometry: exact
     polygon: [[120, 88], [186, 71], [244, 96], [230, 168], [131, 160]]
@@ -327,6 +331,10 @@ regions:
     notes: ""
 ```
 
+- `images` lists every page the plan covers, in the order they were read,
+  with the hash each one had at extract time. A page with no text on it is
+  listed too: `apply` copies it through so the output is the whole chapter,
+  and `review` can show it. `regions` may name only some of them.
 - `translation` is seeded with the extracted source text so you can edit it
   in place rather than retyping into a blank field — unless the reading does
   not look like text at all, in which case it is left empty (see below).
@@ -360,8 +368,12 @@ regions:
 - Per-region `font` and `font_size` override the header.
 
 Loading validates: unknown keys, malformed or self-intersecting polygons, bad
-colours, duplicate ids, and image-hash mismatches are all errors that name the
-offending line.
+colours, duplicate ids, a region naming an image the `images` list does not
+have, and image-hash mismatches are all errors that name the offending line.
+
+Version 1 plans, which carried an `image_sha256` on every region and had no
+`images` list, still load: the list is derived from the regions and the plan
+is a version 2 one from then on. Saving it writes the new shape.
 
 ## Fonts
 

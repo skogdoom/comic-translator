@@ -6,7 +6,16 @@ valid plan file looks like.
 
 from __future__ import annotations
 
-PLAN_VERSION = 1
+PLAN_VERSION = 2
+
+READABLE_VERSIONS: frozenset[int] = frozenset({1, 2})
+"""Versions the reader accepts, as against the one it writes.
+
+Version 2 moved each page's hash out of every region and into a top-level
+``images`` list, and added ``manual`` geometry. A version 1 file carries the
+same information — every region names its image and its hash — so it is
+upgraded on the way in rather than refused. Refusing would orphan every plan
+written before the change, translations and all."""
 
 FONT_SIZE_MIN_RATIO_RANGE = (0.0001, 1.0)
 CONDENSE_MIN_RANGE = (0.5, 1.0)
@@ -31,14 +40,16 @@ HEADER_KEY_ORDER: tuple[str, ...] = (
     "condense_min",
 )
 
-TOP_LEVEL_KEYS: frozenset[str] = frozenset({*HEADER_KEY_ORDER, "regions"})
+IMAGE_KEY_ORDER: tuple[str, ...] = ("name", "sha256")
+IMAGE_KEYS: frozenset[str] = frozenset(IMAGE_KEY_ORDER)
+
+TOP_LEVEL_KEYS: frozenset[str] = frozenset({*HEADER_KEY_ORDER, "images", "regions"})
 
 # Editable prose last, so the bits you actually touch sit together at the
 # bottom of each region block.
 REGION_KEY_ORDER: tuple[str, ...] = (
     "id",
     "image",
-    "image_sha256",
     "order",
     "geometry",
     "polygon",
@@ -58,7 +69,6 @@ REQUIRED_REGION_KEYS: frozenset[str] = frozenset(
     {
         "id",
         "image",
-        "image_sha256",
         "order",
         "geometry",
         "polygon",
@@ -71,6 +81,10 @@ REQUIRED_REGION_KEYS: frozenset[str] = frozenset(
 )
 
 REGION_KEYS: frozenset[str] = frozenset(REGION_KEY_ORDER)
+
+LEGACY_REGION_KEYS: frozenset[str] = REGION_KEYS | {"image_sha256"}
+"""What a version 1 region may carry: the current keys plus the hash that
+moved to the images list."""
 
 FILE_HEADER_COMMENT = """\
 comictrans plan file. Hand-edit this, then run: comictrans apply
@@ -85,6 +99,9 @@ comictrans plan file. Hand-edit this, then run: comictrans apply
                 typeset area; apply never re-runs detection.
   geometry      'approximate' means no clean balloon outline was found and
                 this is a padded box around the text. Check those.
+  images        every page this plan covers and the hash it had when extract
+                read it, including pages no text was found on. Apply copies
+                those through unchanged.
 
 font, case and sizes in the header apply to every region; a region may
 override font and font_size on its own.

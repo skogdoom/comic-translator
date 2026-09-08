@@ -15,8 +15,8 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString, LiteralScalarString
 
 from ..errors import InputError
-from ..model import Plan, PlanHeader, Region
-from .schema import FILE_HEADER_COMMENT, REGION_KEY_ORDER
+from ..model import Plan, PlanHeader, PlanImage, Region
+from .schema import FILE_HEADER_COMMENT, IMAGE_KEY_ORDER, PLAN_VERSION, REGION_KEY_ORDER
 
 
 def _yaml() -> YAML:
@@ -54,7 +54,6 @@ def region_to_node(region: Region) -> CommentedMap:
     values: dict[str, object] = {
         "id": region.id,
         "image": region.image,
-        "image_sha256": region.image_sha256,
         "order": region.order,
         "geometry": str(region.geometry),
         "polygon": _polygon_node(region),
@@ -85,7 +84,11 @@ def region_to_node(region: Region) -> CommentedMap:
 
 def header_to_node(header: PlanHeader) -> CommentedMap:
     node = CommentedMap()
-    node["version"] = header.version
+    # The number describes the shape of the file, and this writer only knows
+    # how to write one shape, so it says so rather than repeating whatever the
+    # header happens to hold. That is what upgrades a version 1 plan: read it,
+    # save it, and the file on disk is the current form.
+    node["version"] = PLAN_VERSION
     node["generator"] = header.generator
     node["created"] = header.created
     node["source_language"] = header.source_language
@@ -98,8 +101,17 @@ def header_to_node(header: PlanHeader) -> CommentedMap:
     return node
 
 
+def image_to_node(image: PlanImage) -> CommentedMap:
+    node = CommentedMap()
+    values = {"name": image.name, "sha256": image.sha256}
+    for key in IMAGE_KEY_ORDER:
+        node[key] = values[key]
+    return node
+
+
 def plan_to_node(plan: Plan) -> CommentedMap:
     node = header_to_node(plan.header)
+    node["images"] = CommentedSeq(image_to_node(image) for image in plan.images)
     regions = CommentedSeq(region_to_node(region) for region in plan.regions)
     node["regions"] = regions
     node.yaml_set_start_comment(FILE_HEADER_COMMENT)

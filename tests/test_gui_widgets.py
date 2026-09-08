@@ -11,15 +11,24 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import Box, Color, Geometry, PlanHeader, PlanImage, Region, TextCase
 from comictrans.planfile import load_plan, write_plan
+from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
 
-from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, make_page_array, save_page
+from .conftest import (
+    ART_DARK,
+    BALLOON_WHITE,
+    INK_BLACK,
+    make_page_array,
+    make_plan,
+    save_page,
+)
 
 pytest.importorskip("PySide6")
 
@@ -37,7 +46,7 @@ TEXT_B = Box(330, 110, 470, 140)
 
 def _header(**overrides: object) -> PlanHeader:
     base: dict[str, object] = {
-        "version": 1,
+        "version": PLAN_VERSION,
         "generator": "comictrans test",
         "created": "2026-09-07T12:00:00Z",
         "source_language": "it",
@@ -52,11 +61,10 @@ def _header(**overrides: object) -> PlanHeader:
     return PlanHeader(**base)  # type: ignore[arg-type]
 
 
-def _region(image: str, digest: str, **overrides: object) -> Region:
+def _region(image: str, **overrides: object) -> Region:
     base: dict[str, object] = {
         "id": "page-001",
         "image": image,
-        "image_sha256": digest,
         "order": 1,
         "geometry": Geometry.EXACT,
         "polygon": BALLOON_A.as_polygon(),
@@ -92,29 +100,26 @@ def two_page_plan(tmp_path: Path) -> Path:
         ),
         source / "page-002.png",
     )
-    digest1, digest2 = sha256_file(page1), sha256_file(page2)
-    plan = Plan(
-        header=_header(),
-        regions=(
+    digests = {"page-001.png": sha256_file(page1), "page-002.png": sha256_file(page2)}
+    plan = make_plan(
+        _header(),
+        (
             _region(
                 "page-001.png",
-                digest1,
                 id="page-001-001",
                 order=1,
                 polygon=BALLOON_A.as_polygon(),
             ),
             _region(
                 "page-001.png",
-                digest1,
                 id="page-001-002",
                 order=2,
                 polygon=BALLOON_B.as_polygon(),
                 translation="",  # held back
             ),
-            _region(
-                "page-002.png", digest2, id="page-002-001", order=1, polygon=BALLOON_A.as_polygon()
-            ),
+            _region("page-002.png", id="page-002-001", order=1, polygon=BALLOON_A.as_polygon()),
         ),
+        digests,
     )
     plan_path = source / "comic-plan.yaml"
     write_plan(plan, plan_path)
@@ -136,6 +141,37 @@ def test_opening_a_plan_populates_the_page_list_and_lands_on_the_first_region(
     assert window._current_image == "page-001.png"
     assert window._inspector._id_label.text().startswith("page-001-001")
     assert window._inspector._translation.toPlainText() == "HELLO"
+
+
+@pytest.fixture
+def plan_with_a_blank_page(tmp_path: Path, two_page_plan: Path) -> Path:
+    """The two-page plan with a third page nothing was found on."""
+    source = two_page_plan.parent
+    blank = save_page(make_page_array((600, 260), ART_DARK, []), source / "page-003.png")
+    plan = load_plan(two_page_plan, check_images=False)
+    write_plan(
+        replace(plan, images=(*plan.images, PlanImage("page-003.png", sha256_file(blank)))),
+        two_page_plan,
+        force=True,
+    )
+    return two_page_plan
+
+
+def test_a_page_with_no_regions_is_listed_and_can_be_opened(
+    qapp: object, plan_with_a_blank_page: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(plan_with_a_blank_page)
+
+    assert window._pages.count() == 3
+    assert "page-003.png" in window._pages.item(2).text()
+    assert "0 region" in window._pages.item(2).text()
+
+    window._pages.select_image("page-003.png")
+
+    assert window._current_image == "page-003.png"
+    assert window._canvas._items == {}
+    assert window._inspector._id_label.text() == "\u2014", "nothing to inspect"
 
 
 def test_selecting_a_page_switches_the_canvas_and_inspector(
@@ -321,9 +357,10 @@ def test_render_preview_reports_a_font_error_instead_of_crashing(
     )
     plan_path = source / "comic-plan.yaml"
     write_plan(
-        Plan(
-            header=_header(font="Definitely Not A Real Font XYZ"),
-            regions=(_region("page-001.png", sha256_file(image)),),
+        make_plan(
+            _header(font="Definitely Not A Real Font XYZ"),
+            (_region("page-001.png"),),
+            {"page-001.png": sha256_file(image)},
         ),
         plan_path,
     )

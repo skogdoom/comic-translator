@@ -156,6 +156,8 @@ def test_extract_then_apply_round_trip(path: Path, tmp_path: Path, font_dir: Pat
     Asserts the two rules that matter most — the source is never written to,
     and everything outside a region's polygon is byte-identical to the source.
     """
+    from dataclasses import replace
+
     import numpy as np
     from PIL import Image
 
@@ -163,7 +165,6 @@ def test_extract_then_apply_round_trip(path: Path, tmp_path: Path, font_dir: Pat
     from comictrans.config import ApplyConfig, ExtractConfig
     from comictrans.erase import polygon_mask
     from comictrans.extract import extract
-    from comictrans.model import Plan
     from comictrans.planfile import write_plan
     from comictrans.util import sha256_file
 
@@ -183,9 +184,8 @@ def test_extract_then_apply_round_trip(path: Path, tmp_path: Path, font_dir: Pat
     if not plan.regions:
         pytest.skip(f"no regions detected on {path.name}")
 
-    translated = Plan(
-        header=plan.header,
-        regions=tuple(r.with_translation("TRANSLATED **TEXT** HERE") for r in plan.regions),
+    translated = replace(
+        plan, regions=tuple(r.with_translation("TRANSLATED **TEXT** HERE") for r in plan.regions)
     )
     write_plan(translated, plan_path, force=True)
 

@@ -111,14 +111,14 @@ def test_region_ids_are_stable_across_runs(
     assert [r.polygon for r in first.regions] == [r.polygon for r in second.regions]
 
 
-def test_regions_record_the_image_hash_and_a_relative_path(
+def test_pages_record_the_image_hash_and_a_relative_path(
     pages: tuple[Path, FakeRecognizer, list[Box]],
 ) -> None:
     directory, recognizer, _ = pages
     plan, _ = _run(directory, recognizer)
-    region = plan.regions[0]
-    assert region.image == "page1.png"
-    assert region.image_sha256 == sha256_file(directory / "page1.png")
+    assert plan.regions[0].image == "page1.png"
+    assert plan.image_names()[0] == "page1.png"
+    assert plan.sha256_for("page1.png") == sha256_file(directory / "page1.png")
 
 
 def test_plan_written_beside_pages_round_trips_and_verifies_hashes(
@@ -233,6 +233,10 @@ def test_a_page_with_no_text_is_reported_and_fails_the_run(
     assert not report.ok
     # The other pages still made it into the plan.
     assert [r.id for r in plan.regions] == ["page1-001", "page10-001"]
+    # And so did the empty one: it is a page of the comic, with nothing on it
+    # yet, and apply copies it through.
+    assert plan.image_names() == ("page1.png", "page2.png", "page10.png")
+    assert plan.regions_for("page2.png") == ()
 
 
 def test_a_broken_page_does_not_abort_the_run(
@@ -246,6 +250,9 @@ def test_a_broken_page_does_not_abort_the_run(
     assert report.pages_read == 2
     assert not report.ok
     assert [r.id for r in plan.regions] == ["page1-001", "page10-001"]
+    # A page that could not be read is not a page this plan covers: listing it
+    # would promise apply a file it cannot open.
+    assert plan.image_names() == ("page1.png", "page10.png")
 
 
 def test_non_image_files_are_skipped_and_reported(

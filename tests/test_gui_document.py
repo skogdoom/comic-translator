@@ -11,11 +11,19 @@ from comictrans.gui.document import (
     overlapping_region_ids,
     region_flags,
 )
-from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import Box, Color, Geometry, PlanHeader, PlanImage, Region, TextCase
 from comictrans.planfile import load_plan, write_plan
+from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
 
-from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, make_page_array, save_page
+from .conftest import (
+    ART_DARK,
+    BALLOON_WHITE,
+    INK_BLACK,
+    make_page_array,
+    make_plan,
+    save_page,
+)
 
 BALLOON = Box(80, 80, 520, 320)
 TEXT_BOX = Box(140, 170, 460, 210)
@@ -23,7 +31,7 @@ TEXT_BOX = Box(140, 170, 460, 210)
 
 def _header(**overrides: object) -> PlanHeader:
     base: dict[str, object] = {
-        "version": 1,
+        "version": PLAN_VERSION,
         "generator": "comictrans test",
         "created": "2026-09-07T12:00:00Z",
         "source_language": "it",
@@ -38,11 +46,10 @@ def _header(**overrides: object) -> PlanHeader:
     return PlanHeader(**base)  # type: ignore[arg-type]
 
 
-def _region(image: str, digest: str, **overrides: object) -> Region:
+def _region(image: str, **overrides: object) -> Region:
     base: dict[str, object] = {
         "id": "page-001",
         "image": image,
-        "image_sha256": digest,
         "order": 1,
         "geometry": Geometry.EXACT,
         "polygon": BALLOON.as_polygon(),
@@ -68,20 +75,19 @@ def project(tmp_path: Path) -> Path:
         source / "page-001.png",
     )
     plan_path = source / "comic-plan.yaml"
-    digest = sha256_file(image)
-    plan = Plan(
-        header=_header(),
-        regions=(
-            _region("page-001.png", digest, id="page-001-001", order=1),
+    plan = make_plan(
+        _header(),
+        (
+            _region("page-001.png", id="page-001-001", order=1),
             _region(
                 "page-001.png",
-                digest,
                 id="page-001-002",
                 order=2,
                 polygon=Box(0, 0, 10, 10).as_polygon(),
                 translation="",
             ),
         ),
+        {"page-001.png": sha256_file(image)},
     )
     write_plan(plan, plan_path)
     return plan_path
@@ -93,6 +99,20 @@ def test_open_loads_the_plan_and_starts_clean(project: Path) -> None:
     assert not doc.dirty
     assert doc.images() == ("page-001.png",)
     assert len(doc.regions_for("page-001.png")) == 2
+
+
+def test_a_page_with_no_regions_is_still_a_page_of_the_document() -> None:
+    # The GUI lists every page the plan covers, not every page something was
+    # found on: a blank one is where a missed balloon gets drawn by hand.
+    blank = PlanImage(name="page-002.png", sha256="0" * 64)
+    doc = PlanDocument(
+        make_plan(_header(), (_apart(1),), extra_images=(blank,)), Path("comic-plan.yaml")
+    )
+
+    assert doc.images() == ("page-001.png", "page-002.png")
+    assert doc.regions_for("page-002.png") == ()
+    assert doc.summary("page-002.png").region_count == 0
+    assert doc.summary("page-002.png").flagged_count == 0
 
 
 def test_open_propagates_plan_errors(tmp_path: Path) -> None:
@@ -171,7 +191,7 @@ def test_save_as_moves_the_document_to_the_new_path(project: Path, tmp_path: Pat
 def test_save_as_refuses_to_clobber_without_force(project: Path, tmp_path: Path) -> None:
     doc = PlanDocument.open(project)
     other = tmp_path / "already-exists.yaml"
-    write_plan(Plan(header=_header(), regions=()), other)
+    write_plan(make_plan(_header(), ()), other)
     with pytest.raises(InputError, match="already exists"):
         doc.save_as(other)
     assert doc.path == project, "a refused save must not move the document"
@@ -185,25 +205,25 @@ def test_overlapping_region_ids_ignores_non_actionable_regions() -> None:
     # neither is ever drawn, so they cannot overlap on the page.
     box = Box(0, 0, 100, 100)
     regions = [
-        _region("p.png", "0" * 64, id="a", polygon=box.as_polygon(), skip=True),
-        _region("p.png", "0" * 64, id="b", polygon=box.as_polygon(), translation=""),
-        _region("p.png", "0" * 64, id="c", polygon=box.as_polygon()),
-        _region("p.png", "0" * 64, id="d", polygon=box.as_polygon()),
+        _region("p.png", id="a", polygon=box.as_polygon(), skip=True),
+        _region("p.png", id="b", polygon=box.as_polygon(), translation=""),
+        _region("p.png", id="c", polygon=box.as_polygon()),
+        _region("p.png", id="d", polygon=box.as_polygon()),
     ]
     assert overlapping_region_ids(regions) == {"c", "d"}
 
 
 def test_overlapping_region_ids_needs_real_overlap_not_a_touching_edge() -> None:
     regions = [
-        _region("p.png", "0" * 64, id="a", polygon=Box(0, 0, 100, 100).as_polygon()),
-        _region("p.png", "0" * 64, id="b", polygon=Box(100, 0, 200, 100).as_polygon()),
+        _region("p.png", id="a", polygon=Box(0, 0, 100, 100).as_polygon()),
+        _region("p.png", id="b", polygon=Box(100, 0, 200, 100).as_polygon()),
     ]
     assert overlapping_region_ids(regions) == frozenset()
 
 
 def test_region_flags_separates_skipped_from_held_back() -> None:
-    skipped = _region("p.png", "0" * 64, id="a", translation="", skip=True)
-    held_back = _region("p.png", "0" * 64, id="b", translation="", skip=False)
+    skipped = _region("p.png", id="a", translation="", skip=True)
+    held_back = _region("p.png", id="b", translation="", skip=False)
 
     skipped_flags = region_flags(skipped, overlapping_ids=frozenset())
     held_back_flags = region_flags(held_back, overlapping_ids=frozenset())
@@ -215,8 +235,8 @@ def test_region_flags_separates_skipped_from_held_back() -> None:
 
 
 def test_region_flags_reports_unedited_translations() -> None:
-    same_as_source = _region("p.png", "0" * 64, source_text="CIAO", translation="CIAO")
-    edited = _region("p.png", "0" * 64, source_text="CIAO", translation="HELLO")
+    same_as_source = _region("p.png", source_text="CIAO", translation="CIAO")
+    edited = _region("p.png", source_text="CIAO", translation="HELLO")
 
     assert region_flags(same_as_source, overlapping_ids=frozenset()).unedited
     assert not region_flags(edited, overlapping_ids=frozenset()).unedited
@@ -232,7 +252,7 @@ def test_summary_counts_regions_and_flags_for_one_image(project: Path) -> None:
 
 def _document(*regions: Region) -> PlanDocument:
     """A document built straight from regions: nothing to write or open."""
-    return PlanDocument(Plan(header=_header(), regions=regions), Path("comic-plan.yaml"))
+    return PlanDocument(make_plan(_header(), regions), Path("comic-plan.yaml"))
 
 
 def _apart(index: int, **overrides: object) -> Region:
@@ -240,7 +260,6 @@ def _apart(index: int, **overrides: object) -> Region:
     left = index * 200
     return _region(
         "page-001.png",
-        "0" * 64,
         id=f"r{index}",
         order=index,
         polygon=Box(left, 0, left + 100, 100).as_polygon(),
@@ -257,7 +276,7 @@ def test_adjacent_region_walks_the_whole_plan_not_just_one_page() -> None:
     doc = _document(
         _apart(1),
         _apart(2),
-        _region("page-002.png", "1" * 64, id="r3", polygon=Box(0, 0, 100, 100).as_polygon()),
+        _region("page-002.png", id="r3", polygon=Box(0, 0, 100, 100).as_polygon()),
     )
     assert doc.adjacent_region("r1", forward=True) == "r2"
     assert doc.adjacent_region("r2", forward=True) == "r3", "off the end of a page, onto the next"

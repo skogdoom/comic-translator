@@ -14,7 +14,6 @@ def _region(fill: Color, text: Color, polygon: object = None) -> Region:
     return Region(
         id="page-001",
         image="page.png",
-        image_sha256="0" * 64,
         order=1,
         geometry=Geometry.EXACT,
         polygon=polygon or Box(100, 100, 300, 300).as_polygon(),  # type: ignore[arg-type]

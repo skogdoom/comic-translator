@@ -20,6 +20,7 @@ from ..model import (
     Geometry,
     Plan,
     PlanHeader,
+    PlanImage,
     Point,
     Polygon,
     Region,
@@ -30,7 +31,10 @@ from ..util import sha256_file
 from .schema import (
     CONDENSE_MIN_RANGE,
     FONT_SIZE_MIN_RATIO_RANGE,
+    IMAGE_KEYS,
+    LEGACY_REGION_KEYS,
     PLAN_VERSION,
+    READABLE_VERSIONS,
     REGION_KEYS,
     REQUIRED_REGION_KEYS,
     TOP_LEVEL_KEYS,
@@ -186,13 +190,57 @@ def _parse_polygon(cursor: _Cursor) -> Polygon:
     return polygon
 
 
-def _parse_region(node: Any, index: int, path: Path | None) -> Region:
+def _parse_image(node: Any, index: int, path: Path | None) -> PlanImage:
+    label = f"images[{index}]"
+    if not hasattr(node, "keys"):
+        raise PlanError(f"{label} must be a mapping, got {type(node).__name__}", path=path)
+
+    cursor = _Cursor(node, path, label)
+    cursor.reject_unknown(IMAGE_KEYS)
+    missing = IMAGE_KEYS - set(node.keys())
+    if missing:
+        raise PlanError(
+            f"{label}: missing required key(s) {', '.join(sorted(missing))}",
+            path=path,
+            line=_line_of(node),
+        )
+    return PlanImage(
+        name=cursor.string("name", allow_empty=False),
+        sha256=cursor.string("sha256", allow_empty=False),
+    )
+
+
+def _images_from_regions(raw_regions: Sequence[Any], path: Path | None) -> tuple[PlanImage, ...]:
+    """Rebuild the images list a version 1 file does not carry.
+
+    It has the same facts, spread across the regions: each one names its image
+    and the hash that image had. First-seen order, which for a plan written by
+    extract is the order the pages were read.
+    """
+    found: dict[str, str] = {}
+    for index, node in enumerate(raw_regions):
+        if not hasattr(node, "keys"):
+            raise PlanError(f"region[{index}] must be a mapping", path=path)
+        name, digest = node.get("image"), node.get("image_sha256")
+        if not isinstance(name, str) or not isinstance(digest, str):
+            raise PlanError(
+                f"region[{index}]: a version 1 plan needs image and image_sha256",
+                path=path,
+                line=_line_of(node),
+            )
+        found.setdefault(name, digest)
+    return tuple(PlanImage(name=name, sha256=digest) for name, digest in found.items())
+
+
+def _parse_region(
+    node: Any, index: int, path: Path | None, *, allowed_keys: frozenset[str]
+) -> Region:
     label = f"region[{index}]"
     if not hasattr(node, "keys"):
         raise PlanError(f"{label} must be a mapping, got {type(node).__name__}", path=path)
 
     cursor = _Cursor(node, path, label)
-    cursor.reject_unknown(REGION_KEYS)
+    cursor.reject_unknown(allowed_keys)
     missing = REQUIRED_REGION_KEYS - set(node.keys())
     if missing:
         raise PlanError(
@@ -210,7 +258,6 @@ def _parse_region(node: Any, index: int, path: Path | None) -> Region:
     return Region(
         id=region_id,
         image=cursor.string("image", allow_empty=False),
-        image_sha256=cursor.string("image_sha256", allow_empty=False),
         order=cursor.integer("order", minimum=0),
         geometry=Geometry(cursor.choice("geometry", _VALID_GEOMETRY)),
         polygon=_parse_polygon(cursor),
@@ -230,14 +277,17 @@ def _parse_region(node: Any, index: int, path: Path | None) -> Region:
 def _parse_header(node: Any, path: Path | None) -> PlanHeader:
     cursor = _Cursor(node, path, "header")
     version = cursor.integer("version", minimum=1)
-    if version != PLAN_VERSION:
+    if version not in READABLE_VERSIONS:
+        readable = ", ".join(str(v) for v in sorted(READABLE_VERSIONS))
         raise cursor.fail(
-            f"unsupported plan version {version}; this build writes and reads "
-            f"version {PLAN_VERSION}",
+            f"unsupported plan version {version}; this build writes version "
+            f"{PLAN_VERSION} and reads {readable}",
             "version",
         )
     return PlanHeader(
-        version=version,
+        # Always the current version in memory: a version 1 file is upgraded
+        # as it is read, and saving it writes the upgraded form.
+        version=PLAN_VERSION,
         generator=cursor.string("generator"),
         created=cursor.string("created"),
         source_language=cursor.string("source_language", allow_empty=False),
@@ -277,6 +327,7 @@ def loads(text: str, *, path: Path | None = None) -> Plan:
     root = _Cursor(data, path, "plan")
     root.reject_unknown(TOP_LEVEL_KEYS)
     header = _parse_header(data, path)
+    written_version = data.get("version")
 
     raw_regions = data.get("regions")
     if raw_regions is None:
@@ -284,20 +335,60 @@ def loads(text: str, *, path: Path | None = None) -> Plan:
     if not isinstance(raw_regions, Sequence) or isinstance(raw_regions, str):
         raise PlanError("'regions' must be a list", path=path, line=_line_of(data, "regions"))
 
+    images = _parse_images(data, raw_regions, written_version, path)
+
+    # A version 1 region carries its image's hash; a version 2 one does not,
+    # because the images list owns it now.
+    allowed = LEGACY_REGION_KEYS if written_version == 1 else REGION_KEYS
+    known_images = {image.name for image in images}
+
     regions: list[Region] = []
     seen: dict[str, int] = {}
     for index, item in enumerate(raw_regions):
-        region = _parse_region(item, index, path)
+        region = _parse_region(item, index, path, allowed_keys=allowed)
         if region.id in seen:
             raise PlanError(
                 f"duplicate region id {region.id!r} (first seen at region[{seen[region.id]}])",
                 path=path,
                 line=_item_line(raw_regions, index),
             )
+        if region.image not in known_images:
+            raise PlanError(
+                f"region {region.id!r}: image {region.image!r} is not in the plan's images",
+                path=path,
+                line=_item_line(raw_regions, index),
+            )
         seen[region.id] = index
         regions.append(region)
 
-    return Plan(header=header, regions=tuple(regions))
+    return Plan(header=header, images=images, regions=tuple(regions))
+
+
+def _parse_images(
+    data: Any, raw_regions: Sequence[Any], written_version: object, path: Path | None
+) -> tuple[PlanImage, ...]:
+    raw_images = data.get("images")
+    if written_version == 1:
+        if raw_images is not None:
+            raise PlanError(
+                "a version 1 plan does not have an 'images' list; set version: 2 to use one",
+                path=path,
+                line=_line_of(data, "images"),
+            )
+        return _images_from_regions(raw_regions, path)
+
+    if raw_images is None:
+        raise PlanError("missing required key 'images'", path=path, line=_line_of(data))
+    if not isinstance(raw_images, Sequence) or isinstance(raw_images, str):
+        raise PlanError("'images' must be a list", path=path, line=_line_of(data, "images"))
+
+    images = tuple(_parse_image(item, index, path) for index, item in enumerate(raw_images))
+    names: set[str] = set()
+    for image in images:
+        if image.name in names:
+            raise PlanError(f"duplicate image {image.name!r} in 'images'", path=path)
+        names.add(image.name)
+    return images
 
 
 def verify_images(plan: Plan, plan_path: Path) -> None:
@@ -308,22 +399,20 @@ def verify_images(plan: Plan, plan_path: Path) -> None:
     wrong place, so this is an error rather than a warning.
     """
     base = plan_path.parent
-    for image in plan.images():
-        regions = plan.regions_for(image)
-        resolved = (base / image).resolve()
+    for image in plan.images:
+        resolved = (base / image.name).resolve()
         if not resolved.is_file():
             raise PlanError(
-                f"source image not found: {image} (resolved to {resolved})", path=plan_path
+                f"source image not found: {image.name} (resolved to {resolved})", path=plan_path
             )
         actual = sha256_file(resolved)
-        for region in regions:
-            if region.image_sha256 != actual:
-                raise PlanError(
-                    f"region {region.id!r}: {image} has changed since extract "
-                    f"(expected {region.image_sha256[:12]}…, found {actual[:12]}…). "
-                    "Re-run extract, or restore the original image.",
-                    path=plan_path,
-                )
+        if image.sha256 != actual:
+            raise PlanError(
+                f"{image.name} has changed since extract "
+                f"(expected {image.sha256[:12]}…, found {actual[:12]}…). "
+                "Re-run extract, or restore the original image.",
+                path=plan_path,
+            )
 
 
 def load_plan(path: Path, *, check_images: bool = True) -> Plan:

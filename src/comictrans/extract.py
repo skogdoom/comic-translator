@@ -23,7 +23,7 @@ from .detect import DetectedRegion, find_regions
 from .detect.color import interior_uniformity
 from .errors import ComictransError
 from .imaging import PageImage, collect_inputs, load_page
-from .model import Geometry, Plan, PlanHeader, Region, TextCase
+from .model import Geometry, Plan, PlanHeader, PlanImage, Region, TextCase
 from .ocr import TextRecognizer
 from .ocr.grouping import (
     lettering_matches_page,
@@ -125,7 +125,6 @@ def _to_region(
     return Region(
         id=_region_id(page, order),
         image=relative_posix(page.path, plan_dir),
-        image_sha256=page.sha256,
         order=order,
         geometry=detected.geometry,
         polygon=detected.polygon,
@@ -149,8 +148,12 @@ def extract_page(
     config: ExtractConfig,
     plan_dir: Path,
     debug_dir: Path | None = None,
-) -> list[Region]:
-    """Detect and OCR one page. Order restarts at 1 on every page."""
+) -> tuple[PlanImage, list[Region]]:
+    """Detect and OCR one page. Order restarts at 1 on every page.
+
+    Returns the page's identity as well as its regions, because a page
+    belongs in the plan whether or not anything was found on it.
+    """
     page = load_page(path)
     lines = recognizer.recognize(page, config.ocr)
     detected = find_regions(page, lines, config.detect)
@@ -159,7 +162,8 @@ def extract_page(
     # One yardstick for the whole page, from every line on it, so a region is
     # measured against the page rather than against itself.
     page_median = median_line_height([line for region in detected for line in region.lines])
-    return [
+    identity = PlanImage(name=relative_posix(page.path, plan_dir), sha256=page.sha256)
+    return identity, [
         _to_region(page, region, order, plan_dir, config, page_median)
         for order, region in enumerate(detected, start=1)
     ]
@@ -184,16 +188,21 @@ def extract(
         log.warning("skipping %s: %s", path.name, reason)
 
     plan_dir = plan_path.parent
+    pages: list[PlanImage] = []
     regions: list[Region] = []
     for path in images:
         try:
-            page_regions = extract_page(path, recognizer, config, plan_dir, debug_dir)
+            identity, page_regions = extract_page(path, recognizer, config, plan_dir, debug_dir)
         except ComictransError as exc:
             log.error("%s: %s", path.name, exc)
             report.failures.append((path, str(exc)))
             continue
 
         report.pages_read += 1
+        # Listed whether or not it holds text. A page with no balloons is
+        # still a page of the comic: apply copies it through so the output is
+        # the whole chapter, and review can show it to have one drawn on.
+        pages.append(identity)
         if not page_regions:
             log.warning("%s: no text regions found", path.name)
             report.empty_pages.append(path)
@@ -220,4 +229,4 @@ def extract(
         font_size_min_ratio=config.font_size_min_ratio,
         condense_min=config.condense_min,
     )
-    return Plan(header=header, regions=tuple(regions)), report
+    return Plan(header=header, images=tuple(pages), regions=tuple(regions)), report

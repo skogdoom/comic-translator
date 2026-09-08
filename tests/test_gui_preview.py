@@ -10,11 +10,19 @@ from comictrans.config import ApplyConfig
 from comictrans.gui.document import PlanDocument
 from comictrans.gui.preview import render_preview
 from comictrans.imaging import load_page
-from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import Box, Color, Geometry, PlanHeader, Region, TextCase
 from comictrans.planfile import write_plan
+from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
 
-from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, make_page_array, save_page
+from .conftest import (
+    ART_DARK,
+    BALLOON_WHITE,
+    INK_BLACK,
+    make_page_array,
+    make_plan,
+    save_page,
+)
 
 BALLOON = Box(80, 80, 520, 320)
 TEXT_BOX = Box(140, 170, 460, 210)
@@ -22,7 +30,7 @@ TEXT_BOX = Box(140, 170, 460, 210)
 
 def _header(**overrides: object) -> PlanHeader:
     base: dict[str, object] = {
-        "version": 1,
+        "version": PLAN_VERSION,
         "generator": "comictrans test",
         "created": "2026-09-07T12:00:00Z",
         "source_language": "it",
@@ -37,11 +45,10 @@ def _header(**overrides: object) -> PlanHeader:
     return PlanHeader(**base)  # type: ignore[arg-type]
 
 
-def _region(image: str, digest: str, **overrides: object) -> Region:
+def _region(image: str, **overrides: object) -> Region:
     base: dict[str, object] = {
         "id": "page-001",
         "image": image,
-        "image_sha256": digest,
         "order": 1,
         "geometry": Geometry.EXACT,
         "polygon": BALLOON.as_polygon(),
@@ -66,10 +73,7 @@ def document(tmp_path: Path) -> PlanDocument:
         source / "page-001.png",
     )
     plan_path = source / "comic-plan.yaml"
-    plan = Plan(
-        header=_header(),
-        regions=(_region("page-001.png", sha256_file(image)),),
-    )
+    plan = make_plan(_header(), (_region("page-001.png"),), {"page-001.png": sha256_file(image)})
     write_plan(plan, plan_path)
     return PlanDocument.open(plan_path)
 
@@ -122,16 +126,16 @@ def test_problems_flags_a_region_that_does_not_fit(tmp_path: Path, font_dir: Pat
     # A polygon far too small for any amount of shrinking or condensing to
     # rescue, the same recipe test_apply.py uses for a genuine fit failure.
     tiny_polygon = Box(90, 90, 100, 100).as_polygon()
-    plan = Plan(
-        header=_header(),
-        regions=(
+    plan = make_plan(
+        _header(),
+        (
             _region(
                 "page-001.png",
-                sha256_file(image),
                 polygon=tiny_polygon,
                 translation="A TRANSLATION FAR TOO LONG TO EVER FIT INSIDE THIS TINY BOX",
             ),
         ),
+        {"page-001.png": sha256_file(image)},
     )
     plan_path = source / "comic-plan.yaml"
     write_plan(plan, plan_path)

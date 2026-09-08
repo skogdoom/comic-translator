@@ -128,7 +128,7 @@ def apply_plan(
     force: bool = False,
 ) -> ApplyReport:
     """Render every page the plan refers to into ``output``."""
-    images = plan.images()
+    images = plan.image_names()
     sources = [source_for(plan_path, image) for image in images]
     check_output_dir(output, sorted({path.parent for path in sources}))
 

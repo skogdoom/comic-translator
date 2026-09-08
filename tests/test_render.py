@@ -59,7 +59,6 @@ def _region(region_id: str, box: Box, order: int, translation: str) -> Region:
     return Region(
         id=region_id,
         image="p.png",
-        image_sha256="0" * 64,
         order=order,
         geometry=Geometry.EXACT,
         polygon=box.as_polygon(),

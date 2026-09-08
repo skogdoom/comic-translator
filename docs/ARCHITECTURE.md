@@ -14,6 +14,28 @@ decision it needs is already in the plan file, which is what makes it
 deterministic and re-runnable: editing a translation and running it again
 changes the text and nothing else.
 
+## What the plan covers
+
+A plan holds two lists: the pages it was extracted from (`images`, each with
+the hash it had at the time) and the regions found on them. A page with no
+text on it is in the first and absent from the second, which is a page of the
+comic all the same — `apply` copies it through so the output is the whole
+chapter, and `review` can show it.
+
+The pages are their own list rather than something derived from the regions
+because the two answer different questions. Which files this plan describes is
+measured once, by `extract`, and does not change when regions are edited;
+which regions exist is what a person spends their time changing. Deleting the
+last region on a page, or drawing the first one on a blank one, then means
+what it says instead of quietly adding or removing a page.
+
+That also gives the hash exactly one home. In version 1 of the schema every
+region carried an `image_sha256`, so a page with three balloons stored it
+three times and a page with none stored it nowhere; the reader had to check
+that the copies agreed, and a page could only be verified if something had
+been found on it. Version 1 files still load — the list is derived from the
+regions they do have, and the plan is a version 2 one from then on.
+
 ## Module dependency rules
 
 `model` sits at the bottom and imports nothing of ours. Above it:
@@ -368,6 +390,10 @@ positional, so the moment detection changes they renumber and stop naming the
 same balloon. Matching is greedy by descending overlap and strictly one to
 one, so two old regions cannot both claim one new one — the better overlap
 wins and the loser is reported rather than silently folded in.
+
+The pages come from the fresh run, not the old plan. Which files exist and
+what they hash to is measured, like the polygons and the colours, so a page
+added to the directory appears and one deleted from it goes.
 
 Only what a person put there is carried: the translation where it was
 actually edited, plus notes, skip and the font overrides. A translation still

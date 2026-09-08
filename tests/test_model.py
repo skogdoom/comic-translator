@@ -6,7 +6,6 @@ from comictrans.model import (
     Box,
     Color,
     Geometry,
-    Plan,
     PlanHeader,
     Region,
     TextCase,
@@ -14,6 +13,8 @@ from comictrans.model import (
     polygon_bounds,
     polygon_is_simple,
 )
+
+from .conftest import make_plan
 
 
 def test_box_geometry() -> None:
@@ -65,7 +66,6 @@ def _region(image: str, region_id: str) -> Region:
     return Region(
         id=region_id,
         image=image,
-        image_sha256="0" * 64,
         order=1,
         geometry=Geometry.EXACT,
         polygon=((0, 0), (5, 0), (5, 5)),
@@ -77,11 +77,11 @@ def _region(image: str, region_id: str) -> Region:
 
 
 def test_plan_groups_regions_by_image_in_first_seen_order() -> None:
-    plan = Plan(
-        header=PlanHeader(1, "g", "now", "it", "en", "fake", "F", TextCase.UPPER, 0.012, 0.9),
-        regions=(_region("b.png", "b-1"), _region("a.png", "a-1"), _region("b.png", "b-2")),
+    plan = make_plan(
+        PlanHeader(2, "g", "now", "it", "en", "fake", "F", TextCase.UPPER, 0.012, 0.9),
+        (_region("b.png", "b-1"), _region("a.png", "a-1"), _region("b.png", "b-2")),
     )
-    assert plan.images() == ("b.png", "a.png")
+    assert plan.image_names() == ("b.png", "a.png")
     assert [r.id for r in plan.regions_for("b.png")] == ["b-1", "b-2"]
 
 
