@@ -17,8 +17,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ..model import Geometry, Plan, Region
+from ..model import Geometry, Plan, PlanHeader, Region, TextCase
 from ..planfile import load_plan, write_plan
+from ..planfile.schema import CONDENSE_MIN_RANGE, FONT_SIZE_MIN_RATIO_RANGE
+
+_NON_EMPTY_HEADER_FIELDS = frozenset({"font", "source_language", "target_language"})
+
+_HEADER_RANGES: dict[str, tuple[float, float]] = {
+    "font_size_min_ratio": FONT_SIZE_MIN_RATIO_RANGE,
+    "condense_min": CONDENSE_MIN_RANGE,
+}
+"""The reader's own limits, so an edit cannot outrun what will load again."""
 
 UNDO_LIMIT = 500
 """How many edits back the history goes.
@@ -137,7 +146,7 @@ class PlanDocument:
         self._clean = plan
         self._undo: list[Plan] = []
         self._redo: list[Plan] = []
-        self._run: tuple[str, str] | None = None
+        self._run: tuple[str | None, str] | None = None
 
     @property
     def dirty(self) -> bool:
@@ -256,13 +265,17 @@ class PlanDocument:
         )
         return updated
 
-    def _record(self, plan: Plan, *, run: tuple[str, str] | None) -> None:
+    def _record(self, plan: Plan, *, run: tuple[str | None, str] | None) -> None:
         """Move to ``plan``, pushing the current one onto the undo stack.
 
-        ``run`` identifies what is being edited, as region and field.
-        Consecutive edits carrying the same one are the same act of typing
-        and collapse into a single undo step — without that, every keystroke
-        would be its own, since that is how the inspector writes them.
+        ``run`` identifies what is being edited, as region and field, with a
+        region of ``None`` meaning the header — which no region id can
+        collide with, since the reader refuses an empty one.
+
+        Consecutive edits carrying the same ``run`` are the same act of
+        typing and collapse into a single undo step. Without that, every
+        keystroke would be its own, since that is how the inspector writes
+        them.
         """
         if run is None or run != self._run:
             self._undo.append(self.plan)
@@ -321,6 +334,55 @@ class PlanDocument:
     def set_font_size(self, region_id: str, font_size: int | None) -> Region:
         """``None`` clears the override, back to automatic fitting."""
         return self._update(region_id, font_size=font_size)
+
+    # -- the header ------------------------------------------------------
+
+    def regions_using_header_font(self) -> int:
+        """How many regions have no font of their own and follow the header."""
+        return sum(1 for region in self.plan.regions if region.font is None)
+
+    def _update_header(self, **changes: object) -> PlanHeader:
+        """Replace one field on the header, recording it like any other edit.
+
+        Validated, unlike the region setters. A region's fields carry no
+        invariants of their own, but the header's do — an empty font or a
+        condense floor below the schema's would write a plan file the reader
+        then refuses to open, which is a worse outcome than a rejected edit.
+        """
+        field = next(iter(changes))
+        value = changes[field]
+        if field in _NON_EMPTY_HEADER_FIELDS and not str(value).strip():
+            raise ValueError(f"header {field} cannot be empty")
+        if field in _HEADER_RANGES:
+            low, high = _HEADER_RANGES[field]
+            if not isinstance(value, int | float) or not low <= float(value) <= high:
+                raise ValueError(f"header {field} must be between {low} and {high}, got {value!r}")
+
+        updated = replace(self.plan.header, **changes)  # type: ignore[arg-type]
+        if updated == self.plan.header:
+            return self.plan.header
+        self._record(replace(self.plan, header=updated), run=(None, field))
+        return updated
+
+    def set_header_font(self, font: str) -> PlanHeader:
+        """The font every region without an override of its own is drawn in."""
+        return self._update_header(font=font.strip())
+
+    def set_header_case(self, case: TextCase) -> PlanHeader:
+        return self._update_header(case=case)
+
+    def set_header_font_size_min_ratio(self, ratio: float) -> PlanHeader:
+        return self._update_header(font_size_min_ratio=ratio)
+
+    def set_header_condense_min(self, condense_min: float) -> PlanHeader:
+        return self._update_header(condense_min=condense_min)
+
+    def set_header_source_language(self, language: str) -> PlanHeader:
+        return self._update_header(source_language=language.strip())
+
+    def set_header_target_language(self, language: str) -> PlanHeader:
+        """Also picks the hyphenation dictionary used when text is fitted."""
+        return self._update_header(target_language=language.strip())
 
     def save(self) -> None:
         """Write back to the file this document was opened from."""

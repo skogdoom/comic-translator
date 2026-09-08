@@ -25,7 +25,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QMessageBox
+from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
 from comictrans.gui.main_window import MainWindow
 
@@ -956,3 +956,127 @@ def test_the_zoom_actions_need_a_page(qapp: object, two_page_plan: Path) -> None
         window._zoom_actual_action,
     ):
         assert action.isEnabled()
+
+
+def test_the_header_dialog_writes_through_as_it_is_edited(
+    qapp: object, two_page_plan: Path
+) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog
+    from comictrans.model import TextCase
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+
+    dialog._font.setText("Chalkboard SE")
+    dialog._case.setCurrentIndex(dialog._case.findData(TextCase.PRESERVE))
+    dialog._condense.setValue(0.8)
+    dialog._target_language.setText("sv")
+
+    header = window.document.plan.header  # type: ignore[union-attr]
+    assert header.font == "Chalkboard SE"
+    assert header.case is TextCase.PRESERVE
+    assert header.condense_min == pytest.approx(0.8)
+    assert header.target_language == "sv"
+    assert window.isWindowModified() or window.document.dirty  # type: ignore[union-attr]
+
+
+def test_clearing_the_header_font_on_the_way_to_a_new_one_writes_nothing(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """An empty font is not a legal header value, so it must not be recorded."""
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+
+    dialog._font.setText("")
+
+    assert window.document.plan.header.font == "Comic Sans MS"  # type: ignore[union-attr]
+    assert not window.document.dirty  # type: ignore[union-attr]
+
+
+def test_the_header_dialog_offers_only_the_range_the_reader_accepts(
+    qapp: object, two_page_plan: Path
+) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog
+    from comictrans.planfile.schema import CONDENSE_MIN_RANGE, FONT_SIZE_MIN_RATIO_RANGE
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+
+    assert (dialog._min_ratio.minimum(), dialog._min_ratio.maximum()) == pytest.approx(
+        FONT_SIZE_MIN_RATIO_RANGE
+    )
+    assert (dialog._condense.minimum(), dialog._condense.maximum()) == pytest.approx(
+        CONDENSE_MIN_RANGE
+    )
+
+
+def test_the_header_dialog_says_how_far_the_font_reaches(qapp: object, two_page_plan: Path) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog, font_reach
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    assert font_reach(window.document) == "used by all 3 regions"  # type: ignore[arg-type]
+
+    window.document.set_font("page-001-001", "Marker Felt")  # type: ignore[union-attr]
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+
+    assert dialog._font_reach.text() == "used by 2 of 3 regions; the rest override it"
+
+
+def test_the_recorded_fields_are_shown_but_not_editable(qapp: object, two_page_plan: Path) -> None:
+    """You are not the authority on which OCR engine ran."""
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+
+    shown = " ".join(label.text() for label in dialog.findChildren(QLabel))
+    assert "fake" in shown, "the OCR engine is reported"
+    assert "comictrans test" in shown, "so is what wrote the plan"
+
+    # Reported in labels and nowhere else: no field holds either of them, so
+    # there is nothing to type over and no way to claim a different one.
+    typed = [field.text() for field in dialog.findChildren(QLineEdit)]
+    assert "fake" not in typed
+    assert "comictrans test" not in typed
+
+
+def test_undoing_a_header_edit_puts_the_dialog_fields_back(
+    qapp: object, two_page_plan: Path
+) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._font.setText("Chalkboard SE")
+
+    window._on_undo()
+    dialog.repopulate()
+
+    assert dialog._font.text() == "Comic Sans MS"
+    assert not window.document.dirty, "repopulating must not write itself back out"  # type: ignore[union-attr]
+
+
+def test_the_header_action_needs_a_document_and_opens_the_dialog(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    assert not window._header_action.isEnabled()
+
+    window.open_plan(two_page_plan)
+    assert window._header_action.isEnabled()
+
+    opened: list[bool] = []
+    monkeypatch.setattr(HeaderDialog, "exec", lambda self: opened.append(True) or 0)
+    window._header_action.trigger()
+
+    assert opened
