@@ -140,6 +140,22 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        # One undo history, covering everything. The text fields' own
+        # histories are switched off in the inspector rather than left to
+        # compete: every keystroke is already a document edit, so a second
+        # per-widget stack would be an invisible one that disagrees with the
+        # visible one about what the last change was.
+        edit_menu = self.menuBar().addMenu("&Edit")
+        self._undo_action = QAction("&Undo", self)
+        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self._undo_action.triggered.connect(self._on_undo)
+        edit_menu.addAction(self._undo_action)
+
+        self._redo_action = QAction("&Redo", self)
+        self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self._redo_action.triggered.connect(self._on_redo)
+        edit_menu.addAction(self._redo_action)
+
         view_menu = self.menuBar().addMenu("&View")
         self._preview_action = QAction("&Render Preview", self)
         self._preview_action.setShortcut(QKeySequence("Ctrl+R"))
@@ -199,6 +215,9 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._open_action)
         self._toolbar.addAction(self._save_action)
         self._toolbar.addSeparator()
+        self._toolbar.addAction(self._undo_action)
+        self._toolbar.addAction(self._redo_action)
+        self._toolbar.addSeparator()
         self._toolbar.addAction(self._previous_region_action)
         self._toolbar.addAction(self._next_region_action)
         self._toolbar.addAction(self._next_flagged_action)
@@ -240,6 +259,8 @@ class MainWindow(QMainWindow):
         has_document = self.document is not None
         for action in (self._save_action, self._save_as_action, self._reload_action):
             action.setEnabled(has_document)
+        self._undo_action.setEnabled(has_document and self.document.can_undo)  # type: ignore[union-attr]
+        self._redo_action.setEnabled(has_document and self.document.can_redo)  # type: ignore[union-attr]
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
         self._overlay_action.setEnabled(has_image and self._showing_preview)
@@ -259,11 +280,19 @@ class MainWindow(QMainWindow):
         )
 
     def _update_title(self) -> None:
+        """``[*]`` is Qt's placeholder for the platform's own modified marker.
+
+        An asterisk on most platforms, a dot in the close button on macOS.
+        Qt substitutes it from ``isWindowModified``, which is why that is set
+        rather than the title rewritten — and why ``windowTitle()`` keeps the
+        placeholder whatever the state.
+        """
         if self.document is None:
             self.setWindowTitle("comictrans review")
+            self.setWindowModified(False)
             return
-        star = "*" if self.document.dirty else ""
-        self.setWindowTitle(f"{self.document.path.name}{star} — comictrans review")
+        self.setWindowTitle(f"{self.document.path.name}[*] — comictrans review")
+        self.setWindowModified(self.document.dirty)
 
     # -- opening, saving -----------------------------------------------
 
@@ -393,6 +422,10 @@ class MainWindow(QMainWindow):
             self._on_region_selected(regions[0].id)
 
     def _on_region_selected(self, region_id: str) -> None:
+        if self.document is not None:
+            # Typing into one region, going to look at another and coming
+            # back is two acts, and undo should treat them as two.
+            self.document.end_edit_run()
         self._current_region = region_id
         self._canvas.set_selected(region_id)
         self._inspector.set_region(self.document, region_id)
@@ -433,20 +466,45 @@ class MainWindow(QMainWindow):
     def _on_next_flagged_region(self) -> None:
         self._step_region(forward=True, flagged_only=True)
 
-    def _on_edited(self) -> None:
+    def _refresh_page_visuals(self) -> None:
+        """The window title, the current page's row, and its region outlines."""
+        self._update_title()
         if self.document is None or self._current_image is None:
             return
-        self._update_title()
         self._pages.refresh_row(self.document, self._current_image)
-        # Filling in a translation can clear a flag, which is the difference
-        # between there being another flagged region ahead and there not.
-        self._update_actions_enabled()
         # An edit to one region (skip, translation) can change whether it, or
         # another region on the same page, still counts as overlapping —
         # restyle every region rather than track exactly which ones moved.
         if not self._showing_preview:
             for region in self.document.regions_for(self._current_image):
                 self._canvas.set_appearance(_appearance_for(region, self.document))
+
+    def _on_edited(self) -> None:
+        self._refresh_page_visuals()
+        # Filling in a translation can clear a flag, which is the difference
+        # between there being another flagged region ahead and there not. It
+        # also makes undo available where a moment ago it was not.
+        self._update_actions_enabled()
+
+    def _on_undo(self) -> None:
+        if self.document is not None and self.document.undo():
+            self._reload_from_document()
+
+    def _on_redo(self) -> None:
+        if self.document is not None and self.document.redo():
+            self._reload_from_document()
+
+    def _reload_from_document(self) -> None:
+        """After undo or redo, when the plan changed under everything at once.
+
+        Unlike an edit, this has to put the inspector's fields back too — the
+        change did not come from them. ``set_region`` blocks their signals
+        while it repopulates, so restoring a translation does not write
+        itself straight back out as a fresh edit.
+        """
+        self._refresh_page_visuals()
+        self._inspector.set_region(self.document, self._current_region)
+        self._update_actions_enabled()
 
     def _on_render_preview(self) -> None:
         if self.document is None or self._current_image is None:

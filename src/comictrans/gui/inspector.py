@@ -102,6 +102,12 @@ class RegionInspector(QWidget):
         self._notes = QPlainTextEdit()
         self._notes.setMaximumHeight(_NOTES_HEIGHT)
         self._notes.setPlaceholderText("never rendered; kept when re-extracting")
+        # These fields keep no undo history of their own; the document keeps
+        # one for everything. Two stacks would disagree the moment a
+        # document-level undo put text back that the widget had never seen
+        # leave, and only one of the two is what Ctrl+Z reaches anyway.
+        for prose in (self._translation, self._notes):
+            prose.setUndoRedoEnabled(False)
         self._skip = QCheckBox("skip: leave this region untouched")
         self._font = QLineEdit()
         self._font.setPlaceholderText("(plan default)")

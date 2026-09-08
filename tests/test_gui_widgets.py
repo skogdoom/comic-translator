@@ -179,12 +179,15 @@ def test_editing_the_translation_marks_the_document_dirty(
     window.open_plan(two_page_plan)
 
     assert not window.document.dirty  # type: ignore[union-attr]
-    assert "*" not in window.windowTitle()
+    assert not window.isWindowModified()
 
     window._inspector._translation.setPlainText("HELLO THERE")
 
     assert window.document.dirty  # type: ignore[union-attr]
-    assert "*" in window.windowTitle()
+    # Qt substitutes the [*] placeholder in the title from this, so the
+    # title string itself carries the placeholder either way.
+    assert window.isWindowModified()
+    assert "[*]" in window.windowTitle()
     assert window.document.region("page-001-001").translation == "HELLO THERE"  # type: ignore[union-attr]
 
 
@@ -211,7 +214,7 @@ def test_save_writes_the_edit_and_clears_the_dirty_marker(
     window._on_save()
 
     assert not window.document.dirty  # type: ignore[union-attr]
-    assert "*" not in window.windowTitle()
+    assert not window.isWindowModified()
     on_disk = load_plan(two_page_plan, check_images=False)
     assert on_disk.regions[0].translation == "HELLO THERE"
 
@@ -635,3 +638,108 @@ def test_the_about_action_actually_opens_the_dialog(
     window._about_action.trigger()
 
     assert opened
+
+
+def test_undo_puts_the_text_back_in_the_inspector_too(qapp: object, two_page_plan: Path) -> None:
+    """The change did not come from the fields, so they have to be repopulated."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("HELLO THERE")
+
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation == "HELLO"  # type: ignore[union-attr]
+    assert window._inspector._translation.toPlainText() == "HELLO"
+    assert not window.isWindowModified()
+
+    window._on_redo()
+
+    assert window._inspector._translation.toPlainText() == "HELLO THERE"
+    assert window.isWindowModified()
+
+
+def test_undoing_does_not_write_itself_straight_back_out(qapp: object, two_page_plan: Path) -> None:
+    """Repopulating the fields must not read as a fresh edit.
+
+    Without blocked signals the restored text would be written back through
+    textChanged, leaving the document dirty and the undo stack one deeper
+    than the user's actions.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("HELLO THERE")
+
+    window._on_undo()
+
+    assert not window.document.dirty  # type: ignore[union-attr]
+    assert not window.document.can_undo  # type: ignore[union-attr]
+    assert window.document.can_redo  # type: ignore[union-attr]
+
+
+def test_the_undo_actions_switch_off_when_there_is_nothing_to_undo(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    assert not window._undo_action.isEnabled(), "no document at all"
+
+    window.open_plan(two_page_plan)
+    assert not window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+    window._inspector._translation.setPlainText("HELLO THERE")
+    assert window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+    window._on_undo()
+    assert not window._undo_action.isEnabled()
+    assert window._redo_action.isEnabled()
+
+
+def test_undo_refreshes_the_page_list_and_the_canvas(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    window._on_region_selected("page-001-002")  # held back, so flagged
+    window._inspector._translation.setPlainText("NOW TRANSLATED")
+    assert "1 flagged" not in window._pages.item(0).text()
+
+    window._on_undo()
+
+    assert "1 flagged" in window._pages.item(0).text(), "the flag came back"
+
+
+def test_the_edit_menu_and_toolbar_carry_undo(qapp: object) -> None:
+    from PySide6.QtWidgets import QMenu
+
+    window = MainWindow()
+    menu = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Edit")
+
+    assert window._undo_action in menu.actions()
+    assert window._redo_action in menu.actions()
+    assert window._undo_action in window._toolbar.actions()
+    assert window._redo_action in window._toolbar.actions()
+
+
+def test_the_prose_fields_keep_no_undo_history_of_their_own(qapp: object) -> None:
+    """One stack, so Ctrl+Z means the same thing wherever the focus is."""
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    assert not inspector._translation.isUndoRedoEnabled()
+    assert not inspector._notes.isUndoRedoEnabled()
+
+
+def test_selecting_another_region_ends_the_current_undo_run(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("FIRST")
+
+    window._on_region_selected("page-001-002")
+    window._on_region_selected("page-001-001")
+    window._inspector._translation.setPlainText("FIRST AND SECOND")
+
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation == "FIRST"  # type: ignore[union-attr]

@@ -511,6 +511,29 @@ what makes "unsaved changes" one fact the window can trust, rather than
 something it would otherwise have to reconstruct by asking every widget
 whether it has touched anything.
 
+**Why undo is a stack of plans, not a stack of operations.** `Plan` is
+frozen and holds a tuple of frozen `Region`s, and every edit already builds
+a new one, so the plan as it stood before an edit *is* the undo entry — a
+new tuple of pointers, not a copy of anything. What that buys is what it
+costs to extend: an operation that adds, deletes or reshapes a region needs
+no undo code of its own, because it passes through the same `_record` and
+leaves the same kind of entry behind. A command-per-operation stack would
+need a new class for each.
+
+It also lets `dirty` stop being a flag that only ever goes true. It is
+identity against the plan last written to disk, so undoing back to the last
+save clears the marker and stepping past it sets it again — which is what
+the file actually holds. The window shows that through `[*]` and
+`setWindowModified` rather than editing the title itself, so the marker is
+whatever the platform's own is.
+
+**One undo history, not one per widget.** Every keystroke in the inspector
+is already a document edit, so the prose fields have their own histories
+switched off. Two stacks would disagree the moment a document-level undo
+put text back that the widget never saw leave, and a window-level `Ctrl+Z`
+reaches only one of them anyway. Consecutive edits to the same region and
+field collapse into one step, or every keystroke would be its own.
+
 **Where "the next region" is decided.** In `document.py`, not in the window,
 as `adjacent_region` over the plan's own region order. Which region comes
 after this one is a question about a plan, not about a widget, and asking it

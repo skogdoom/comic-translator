@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from comictrans.errors import InputError, PlanError
-from comictrans.gui.document import PlanDocument, overlapping_region_ids, region_flags
+from comictrans.gui.document import (
+    UNDO_LIMIT,
+    PlanDocument,
+    overlapping_region_ids,
+    region_flags,
+)
 from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
 from comictrans.planfile import load_plan, write_plan
 from comictrans.util import sha256_file
@@ -279,3 +284,112 @@ def test_adjacent_region_can_skip_to_the_next_one_worth_checking() -> None:
 def test_adjacent_region_is_nothing_for_an_unknown_id_or_an_empty_plan() -> None:
     assert _document(_apart(1)).adjacent_region("no-such-region", forward=True) is None
     assert _document().adjacent_region(None, forward=True) is None
+
+
+def test_undo_steps_back_one_edit_and_redo_puts_it_back() -> None:
+    doc = _document(_apart(1))
+    doc.set_translation("r1", "FIRST")
+    doc.set_skip("r1", True)
+
+    assert doc.undo()
+    assert doc.region("r1").skip is False
+    assert doc.region("r1").translation == "FIRST", "only the last edit came back off"
+
+    assert doc.undo()
+    assert doc.region("r1").translation == "HELLO EVERYONE"
+    assert not doc.can_undo
+    assert not doc.undo(), "nothing left to step back to"
+
+    assert doc.redo()
+    assert doc.region("r1").translation == "FIRST"
+    assert doc.redo()
+    assert doc.region("r1").skip is True
+    assert not doc.can_redo
+
+
+def test_typing_into_one_field_is_one_undo_step() -> None:
+    """The inspector writes a keystroke at a time; undo is not per character."""
+    doc = _document(_apart(1))
+    for text in ("H", "HE", "HEL", "HELL", "HELLO"):
+        doc.set_translation("r1", text)
+
+    doc.undo()
+
+    assert doc.region("r1").translation == "HELLO EVERYONE", "the whole run came back off"
+    assert not doc.can_undo
+
+
+def test_a_different_field_starts_a_new_undo_step() -> None:
+    doc = _document(_apart(1))
+    doc.set_translation("r1", "TYPED")
+    doc.set_notes("r1", "NOTED")
+
+    doc.undo()
+
+    assert doc.region("r1").notes == ""
+    assert doc.region("r1").translation == "TYPED"
+
+
+def test_moving_away_and_back_is_two_undo_steps() -> None:
+    doc = _document(_apart(1))
+    doc.set_translation("r1", "FIRST")
+    doc.end_edit_run()
+    doc.set_translation("r1", "FIRST AND SECOND")
+
+    doc.undo()
+
+    assert doc.region("r1").translation == "FIRST", "the two runs did not merge"
+
+
+def test_setting_a_field_to_what_it_already_holds_is_not_an_edit() -> None:
+    doc = _document(_apart(1))
+    doc.set_translation("r1", doc.region("r1").translation)
+
+    assert not doc.dirty
+    assert not doc.can_undo, "an undo step that does nothing is worse than none"
+
+
+def test_undoing_back_to_the_last_save_clears_the_dirty_marker(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.set_translation("page-001-001", "EDITED")
+    assert doc.dirty
+
+    doc.undo()
+    assert not doc.dirty, "back to what is on disk"
+
+    doc.redo()
+    assert doc.dirty
+
+
+def test_undo_history_survives_a_save_and_going_back_past_it_is_dirty(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.set_translation("page-001-001", "SAVED TEXT")
+    doc.save()
+    assert not doc.dirty
+
+    assert doc.undo(), "a save is not the end of the history"
+    assert doc.region("page-001-001").translation == "HELLO EVERYONE"
+    assert doc.dirty, "the file still holds the saved text"
+
+    doc.redo()
+    assert not doc.dirty, "back to exactly what was written"
+
+
+def test_an_edit_after_an_undo_drops_what_was_undone() -> None:
+    doc = _document(_apart(1))
+    doc.set_translation("r1", "FIRST")
+    doc.undo()
+    assert doc.can_redo
+
+    doc.set_notes("r1", "SOMETHING ELSE")
+
+    assert not doc.can_redo, "the redo branch is gone once history moves on"
+
+
+def test_the_history_is_capped() -> None:
+    doc = _document(_apart(1))
+    for index in range(UNDO_LIMIT + 50):
+        doc.set_notes("r1", f"note {index}")
+        doc.end_edit_run()
+
+    assert len(doc._undo) == UNDO_LIMIT

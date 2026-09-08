@@ -245,6 +245,13 @@ declared dependency that is actually installed, with its version — read from
 the installed package at the time you open it, not written down anywhere. It
 does not check for updates, and nothing else here does either.
 
+`Ctrl+Z` and `Ctrl+Shift+Z` step back and forward through your edits, one
+change at a time — a run of typing in one field counts as one change, not
+one per keystroke. There is a single history covering everything, so undo
+means the same thing wherever the cursor is. It lives in memory only:
+undoing past a save does not un-write the file, and the title's modified
+marker says so.
+
 `Ctrl+S` saves back to the file it was opened from; **Save As** writes
 elsewhere and refuses to overwrite an existing file without confirming.
 Closing the window, reloading, or opening a different plan while there are

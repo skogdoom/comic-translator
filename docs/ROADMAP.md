@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.4 | Undo and redo | M |
 | 4.15 | Zoom | S |
 | 4.11 | Font selection dropdown | S–M |
 | 4.12 | Plan header editing | S–M |
@@ -54,11 +53,11 @@ string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Help text describes the UI, so it goes
 after the UI stops moving.
 
-**Foundations come before what stands on them.** Undo built for five text
-fields would need rewriting the moment a polygon can move, so 4.4 comes
-before 4.5 and is built knowing 4.5 is coming. Zoom comes before 4.5 for a
-plainer reason: dragging a polygon vertex accurately means being able to
-see it.
+**Foundations come before what stands on them.** 4.4 went first for that
+reason: undo built for five text fields would have needed rewriting the
+moment a polygon could move, so it snapshots whole plans instead and 4.5
+inherits it. Zoom comes before 4.5 for a plainer reason: dragging a polygon
+vertex accurately means being able to see it.
 
 Two orderings are judgement calls rather than dependencies.
 
@@ -75,42 +74,6 @@ safe to call off the main thread — and the more valuable, because reviewing
 a plan and then leaving for a terminal to render it is the obvious hole in
 the window as it stands. Build the threading on the easy case; extract
 reuses it with the harder question on top.
-
-## 4.4 Undo and redo
-
-One change at a time, not all unsaved changes at once.
-
-**Snapshot the plan rather than writing a command per operation.** `Plan`
-is a frozen dataclass holding a tuple of frozen `Region`s, and
-`PlanDocument._update` already builds a whole new one on every edit. So an
-undo entry is simply the previous `Plan`. Because regions are immutable and
-reused, that is a new tuple of pointers, not a deep copy; a few hundred
-regions costs nothing.
-
-The reason this matters is 4.5. A command-per-operation stack would need a
-new command class for every geometry operation added later. A snapshot
-stack covers add, delete, merge and polygon editing the day they land,
-with no undo code written for any of them — and 4.12's header edits too.
-
-Two decisions:
-
-- **Coalescing.** 4.1 settled that the prose fields commit on every
-  keystroke — for the reasons in `gui/inspector.py`'s module docstring — so
-  raw snapshots would give per-character undo. Merge consecutive edits to
-  the same region and field until focus changes or a timeout expires. This
-  is what `QUndoCommand.mergeWith` exists for.
-- **Ctrl+Z while typing.** Qt dispatches shortcuts before key events reach
-  the focused widget, so a window-level undo action takes undo away from a
-  text field mid-sentence. Decide the rule deliberately.
-
-Fold in `setWindowModified` with `[*]` in the window title, replacing the
-hand-rolled asterisk. That is the native idiom, 4.8 would ask for it
-anyway, and undo needs the clean-state concept regardless: undoing back to
-the last save should clear the marker, which a bool that only ever goes
-true cannot express.
-
-Undo is in-memory and does not reach the file. Undoing past a save does not
-revert what is on disk.
 
 ## 4.15 Zoom
 
@@ -184,7 +147,7 @@ comic".
 
 A dialog, or a third dock. `PlanDocument` gains `set_header_*` beside the
 region setters: the same `dataclasses.replace`, the same dirty flag, and
-4.4's snapshot undo covers it without a line of undo code.
+the snapshot undo 4.4 built covers it without a line of undo code.
 
 Reuses 4.11's dropdown for the header font, which is why it sits directly
 after it.
@@ -378,7 +341,6 @@ appears. What is actually left, roughly by value:
 - `AboutRole` on the About action, so macOS moves it into the application
   menu where it belongs, and the same for a Preferences action once 4.13
   exists
-- `setWindowModified` and `[*]`, already folded into 4.4
 - Dark mode: check the canvas overlay colours stay legible against dark
   chrome
 - Full screen, and the unified toolbar look
