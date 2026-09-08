@@ -1080,3 +1080,131 @@ def test_the_header_action_needs_a_document_and_opens_the_dialog(
     window._header_action.trigger()
 
     assert opened
+
+
+def _flags(**on: bool) -> object:
+    from comictrans.gui.document import RegionFlags
+
+    fields = dict.fromkeys(
+        ("approximate", "low_confidence", "held_back", "unedited", "overlapping", "skipped"),
+        False,
+    )
+    fields.update(on)
+    return RegionFlags(**fields)  # type: ignore[arg-type]
+
+
+def test_flag_labels_gives_one_line_per_reason() -> None:
+    from comictrans.gui.inspector import flag_labels
+
+    assert flag_labels(None) == ("—",)
+    assert flag_labels(_flags()) == ("nothing flagged",)  # type: ignore[arg-type]
+    assert flag_labels(_flags(approximate=True, unedited=True)) == (  # type: ignore[arg-type]
+        "approximate geometry",
+        "same as source",
+    )
+    assert (
+        len(
+            flag_labels(
+                _flags(
+                    **dict.fromkeys(  # type: ignore[arg-type]
+                        (
+                            "approximate",
+                            "low_confidence",
+                            "held_back",
+                            "unedited",
+                            "overlapping",
+                            "skipped",
+                        ),
+                        True,
+                    )
+                )
+            )
+        )
+        == 6
+    )
+
+
+def test_the_flag_list_is_always_tall_enough_for_its_rows(qapp: object) -> None:
+    """The bug: several flags on one wrapped line were clipped by the form.
+
+    Checked under the macOS field-growth policy, which is where it showed:
+    fields stay at their size hint there, and a wrapped label's hint is
+    computed for a width it does not end up with.
+    """
+    from PySide6.QtWidgets import QFormLayout
+
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    form = inspector.layout().itemAt(0).layout()
+    assert isinstance(form, QFormLayout)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    inspector.resize(320, 700)
+    inspector.show()
+    QTest.qWaitForWindowExposed(inspector)
+
+    every = dict.fromkeys(
+        ("approximate", "low_confidence", "held_back", "unedited", "overlapping", "skipped"),
+        True,
+    )
+    for flags, expected_rows in (
+        (_flags(), 1),
+        (_flags(approximate=True, unedited=True), 2),
+        (_flags(**every), 6),
+    ):
+        inspector._flags.set_flags(flags)  # type: ignore[arg-type]
+        QTest.qWait(1)
+        widget = inspector._flags
+        needed = sum(widget.sizeHintForRow(i) for i in range(widget.count()))
+        needed += 2 * widget.frameWidth()
+
+        assert widget.count() == expected_rows
+        assert widget.height() >= needed, f"{expected_rows} flags do not fit"
+
+
+def test_the_flag_list_stays_tall_enough_when_the_panel_narrows(qapp: object) -> None:
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    inspector.resize(320, 700)
+    inspector.show()
+    QTest.qWaitForWindowExposed(inspector)
+    inspector._flags.set_flags(_flags(held_back=True, overlapping=True))  # type: ignore[arg-type]
+
+    inspector.resize(150, 700)
+    QTest.qWait(10)
+
+    widget = inspector._flags
+    needed = sum(widget.sizeHintForRow(i) for i in range(widget.count()))
+    needed += 2 * widget.frameWidth()
+    assert widget.height() >= needed, "a narrower panel wraps rows and needs more height"
+
+
+def test_the_flag_list_is_a_readout_not_a_control(qapp: object) -> None:
+    from PySide6.QtWidgets import QAbstractItemView
+
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    widget = inspector._flags
+    assert widget.selectionMode() == QAbstractItemView.SelectionMode.NoSelection
+    assert widget.focusPolicy() == Qt.FocusPolicy.NoFocus
+
+
+def test_the_flag_list_follows_the_selected_region_and_its_edits(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    rows = lambda: [  # noqa: E731
+        window._inspector._flags.item(i).text() for i in range(window._inspector._flags.count())
+    ]
+
+    assert rows() == ["nothing flagged"]
+
+    window._on_region_selected("page-001-002")  # held back
+    assert rows() == ["held back (no translation)"]
+
+    window._inspector._translation.setPlainText("NOW TRANSLATED")
+    assert rows() == ["nothing flagged"], "the flag clears as the reason for it goes"

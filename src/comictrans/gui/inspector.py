@@ -24,13 +24,15 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 
-from PySide6.QtCore import QSignalBlocker, Signal
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QFormLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QPlainTextEdit,
     QSpinBox,
     QVBoxLayout,
@@ -70,17 +72,70 @@ def _widen_for_special_value(box: QSpinBox) -> None:
     box.setMinimumWidth(metrics.horizontalAdvance(box.specialValueText()) + chrome)
 
 
-def _flags_text(flags: RegionFlags) -> str:
-    labels = {
-        "approximate": "approximate geometry",
-        "low_confidence": "low confidence",
-        "held_back": "held back (no translation)",
-        "unedited": "same as source",
-        "overlapping": "overlaps another region",
-        "skipped": "skipped",
-    }
-    active = [text for field, text in labels.items() if getattr(flags, field)]
-    return ", ".join(active) if active else "nothing flagged"
+_FLAG_LABELS = {
+    "approximate": "approximate geometry",
+    "low_confidence": "low confidence",
+    "held_back": "held back (no translation)",
+    "unedited": "same as source",
+    "overlapping": "overlaps another region",
+    "skipped": "skipped",
+}
+
+
+def flag_labels(flags: RegionFlags | None) -> tuple[str, ...]:
+    """One line per reason this region is worth a second look.
+
+    A tuple rather than a joined string: six of these can be true at once,
+    and running them together into one line is what made the field outgrow
+    the space it was given.
+    """
+    if flags is None:
+        return ("—",)
+    active = tuple(text for field, text in _FLAG_LABELS.items() if getattr(flags, field))
+    return active or ("nothing flagged",)
+
+
+class FlagList(QListWidget):
+    """The flags, one per row, sized to exactly the rows it holds.
+
+    A word-wrapped ``QLabel`` was the obvious thing and the wrong one. Its
+    height depends on its width, but the form lays the row out from the
+    label's own size hint, which is computed for a different width than it
+    ends up with — so a second line was clipped, and whether it clipped at
+    all changed with the number of flags. A list reports an honest height
+    for its contents and has somewhere to put an overflow.
+
+    Not a control: nothing here is selectable and it never takes focus. It
+    is a readout that happens to have rows.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setWordWrap(True)
+        self.set_flags(None)
+
+    def set_flags(self, flags: RegionFlags | None) -> None:
+        self.clear()
+        self.addItems(flag_labels(flags))
+        self._fit_to_rows()
+
+    def _fit_to_rows(self) -> None:
+        """Take exactly the height the rows need, at the width it now has."""
+        rows = sum(self.sizeHintForRow(index) for index in range(self.count()))
+        height = rows + 2 * self.frameWidth()
+        if height != self.height():
+            self.setFixedHeight(height)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        # Wrapping depends on the width, so the height a row needs does too.
+        # Guarded above against setting a height it already has, which is
+        # what would otherwise bounce between resize and layout for ever.
+        self._fit_to_rows()
 
 
 class RegionInspector(QWidget):
@@ -92,8 +147,7 @@ class RegionInspector(QWidget):
         self._region_id: str | None = None
 
         self._id_label = QLabel("—")
-        self._flags_label = QLabel("—")
-        self._flags_label.setWordWrap(True)
+        self._flags = FlagList()
         self._source_text = QPlainTextEdit()
         self._source_text.setReadOnly(True)
         self._source_text.setMaximumHeight(100)
@@ -118,7 +172,7 @@ class RegionInspector(QWidget):
 
         form = QFormLayout()
         form.addRow("region", self._id_label)
-        form.addRow("flags", self._flags_label)
+        form.addRow("flags", self._flags)
         form.addRow("source text", self._source_text)
         form.addRow("translation", self._translation)
         form.addRow("notes", self._notes)
@@ -174,7 +228,7 @@ class RegionInspector(QWidget):
     def _populate(self, document: PlanDocument | None, region: Region | None) -> None:
         if document is None or region is None:
             self._id_label.setText("—")
-            self._flags_label.setText("—")
+            self._flags.set_flags(None)
             self._source_text.setPlainText("")
             self._translation.setPlainText("")
             self._notes.setPlainText("")
@@ -184,7 +238,7 @@ class RegionInspector(QWidget):
             return
 
         self._id_label.setText(f"{region.id}  ({region.geometry.value}, order {region.order})")
-        self._flags_label.setText(_flags_text(document.flags(region.id)))
+        self._flags.set_flags(document.flags(region.id))
         self._source_text.setPlainText(region.source_text)
         self._translation.setPlainText(region.translation)
         self._notes.setPlainText(region.notes)
@@ -196,7 +250,7 @@ class RegionInspector(QWidget):
         if self._document is not None and self._region_id is not None:
             # Flags may have changed (e.g. translation is no longer empty),
             # so the label needs refreshing even though nothing else does.
-            self._flags_label.setText(_flags_text(self._document.flags(self._region_id)))
+            self._flags.set_flags(self._document.flags(self._region_id))
         self.edited.emit()
 
     def _on_translation_changed(self) -> None:
