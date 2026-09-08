@@ -187,7 +187,7 @@ def font_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 
 @pytest.fixture(scope="session")
-def qapp() -> Iterator[Any]:
+def qapp(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     """A shared ``QApplication`` for the review GUI's tests.
 
     The third skip-rather-than-fail group, alongside the font tests and
@@ -201,6 +201,7 @@ def qapp() -> Iterator[Any]:
     actual Mac, say) is not overridden.
     """
     pytest.importorskip("PySide6")
+    from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QApplication
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -208,4 +209,15 @@ def qapp() -> Iterator[Any]:
         app = QApplication.instance() or QApplication(["comictrans-tests"])
     except Exception as exc:  # Qt's platform-plugin failures are not typed
         pytest.skip(f"cannot create a QApplication: {exc}")
+
+    # Anything that reaches for QSettings lands in a temporary directory, not
+    # in the config of whoever is running the suite. Widget tests build their
+    # windows without settings and so persist nothing; this covers the one
+    # test that goes through gui.app.run, which builds its own.
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path_factory.mktemp("qsettings")),
+    )
     yield app

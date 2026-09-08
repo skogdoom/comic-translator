@@ -509,6 +509,21 @@ what makes "unsaved changes" one fact the window can trust, rather than
 something it would otherwise have to reconstruct by asking every widget
 whether it has touched anything.
 
+**Where "the next region" is decided.** In `document.py`, not in the window,
+as `adjacent_region` over the plan's own region order. Which region comes
+after this one is a question about a plan, not about a widget, and asking it
+there means it is tested without a display like everything else in that
+layer — and that walking off the end of a page continues onto the next one
+falls out of the plan order rather than being a rule the window enforces.
+
+**Why the window is handed its `QSettings` instead of making one.** The
+layout is the only thing this tool remembers outside a plan file, and a
+window built without settings — which is every window the tests build —
+reads and writes nothing. That keeps the suite from depending on, or
+writing into, the configuration of whoever runs it, and keeps one test's
+dragged-about docks out of the next one. `gui.app` is the single place that
+decides a real session should persist anything.
+
 **Why the overlay and the preview are two different things, not one.** The
 overlay — polygons over the original page — is recomputed from the document
 on every edit; it is cheap (nothing is rendered, only restyled) and always

@@ -468,3 +468,129 @@ def test_selecting_another_region_does_not_carry_the_font_override_across(
     assert window._inspector._font.text() == ""
     assert window.document.region("page-001-002").font is None  # type: ignore[union-attr]
     assert window.document.region("page-001-001").font == "Chalkboard SE"  # type: ignore[union-attr]
+
+
+def test_the_window_menu_can_close_and_reopen_a_dock(qapp: object) -> None:
+    from PySide6.QtWidgets import QMenu
+
+    window = MainWindow()
+    # Shown for real: a dock's toggle action only picks up its checked state
+    # from a show event, so on a window that never opened it starts out of
+    # step with the dock it controls.
+    window.show()
+    QTest.qWaitForWindowExposed(window)
+
+    menu = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Window")
+
+    toggle = window._pages_dock.toggleViewAction()
+    assert toggle in menu.actions(), "a closed dock needs a way back"
+    assert "&Reset Layout" in [a.text() for a in menu.actions()]
+
+    toggle.trigger()
+    assert window._pages_dock.isHidden()
+    toggle.trigger()
+    assert not window._pages_dock.isHidden()
+
+
+def test_reset_layout_reopens_whatever_was_closed(qapp: object) -> None:
+    window = MainWindow()
+    window._pages_dock.setVisible(False)
+    window._inspector_dock.setVisible(False)
+
+    window._on_reset_layout()
+
+    assert not window._pages_dock.isHidden()
+    assert not window._inspector_dock.isHidden()
+
+
+def test_the_toolbar_reuses_the_menu_actions(qapp: object) -> None:
+    """One action per command, not one for the menu and another for the bar."""
+    window = MainWindow()
+    on_toolbar = window._toolbar.actions()
+
+    for action in (
+        window._open_action,
+        window._save_action,
+        window._previous_region_action,
+        window._next_region_action,
+        window._next_flagged_action,
+        window._preview_action,
+        window._overlay_action,
+    ):
+        assert action in on_toolbar
+
+
+def test_the_layout_is_remembered_for_the_next_window(qapp: object, tmp_path: Path) -> None:
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings(str(tmp_path / "layout.ini"), QSettings.Format.IniFormat)
+
+    first = MainWindow(settings=settings)
+    first._pages_dock.setVisible(False)
+    first._save_layout()
+
+    assert MainWindow(settings=settings)._pages_dock.isHidden()
+    # A window opened without settings is unaffected by any of that.
+    assert not MainWindow()._pages_dock.isHidden()
+
+
+def test_next_region_carries_on_to_the_following_page(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    assert window._current_region == "page-001-001"
+
+    window._on_next_region()
+    assert window._current_region == "page-001-002"
+
+    window._on_next_region()
+    assert window._current_region == "page-002-001"
+    assert window._current_image == "page-002.png", "the page follows the region"
+    assert set(window._canvas._items) == {"page-002-001"}
+    assert window._inspector._id_label.text().startswith("page-002-001")
+
+    window._on_previous_region()
+    assert window._current_region == "page-001-002"
+    assert window._current_image == "page-001.png"
+
+
+def test_the_navigation_actions_switch_off_at_the_ends_of_the_plan(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    assert not window._previous_region_action.isEnabled(), "nothing before the first region"
+    assert window._next_region_action.isEnabled()
+
+    window._on_next_region()
+    window._on_next_region()
+
+    assert window._current_region == "page-002-001"
+    assert not window._next_region_action.isEnabled(), "nothing after the last region"
+    assert window._previous_region_action.isEnabled()
+
+
+def test_next_flagged_skips_the_regions_with_nothing_to_check(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    # page-001-002 is held back; the other two have nothing wrong with them.
+    window._on_next_flagged_region()
+    assert window._current_region == "page-001-002"
+    assert not window._next_flagged_action.isEnabled()
+
+
+def test_translating_the_last_flagged_region_switches_next_flagged_off(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    assert window._next_flagged_action.isEnabled()
+
+    window._on_next_flagged_region()
+    window._inspector._translation.setPlainText("NOW TRANSLATED")
+    window._on_region_selected("page-001-001")
+
+    assert not window._next_flagged_action.isEnabled(), "nothing left to check"

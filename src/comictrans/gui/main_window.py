@@ -16,13 +16,14 @@ import logging
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QMainWindow,
     QMessageBox,
+    QToolBar,
 )
 
 from ..errors import ComictransError
@@ -37,6 +38,15 @@ from .qimage import to_pixmap
 
 log = logging.getLogger(__name__)
 
+_GEOMETRY_KEY = "window/geometry"
+_STATE_KEY = "window/state"
+"""Where the dock and toolbar layout is remembered between sessions.
+
+``QMainWindow.saveState`` identifies each dock and toolbar by its
+``objectName``, so every one of them is given a stable one below. Without
+that the state saves as unrestorable and Qt warns about it at runtime.
+"""
+
 
 def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
     color = COLOR_EXACT if region.geometry is Geometry.EXACT else COLOR_APPROXIMATE
@@ -49,33 +59,52 @@ def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, initial_plan: Path | None = None) -> None:
+    def __init__(
+        self, initial_plan: Path | None = None, *, settings: QSettings | None = None
+    ) -> None:
+        """``settings`` opts into remembering the layout between sessions.
+
+        Left out, nothing is read or written: a window built without it — as
+        every test builds one — starts from the same default layout every
+        time and cannot leak state into the next one, or into whoever is
+        running the suite.
+        """
         super().__init__()
         self.document: PlanDocument | None = None
         self._current_image: str | None = None
+        self._current_region: str | None = None
         self._showing_preview = False
+        self._settings = settings
 
         self._pages = PageList()
         self._canvas = PageCanvas()
         self._inspector = RegionInspector()
 
         self.setCentralWidget(self._canvas)
-        pages_dock = QDockWidget("Pages", self)
-        pages_dock.setWidget(self._pages)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, pages_dock)
-        inspector_dock = QDockWidget("Region", self)
-        inspector_dock.setWidget(self._inspector)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, inspector_dock)
+        self._pages_dock = QDockWidget("Pages", self)
+        self._pages_dock.setObjectName("pages_dock")
+        self._pages_dock.setWidget(self._pages)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._pages_dock)
+        self._inspector_dock = QDockWidget("Region", self)
+        self._inspector_dock.setObjectName("inspector_dock")
+        self._inspector_dock.setWidget(self._inspector)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
 
         self._pages.image_selected.connect(self._on_image_selected)
         self._canvas.region_selected.connect(self._on_region_selected)
         self._inspector.edited.connect(self._on_edited)
 
         self._build_menus()
+        self._build_toolbar()
         self._update_actions_enabled()
         self._update_title()
         self.resize(1200, 800)
         self.statusBar().showMessage("Open a plan file to begin (File > Open Plan…)")
+
+        # Captured before anything saved is restored, so Reset Layout has
+        # something to go back to that no earlier session can have moved.
+        self._default_state = self.saveState()
+        self._restore_layout()
 
         if initial_plan is not None:
             self.open_plan(initial_plan)
@@ -120,6 +149,87 @@ class MainWindow(QMainWindow):
         self._overlay_action.triggered.connect(self._on_back_to_overlay)
         view_menu.addAction(self._overlay_action)
 
+        view_menu.addSeparator()
+
+        # Ctrl+Up/Down rather than a bare key: the inspector's text fields
+        # hold the focus for most of a review session and would swallow
+        # anything unmodified. The cost is shadowing "jump to the start/end
+        # of the field", which is a small loss in boxes this short.
+        self._previous_region_action = QAction("&Previous Region", self)
+        self._previous_region_action.setShortcut(QKeySequence("Ctrl+Up"))
+        self._previous_region_action.triggered.connect(self._on_previous_region)
+        view_menu.addAction(self._previous_region_action)
+
+        self._next_region_action = QAction("&Next Region", self)
+        self._next_region_action.setShortcut(QKeySequence("Ctrl+Down"))
+        self._next_region_action.triggered.connect(self._on_next_region)
+        view_menu.addAction(self._next_region_action)
+
+        self._next_flagged_action = QAction("Next &Flagged Region", self)
+        self._next_flagged_action.setShortcut(QKeySequence("Ctrl+Shift+Down"))
+        self._next_flagged_action.triggered.connect(self._on_next_flagged_region)
+        view_menu.addAction(self._next_flagged_action)
+
+        window_menu = self.menuBar().addMenu("&Window")
+        window_menu.addAction(self._pages_dock.toggleViewAction())
+        window_menu.addAction(self._inspector_dock.toggleViewAction())
+        window_menu.addSeparator()
+        self._reset_layout_action = QAction("&Reset Layout", self)
+        self._reset_layout_action.triggered.connect(self._on_reset_layout)
+        window_menu.addAction(self._reset_layout_action)
+
+    def _build_toolbar(self) -> None:
+        """The same actions the menus hold, not a second set of them.
+
+        Text rather than icons: half of these have no standard pixmap in any
+        Qt style, and a toolbar of four icons and three words reads worse
+        than seven words.
+        """
+        self._toolbar = QToolBar("Main", self)
+        self._toolbar.setObjectName("main_toolbar")
+        self._toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.addToolBar(self._toolbar)
+
+        self._toolbar.addAction(self._open_action)
+        self._toolbar.addAction(self._save_action)
+        self._toolbar.addSeparator()
+        self._toolbar.addAction(self._previous_region_action)
+        self._toolbar.addAction(self._next_region_action)
+        self._toolbar.addAction(self._next_flagged_action)
+        self._toolbar.addSeparator()
+        self._toolbar.addAction(self._preview_action)
+        self._toolbar.addAction(self._overlay_action)
+
+    # -- layout ----------------------------------------------------------
+
+    def _restore_layout(self) -> None:
+        if self._settings is None:
+            return
+        geometry = self._settings.value(_GEOMETRY_KEY)
+        state = self._settings.value(_STATE_KEY)
+        if isinstance(geometry, QByteArray):
+            self.restoreGeometry(geometry)
+        if isinstance(state, QByteArray):
+            self.restoreState(state)
+
+    def _save_layout(self) -> None:
+        if self._settings is None:
+            return
+        self._settings.setValue(_GEOMETRY_KEY, self.saveGeometry())
+        self._settings.setValue(_STATE_KEY, self.saveState())
+
+    def _on_reset_layout(self) -> None:
+        """Put every dock and the toolbar back where they started.
+
+        Both of them shown again, whatever was closed: a dock dragged
+        somewhere unhelpful, or closed and forgotten, otherwise has no way
+        back that does not involve knowing about the Window menu first.
+        """
+        self.restoreState(self._default_state)
+        for dock in (self._pages_dock, self._inspector_dock):
+            dock.setVisible(True)
+        self.resize(1200, 800)
+
     def _update_actions_enabled(self) -> None:
         has_document = self.document is not None
         for action in (self._save_action, self._save_as_action, self._reload_action):
@@ -127,6 +237,20 @@ class MainWindow(QMainWindow):
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
         self._overlay_action.setEnabled(has_image and self._showing_preview)
+
+        # Disabled at the ends of the plan rather than silently doing
+        # nothing, so the toolbar says where you are.
+        document, region_id = self.document, self._current_region
+        self._previous_region_action.setEnabled(
+            document is not None and document.adjacent_region(region_id, forward=False) is not None
+        )
+        self._next_region_action.setEnabled(
+            document is not None and document.adjacent_region(region_id, forward=True) is not None
+        )
+        self._next_flagged_action.setEnabled(
+            document is not None
+            and document.adjacent_region(region_id, forward=True, flagged_only=True) is not None
+        )
 
     def _update_title(self) -> None:
         if self.document is None:
@@ -161,6 +285,7 @@ class MainWindow(QMainWindow):
 
         self.document = document
         self._current_image = None
+        self._current_region = None
         self._showing_preview = False
         self._pages.set_document(document)
         self._inspector.set_region(None, None)
@@ -241,6 +366,7 @@ class MainWindow(QMainWindow):
         if self.document is None:
             return
         self._current_image = image
+        self._current_region = None
         self._showing_preview = False
         try:
             page = load_page(self.document.source_path(image))
@@ -261,14 +387,54 @@ class MainWindow(QMainWindow):
             self._on_region_selected(regions[0].id)
 
     def _on_region_selected(self, region_id: str) -> None:
+        self._current_region = region_id
         self._canvas.set_selected(region_id)
         self._inspector.set_region(self.document, region_id)
+        self._update_actions_enabled()
+
+    def _go_to_region(self, region_id: str) -> None:
+        """Select a region anywhere in the plan, changing page if it is on another.
+
+        Selecting the page lands on its first region, which this then
+        overrides — walking off the end of one page continues onto the next
+        rather than stopping there, because the job is every balloon in the
+        chapter, not every balloon on this page.
+        """
+        if self.document is None:
+            return
+        image = self.document.region(region_id).image
+        if image != self._current_image:
+            self._pages.select_image(image)
+        self._on_region_selected(region_id)
+
+    def _step_region(self, *, forward: bool, flagged_only: bool = False) -> None:
+        if self.document is None:
+            return
+        target = self.document.adjacent_region(
+            self._current_region, forward=forward, flagged_only=flagged_only
+        )
+        if target is None:
+            self.statusBar().showMessage("no more regions in that direction", 3000)
+            return
+        self._go_to_region(target)
+
+    def _on_previous_region(self) -> None:
+        self._step_region(forward=False)
+
+    def _on_next_region(self) -> None:
+        self._step_region(forward=True)
+
+    def _on_next_flagged_region(self) -> None:
+        self._step_region(forward=True, flagged_only=True)
 
     def _on_edited(self) -> None:
         if self.document is None or self._current_image is None:
             return
         self._update_title()
         self._pages.refresh_row(self.document, self._current_image)
+        # Filling in a translation can clear a flag, which is the difference
+        # between there being another flagged region ahead and there not.
+        self._update_actions_enabled()
         # An edit to one region (skip, translation) can change whether it, or
         # another region on the same page, still counts as overlapping —
         # restyle every region rather than track exactly which ones moved.
@@ -299,6 +465,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
         if self._confirm_discard_if_dirty():
+            self._save_layout()
             event.accept()
         else:
             event.ignore()

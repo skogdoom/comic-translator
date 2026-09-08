@@ -136,6 +136,42 @@ class PlanDocument:
                 return region
         raise KeyError(region_id)
 
+    def ordered_ids(self) -> tuple[str, ...]:
+        """Every region id, in the plan's own order.
+
+        Not grouped by page a second time: ``extract`` writes regions page by
+        page and in reading order within a page, so walking the plan straight
+        through is walking the comic. A hand-edited plan that interleaves
+        pages walks the way it is written, which is the honest answer — the
+        file's order is what ``apply`` uses too.
+        """
+        return tuple(region.id for region in self.plan.regions)
+
+    def adjacent_region(
+        self, region_id: str | None, *, forward: bool, flagged_only: bool = False
+    ) -> str | None:
+        """The next region past this one, or ``None`` at the end of the plan.
+
+        ``region_id`` of ``None`` starts from before the first region going
+        forward, and past the last going back, so "next" from nowhere is the
+        first region rather than nothing.
+        """
+        ids = self.ordered_ids()
+        if not ids:
+            return None
+        if region_id is None:
+            start = -1 if forward else len(ids)
+        elif region_id in ids:
+            start = ids.index(region_id)
+        else:
+            return None
+
+        step = 1 if forward else -1
+        for index in range(start + step, len(ids) if forward else -1, step):
+            if not flagged_only or self.flags(ids[index]).any:
+                return ids[index]
+        return None
+
     def source_path(self, image: str) -> Path:
         """Where an image lives on disk, resolved against the plan's own directory.
 

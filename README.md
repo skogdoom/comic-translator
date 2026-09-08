@@ -229,6 +229,17 @@ region that will not fit, needs condensing, or overlaps another one shows up
 here before you run `apply` for real. **Back to Overlay** returns to the
 polygon view.
 
+Reviewing a chapter means walking every balloon on every page, so the
+regions are walkable: `Ctrl+Down` and `Ctrl+Up` step to the next and
+previous region, carrying on to the following page rather than stopping at
+the end of this one, and `Ctrl+Shift+Down` skips ahead to the next region
+with something worth checking. All three are on the toolbar, and switch off
+when there is nowhere left to go.
+
+The **Window** menu closes and reopens the two panels, and **Reset Layout**
+puts them back where they started. The layout is remembered between
+sessions — the only thing this tool stores outside a plan file.
+
 `Ctrl+S` saves back to the file it was opened from; **Save As** writes
 elsewhere and refuses to overwrite an existing file without confirming.
 Closing the window, reloading, or opening a different plan while there are

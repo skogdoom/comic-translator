@@ -223,3 +223,59 @@ def test_summary_counts_regions_and_flags_for_one_image(project: Path) -> None:
     assert summary.region_count == 2
     # page-001-002 is empty and not skipped: it is held back.
     assert summary.flagged_count == 1
+
+
+def _document(*regions: Region) -> PlanDocument:
+    """A document built straight from regions: nothing to write or open."""
+    return PlanDocument(Plan(header=_header(), regions=regions), Path("comic-plan.yaml"))
+
+
+def _apart(index: int, **overrides: object) -> Region:
+    """A clean region whose polygon overlaps no other one built this way."""
+    left = index * 200
+    return _region(
+        "page-001.png",
+        "0" * 64,
+        id=f"r{index}",
+        order=index,
+        polygon=Box(left, 0, left + 100, 100).as_polygon(),
+        **overrides,
+    )
+
+
+def test_ordered_ids_is_the_plans_own_order() -> None:
+    doc = _document(_apart(1), _apart(2), _apart(3))
+    assert doc.ordered_ids() == ("r1", "r2", "r3")
+
+
+def test_adjacent_region_walks_the_whole_plan_not_just_one_page() -> None:
+    doc = _document(
+        _apart(1),
+        _apart(2),
+        _region("page-002.png", "1" * 64, id="r3", polygon=Box(0, 0, 100, 100).as_polygon()),
+    )
+    assert doc.adjacent_region("r1", forward=True) == "r2"
+    assert doc.adjacent_region("r2", forward=True) == "r3", "off the end of a page, onto the next"
+    assert doc.adjacent_region("r3", forward=True) is None
+
+    assert doc.adjacent_region("r3", forward=False) == "r2"
+    assert doc.adjacent_region("r1", forward=False) is None
+
+
+def test_adjacent_region_from_nowhere_is_the_first_one_or_the_last() -> None:
+    doc = _document(_apart(1), _apart(2))
+    assert doc.adjacent_region(None, forward=True) == "r1"
+    assert doc.adjacent_region(None, forward=False) == "r2"
+
+
+def test_adjacent_region_can_skip_to_the_next_one_worth_checking() -> None:
+    doc = _document(_apart(1), _apart(2), _apart(3, translation=""), _apart(4))
+    assert doc.adjacent_region("r1", forward=True, flagged_only=True) == "r3"
+    assert doc.adjacent_region("r3", forward=True, flagged_only=True) is None
+    # Without the filter the one in between is not skipped.
+    assert doc.adjacent_region("r1", forward=True) == "r2"
+
+
+def test_adjacent_region_is_nothing_for_an_unknown_id_or_an_empty_plan() -> None:
+    assert _document(_apart(1)).adjacent_region("no-such-region", forward=True) is None
+    assert _document().adjacent_region(None, forward=True) is None

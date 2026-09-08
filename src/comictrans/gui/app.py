@@ -23,6 +23,15 @@ from pathlib import Path
 
 from ..errors import GuiUnavailableError
 
+_ORGANIZATION = "comictrans"
+_APPLICATION = "review"
+"""Where ``QSettings`` keeps the window layout between sessions.
+
+The only state this tool holds outside a plan file, and it is deliberately
+nothing but layout: what a review *means* lives in the plan, which is the
+file you can read, diff and hand to someone else.
+"""
+
 _IMPORT_ERROR: str | None
 
 try:  # pragma: no cover - depends on whether the `gui` extra is installed
@@ -70,11 +79,11 @@ def run(plan_path: Path | None = None) -> int:
             "usually means a system Qt/X11 library is missing; on macOS it should just work."
         ) from exc
 
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import QSettings, QTimer
 
     from .main_window import MainWindow
 
-    window = MainWindow(plan_path)
+    window = MainWindow(plan_path, settings=QSettings(_ORGANIZATION, _APPLICATION))
     window.show()
     if plan_path is None:
         # Once the loop is running and the window is painted, so the dialog

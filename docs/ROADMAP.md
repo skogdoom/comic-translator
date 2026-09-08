@@ -19,7 +19,6 @@ table; when a whole milestone ships, say so in the Status section of
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.2 | Toolbar, Window menu, layout, navigation | S |
 | 4.3 | Help menu and About | S |
 | 4.4 | Undo and redo | M |
 | 4.5 | Region editing | XL |
@@ -36,8 +35,8 @@ bottom because nothing else waits on it, not because it matters least.
 
 Three things decide this order.
 
-**Cheap and immediately felt comes first.** 4.2 and 4.3 are small and
-visible the moment the window opens, as 4.1 was before them.
+**Cheap and immediately felt comes first.** 4.3 is small and visible the
+moment the window opens, as 4.1 and 4.2 were before it.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
@@ -55,25 +54,6 @@ from a terminal, once per chapter. A bad polygon cannot be fixed anywhere
 at all today — not in the GUI, and not without hand-editing pixel
 coordinates in YAML. Given what `known-bugs.md` already records about
 detection, editing earns its place first despite being the larger job.
-
-## 4.2 Toolbar, Window menu, layout, navigation
-
-The prerequisite for both menu items is the same. The docks are local
-variables in `MainWindow.__init__`, so nothing can reopen one that has been
-closed. Store them, and `QDockWidget.toggleViewAction()` gives the Window
-menu almost for free. The menu actions are already stored as attributes, so
-a toolbar can reuse them directly rather than defining a second set.
-
-Worth folding in while the layout code is open: **Reset Layout**, and
-persisting `saveState()` and geometry through `QSettings`. Without a reset,
-a dock dragged somewhere strange has no way back.
-
-Also here, though it is not on the original list: **next and previous
-region**, and next flagged region, on keyboard shortcuts. The core workflow
-is going through every balloon on every page, and the only way to move
-between them today is clicking each polygon. It is cheap, it probably saves
-more time than the rest of this milestone, and it is groundwork for 4.5 —
-editing a region starts with selecting it comfortably.
 
 ## 4.3 Help menu and About
 
