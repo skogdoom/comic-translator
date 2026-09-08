@@ -333,3 +333,11 @@ Two groups of tests skip rather than fail when the host cannot run them:
 neither skipping except the empty fixtures directory.
 
 Fixture images go in `tests/fixtures/`; see the README there.
+
+## Licence
+
+MIT. The full text is in [LICENSE](LICENSE), and `pyproject.toml` declares
+the same, so the package metadata and the repository agree.
+
+No font is bundled and none ever will be: comictrans resolves the fonts
+already installed on your Mac, so nothing here redistributes one.
