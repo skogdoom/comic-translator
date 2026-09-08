@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QPlainTextEdit,
     QSpinBox,
@@ -41,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from ..model import Region
 from .document import PlanDocument, RegionFlags
+from .font_box import FontBox
 
 _FONT_SIZE_AUTO = 0
 """The spin box's special value for "no override", shown as the word "auto"."""
@@ -163,8 +163,7 @@ class RegionInspector(QWidget):
         for prose in (self._translation, self._notes):
             prose.setUndoRedoEnabled(False)
         self._skip = QCheckBox("skip: leave this region untouched")
-        self._font = QLineEdit()
-        self._font.setPlaceholderText("(plan default)")
+        self._font = FontBox(allow_default=True)
         self._font_size = QSpinBox()
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
         self._font_size.setSpecialValueText("auto")
@@ -187,7 +186,7 @@ class RegionInspector(QWidget):
         self._translation.textChanged.connect(self._on_translation_changed)
         self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
-        self._font.textChanged.connect(self._on_font_changed)
+        self._font.currentTextChanged.connect(self._on_font_changed)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
 
         self.set_region(None, None)
@@ -233,7 +232,7 @@ class RegionInspector(QWidget):
             self._translation.setPlainText("")
             self._notes.setPlainText("")
             self._skip.setChecked(False)
-            self._font.setText("")
+            self._font.set_value(None)
             self._font_size.setValue(_FONT_SIZE_AUTO)
             return
 
@@ -243,7 +242,7 @@ class RegionInspector(QWidget):
         self._translation.setPlainText(region.translation)
         self._notes.setPlainText(region.notes)
         self._skip.setChecked(region.skip)
-        self._font.setText(region.font or "")
+        self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
 
     def _commit(self) -> None:
@@ -268,9 +267,9 @@ class RegionInspector(QWidget):
             self._document.set_skip(self._region_id, checked)
         self._commit()
 
-    def _on_font_changed(self, text: str) -> None:
+    def _on_font_changed(self, _text: str) -> None:
         if self._document is not None and self._region_id is not None:
-            self._document.set_font(self._region_id, text.strip() or None)
+            self._document.set_font(self._region_id, self._font.value())
         self._commit()
 
     def _on_font_size_changed(self, value: int) -> None:

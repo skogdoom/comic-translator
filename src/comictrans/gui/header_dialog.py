@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from ..model import TextCase
 from ..planfile.schema import CONDENSE_MIN_RANGE, FONT_SIZE_MIN_RATIO_RANGE
 from .document import PlanDocument
+from .font_box import FontBox
 
 _RATIO_DECIMALS = 4
 _CONDENSE_DECIMALS = 2
@@ -56,7 +57,10 @@ class HeaderDialog(QDialog):
 
         header = document.plan.header
 
-        self._font = QLineEdit(header.font)
+        # allow_default=False: every region without an override falls back
+        # to the header font, so it has nothing to fall back to itself.
+        self._font = FontBox(allow_default=False)
+        self._font.set_value(header.font)
         self._font_reach = QLabel(font_reach(document))
 
         self._case = QComboBox()
@@ -106,7 +110,7 @@ class HeaderDialog(QDialog):
         layout.addWidget(buttons)
         self.setMinimumWidth(420)
 
-        self._font.textChanged.connect(self._on_font_changed)
+        self._font.currentTextChanged.connect(self._on_font_changed)
         self._case.currentIndexChanged.connect(self._on_case_changed)
         self._min_ratio.valueChanged.connect(self._on_min_ratio_changed)
         self._condense.valueChanged.connect(self._on_condense_changed)
@@ -170,7 +174,7 @@ class HeaderDialog(QDialog):
                 self._target_language,
             ):
                 blockers.enter_context(QSignalBlocker(widget))
-            self._font.setText(header.font)
+            self._font.set_value(header.font)
             self._case.setCurrentIndex(self._case.findData(header.case))
             self._min_ratio.setValue(header.font_size_min_ratio)
             self._condense.setValue(header.condense_min)

@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.11 | Font selection dropdown | S–M |
 | 4.5 | Region editing | XL |
 | 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
@@ -43,7 +42,7 @@ Three things decide this order.
 
 **Cheap and immediately felt comes first.** 4.1 to 4.3 were small and
 visible the moment the window opened, which is why they went first, and
-4.11 is the same shape, as 4.12 and 4.15 were: felt on every page of every
+4.11, 4.12 and 4.15 were the same shape: felt on every page of every
 review, and waiting on nothing.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
@@ -72,43 +71,6 @@ safe to call off the main thread — and the more valuable, because reviewing
 a plan and then leaving for a terminal to render it is the obvious hole in
 the window as it stands. Build the threading on the easy case; extract
 reuses it with the harder question on top.
-
-## 4.11 Font selection dropdown
-
-An editable `QComboBox` in place of the inspector's font line edit.
-
-**Populate it from `fonts.py`, never from `QFontDatabase`.** They answer
-different questions. Qt lists what Qt can draw with; `fonts.py` resolves a
-family by scanning `search_dirs()` for files, matching filename slugs, and
-demanding a real bold face — `resolve_family(..., require_bold=True)`
-raises `FontError` without one, because emphasis is bold and a bold is
-never synthesised. A dropdown built from Qt would offer families that
-`apply` then refuses, turning a two-click choice into a render failure.
-
-So: a new `fonts.available_families()` that enumerates faces across the
-search directories and then *verifies* each candidate through
-`resolve_family`. The verify step is not belt-and-braces —
-`_candidate_files` matches on filename slug, so a family whose internal
-name does not match its filename enumerates but does not resolve. Verifying
-is what lets the dropdown promise that everything it offers will render.
-
-**It must stay editable, and must keep a name it cannot resolve.** A plan
-written on another Mac can name a font this one does not have. A closed
-dropdown would silently swap that font the moment the field was touched,
-which is the one thing the spec says never happens. Editable, current value
-always shown, and marked when it will not resolve — that marking is worth
-having on its own, since it says so before you render rather than after.
-
-**Cache the scan.** Measured at roughly 4ms per font file, so a few hundred
-files is on the order of a second, and macOS `.ttc` collections hold many
-faces each. Scan once, behind a wait cursor on first use, with an explicit
-rescan for when a font is installed mid-session.
-
-The list needs an explicit "(plan default)" entry meaning `None`, which the
-empty line edit expresses today only by accident.
-
-The header font field in the plan header dialog wants the same dropdown, and
-is a plain line edit until this lands.
 
 ## 4.5 Region editing
 

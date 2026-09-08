@@ -449,13 +449,13 @@ def test_the_font_override_writes_through_as_it_is_typed(qapp: object, two_page_
     window = MainWindow()
     window.open_plan(two_page_plan)
 
-    window._inspector._font.setText("Chalkboard SE")
+    window._inspector._font.setCurrentText("Chalkboard SE")
 
     assert window.document.region("page-001-001").font == "Chalkboard SE"  # type: ignore[union-attr]
     assert window.document.dirty  # type: ignore[union-attr]
 
     # Emptying it clears the override rather than pinning an empty name.
-    window._inspector._font.setText("")
+    window._inspector._font.setCurrentText("")
     assert window.document.region("page-001-001").font is None  # type: ignore[union-attr]
 
 
@@ -464,11 +464,11 @@ def test_selecting_another_region_does_not_carry_the_font_override_across(
 ) -> None:
     window = MainWindow()
     window.open_plan(two_page_plan)
-    window._inspector._font.setText("Chalkboard SE")
+    window._inspector._font.setCurrentText("Chalkboard SE")
 
     window._on_region_selected("page-001-002")
 
-    assert window._inspector._font.text() == ""
+    assert window._inspector._font.value() is None, "no override, however it is spelled"
     assert window.document.region("page-001-002").font is None  # type: ignore[union-attr]
     assert window.document.region("page-001-001").font == "Chalkboard SE"  # type: ignore[union-attr]
 
@@ -968,7 +968,7 @@ def test_the_header_dialog_writes_through_as_it_is_edited(
     window.open_plan(two_page_plan)
     dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
 
-    dialog._font.setText("Chalkboard SE")
+    dialog._font.setCurrentText("Chalkboard SE")
     dialog._case.setCurrentIndex(dialog._case.findData(TextCase.PRESERVE))
     dialog._condense.setValue(0.8)
     dialog._target_language.setText("sv")
@@ -991,7 +991,7 @@ def test_clearing_the_header_font_on_the_way_to_a_new_one_writes_nothing(
     window.open_plan(two_page_plan)
     dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
 
-    dialog._font.setText("")
+    dialog._font.setCurrentText("")
 
     assert window.document.plan.header.font == "Comic Sans MS"  # type: ignore[union-attr]
     assert not window.document.dirty  # type: ignore[union-attr]
@@ -1055,12 +1055,12 @@ def test_undoing_a_header_edit_puts_the_dialog_fields_back(
     window = MainWindow()
     window.open_plan(two_page_plan)
     dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
-    dialog._font.setText("Chalkboard SE")
+    dialog._font.setCurrentText("Chalkboard SE")
 
     window._on_undo()
     dialog.repopulate()
 
-    assert dialog._font.text() == "Comic Sans MS"
+    assert dialog._font.currentText() == "Comic Sans MS"
     assert not window.document.dirty, "repopulating must not write itself back out"  # type: ignore[union-attr]
 
 
@@ -1208,3 +1208,101 @@ def test_the_flag_list_follows_the_selected_region_and_its_edits(
 
     window._inspector._translation.setPlainText("NOW TRANSLATED")
     assert rows() == ["nothing flagged"], "the flag clears as the reason for it goes"
+
+
+def test_the_font_box_offers_only_fonts_that_will_render(qapp: object, font_dir: Path) -> None:
+    """Populated from fonts.py, not QFontDatabase, which knows a wider set."""
+    from comictrans import fonts
+    from comictrans.gui.font_box import PLAN_DEFAULT, FontBox
+
+    fonts.forget_available_families()
+    box = FontBox(allow_default=True)
+    box.showPopup()
+
+    offered = [box.itemText(i) for i in range(box.count())]
+    assert offered == [PLAN_DEFAULT, "Comic Sans MS"]
+    assert "Marker Felt" not in offered, "no bold face, so apply would refuse it"
+
+
+def test_the_font_box_reports_no_override_whatever_it_shows(qapp: object, font_dir: Path) -> None:
+    from comictrans.gui.font_box import PLAN_DEFAULT, FontBox
+
+    box = FontBox(allow_default=True)
+    box.set_value(None)
+    assert box.currentText() == PLAN_DEFAULT
+    assert box.value() is None
+
+    box.set_value("Comic Sans MS")
+    assert box.value() == "Comic Sans MS"
+
+
+def test_the_header_font_box_has_no_no_override_entry(qapp: object, font_dir: Path) -> None:
+    """Every region without an override falls back to it; it cannot itself."""
+    from comictrans.gui.font_box import PLAN_DEFAULT, FontBox
+
+    box = FontBox(allow_default=False)
+    box.showPopup()
+    assert PLAN_DEFAULT not in [box.itemText(i) for i in range(box.count())]
+
+
+def test_a_font_the_machine_does_not_have_is_kept_and_marked(qapp: object, font_dir: Path) -> None:
+    """Silently swapping it is the one thing the spec says never happens."""
+    from comictrans.gui.font_box import FontBox
+
+    box = FontBox(allow_default=True)
+    box.set_value("A Font From Another Mac")
+
+    assert box.value() == "A Font From Another Mac", "kept verbatim"
+    assert not box.resolvable()
+    assert "not installed" in box.toolTip()
+
+    box.set_value("Comic Sans MS")
+    assert box.resolvable()
+    assert box.toolTip() == ""
+
+
+def test_the_font_box_stays_editable_so_a_name_can_be_typed(qapp: object, font_dir: Path) -> None:
+    from comictrans.gui.font_box import FontBox
+
+    box = FontBox(allow_default=True)
+    assert box.isEditable()
+    box.setCurrentText("Typed By Hand")
+    assert box.value() == "Typed By Hand", "typing must not be forced onto a listed item"
+
+
+def test_rescanning_picks_up_a_font_installed_since(qapp: object, font_dir: Path) -> None:
+    from comictrans import fonts
+    from comictrans.gui.font_box import FontBox
+
+    fonts.forget_available_families()
+    box = FontBox(allow_default=False)
+    box.showPopup()
+    assert [box.itemText(i) for i in range(box.count())] == ["Comic Sans MS"]
+
+    (font_dir / "Comic Sans MS.ttf").unlink()
+    box.rescan()
+
+    assert [box.itemText(i) for i in range(box.count())] == []
+
+
+def test_the_inspector_writes_the_font_the_box_reports(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    window._inspector._font.setCurrentText("Comic Sans MS")
+    assert window.document.region("page-001-001").font == "Comic Sans MS"  # type: ignore[union-attr]
+
+    from comictrans.gui.font_box import PLAN_DEFAULT
+
+    window._inspector._font.setCurrentText(PLAN_DEFAULT)
+    assert window.document.region("page-001-001").font is None  # type: ignore[union-attr]
+
+
+def test_rescan_fonts_is_on_the_edit_menu(qapp: object) -> None:
+    from PySide6.QtWidgets import QMenu
+
+    window = MainWindow()
+    menu = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Edit")
+    assert window._rescan_fonts_action in menu.actions()

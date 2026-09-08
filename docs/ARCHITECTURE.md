@@ -491,6 +491,7 @@ inspector.py   one region's fields, writing straight through to the document
 page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
 header_dialog.py the settings every region is drawn under
+font_box.py     a font field offering only what fonts.py can resolve
 main_window.py wires the four widgets together; the only module that
                knows about all of them at once
 app.py         available() / run() — the CLI's entry point
@@ -556,6 +557,27 @@ same magnification.
 Zoom costs nothing because the scene holds page pixels at their own
 coordinates and only the view scales. That is the same property that makes a
 polygon drawn on the canvas exactly the polygon apply would erase into.
+
+**Why the font list comes from `fonts.py` and not `QFontDatabase`.** They
+answer different questions. Qt lists what Qt can draw with; `fonts.py`
+resolves a family by looking for files in the search directories and demands
+a real bold face, because emphasis is bold and a bold is never synthesised. A
+list built from Qt would offer families `apply` then refuses, turning a
+two-click choice into a render failure. So `available_families` enumerates
+and then puts every candidate back through `resolve_family` — the same call
+`apply` makes — and only what survives is offered.
+
+Enumeration reads each file's own family name first and falls back to the
+filename, per file, only when none of the internal names resolve.
+`_candidate_files` matches a slug against the *filename*, so a font whose
+internal name differs from the file it lives in is real and usable but not
+findable under the name inside it. Asking per file rather than globally is
+what stops a font being offered twice under two spellings.
+
+The field stays editable and never rewrites a name it does not recognise: a
+plan written on another Mac can name a font this one lacks, and silently
+swapping it is exactly the substitution the spec forbids. The name stays and
+is marked instead.
 
 **Why the header dialog validates and the region setters do not.** A
 region's fields carry no invariants of their own, so the schema is enforced
