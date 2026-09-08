@@ -439,3 +439,32 @@ def test_review_with_a_plan_does_not_ask(
 
     assert gui_app.run(two_page_plan) == 0
     assert not asked
+
+
+def test_the_font_override_writes_through_as_it_is_typed(qapp: object, two_page_plan: Path) -> None:
+    """Not on focus loss: a name typed and then abandoned is still an edit."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    window._inspector._font.setText("Chalkboard SE")
+
+    assert window.document.region("page-001-001").font == "Chalkboard SE"  # type: ignore[union-attr]
+    assert window.document.dirty  # type: ignore[union-attr]
+
+    # Emptying it clears the override rather than pinning an empty name.
+    window._inspector._font.setText("")
+    assert window.document.region("page-001-001").font is None  # type: ignore[union-attr]
+
+
+def test_selecting_another_region_does_not_carry_the_font_override_across(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._font.setText("Chalkboard SE")
+
+    window._on_region_selected("page-001-002")
+
+    assert window._inspector._font.text() == ""
+    assert window.document.region("page-001-002").font is None  # type: ignore[union-attr]
+    assert window.document.region("page-001-001").font == "Chalkboard SE"  # type: ignore[union-attr]

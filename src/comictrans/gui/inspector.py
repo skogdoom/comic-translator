@@ -8,13 +8,16 @@ emitted after every write so the window can refresh whatever depends on it
 outline for this region) without the inspector needing to know about any of
 those things itself.
 
-**The two prose fields commit on every keystroke, not on focus loss.** A
-half-written sentence is still worth keeping: committing on focus loss would
+**Every typed field commits on each keystroke, not on focus loss.** A
+half-written value is still worth keeping: committing on focus loss would
 leave an edit sitting in a widget nothing else in the window knows about, so
 the dirty marker would be wrong and closing the window straight after typing
-would discard the text without asking. The cost is that an undo stack built
-over this has to coalesce consecutive keystrokes rather than treat each one
-as a step of its own.
+would discard the text without asking. That holds for the font override as
+much as for the prose — a name typed but not tabbed away from is an edit,
+and a half-typed font name is not a problem to guard against here, because
+nothing resolves a font until something renders. The cost is that an undo
+stack built over this has to coalesce consecutive keystrokes rather than
+treat each one as a step of its own.
 """
 
 from __future__ import annotations
@@ -124,7 +127,7 @@ class RegionInspector(QWidget):
         self._translation.textChanged.connect(self._on_translation_changed)
         self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
-        self._font.editingFinished.connect(self._on_font_changed)
+        self._font.textChanged.connect(self._on_font_changed)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
 
         self.set_region(None, None)
@@ -205,10 +208,9 @@ class RegionInspector(QWidget):
             self._document.set_skip(self._region_id, checked)
         self._commit()
 
-    def _on_font_changed(self) -> None:
+    def _on_font_changed(self, text: str) -> None:
         if self._document is not None and self._region_id is not None:
-            text = self._font.text().strip()
-            self._document.set_font(self._region_id, text or None)
+            self._document.set_font(self._region_id, text.strip() or None)
         self._commit()
 
     def _on_font_size_changed(self, value: int) -> None:
