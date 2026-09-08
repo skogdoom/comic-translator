@@ -287,6 +287,16 @@ class EraseConfig:
     """Grow the glyph mask by this fraction of image height, to catch the
     antialiased fringe a colour test leaves behind."""
 
+    ground_close_ratio: float = 0.01
+    """How wide a gap to close when working out where the region's own flat
+    background is, as a fraction of image height.
+
+    Lettering is a hole in that background, so closing by more than a glyph's
+    stroke width fills it back in and leaves a solid ground to mask against.
+    Wider than any stroke measured on the fixtures, and still far narrower
+    than a balloon, so closing cannot bridge the outline and swallow the art
+    outside it."""
+
     inpaint_radius_ratio: float = 0.003
 
 
