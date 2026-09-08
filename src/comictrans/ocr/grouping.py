@@ -65,6 +65,38 @@ def looks_like_text(text: str) -> bool:
     )
 
 
+MAX_LETTERING_RATIO = 3.0
+"""How much taller than the page's own lettering a region's may be.
+
+Three, not two: a shout is genuinely bigger than body text. Measured across
+the fixtures, every real region sits between 0.94 and 1.10 times its page's
+median, so three leaves room to spare and still catches artwork by a wide
+margin — the window frame that prompted this measured 6.1.
+"""
+
+
+def lettering_matches_page(lines: Sequence[OcrLine], page_median: float) -> bool:
+    """True when a region's lettering is sized like the rest of the page's.
+
+    The other half of the artefact test. :func:`looks_like_text` asks whether
+    the characters read as language, which a window frame read as ``INA``
+    passes. This asks whether they are *sized* like lettering, which it does
+    not: text invented out of artwork is as big as whatever was drawn.
+
+    Worth having because the two failures are not equally cheap. A spurious
+    region that is merely lettered over adds nonsense to a balloon; one over
+    artwork is erased first, and erasing takes the drawing with it.
+
+    Comic lettering on one page is consistent in size, so the page is its own
+    yardstick. Nothing absolute would do: a scan's resolution is unknown, and
+    the same page at two DPIs has to give the same answer.
+    """
+    if page_median <= 0:
+        return True
+    height = median_line_height(lines)
+    return height <= 0 or height <= MAX_LETTERING_RATIO * page_median
+
+
 def utterance_confidence(lines: Sequence[OcrLine]) -> float:
     """Confidence for a whole region: the *worst* of its lines.
 

@@ -20,11 +20,18 @@ from .config import (
 )
 from .debug import dump as dump_debug
 from .detect import DetectedRegion, find_regions
+from .detect.color import interior_uniformity
 from .errors import ComictransError
 from .imaging import PageImage, collect_inputs, load_page
 from .model import Geometry, Plan, PlanHeader, Region, TextCase
 from .ocr import TextRecognizer
-from .ocr.grouping import looks_like_text, utterance_confidence, utterance_text
+from .ocr.grouping import (
+    lettering_matches_page,
+    looks_like_text,
+    median_line_height,
+    utterance_confidence,
+    utterance_text,
+)
 from .planfile.schema import PLAN_VERSION
 from .util import relative_posix, slugify
 
@@ -41,6 +48,8 @@ class ExtractReport:
     approximate: int = 0
     artefacts: int = 0
     """Regions whose OCR text does not read as language, left unseeded."""
+    on_artwork: int = 0
+    """Regions that look like artwork OCR read as text, left unseeded."""
     empty_pages: list[Path] = field(default_factory=list)
     skipped_inputs: list[tuple[Path, str]] = field(default_factory=list)
     failures: list[tuple[Path, str]] = field(default_factory=list)
@@ -63,12 +72,39 @@ def _region_id(page: PageImage, order: int) -> str:
     return f"{slugify(page.path.stem)}-{order:03d}"
 
 
+def _letters_on_artwork(
+    page: PageImage, detected: DetectedRegion, page_median: float, config: ExtractConfig
+) -> bool:
+    """True when a region is artwork that OCR read as text.
+
+    Two tests, because either one alone refuses something real. Oversized
+    lettering by itself would throw out a genuine display caption — four of
+    them on the screentoned fixture, where halftone noise drags the page
+    median down. A non-flat interior by itself would throw out a borderless
+    caption lettered straight onto the art, which measures 0.57 there.
+
+    Together they are specific: text far larger than anything else on the
+    page, sitting on something that is not a flat ground. That is a window
+    frame or a doorway, not lettering.
+    """
+    if lettering_matches_page(detected.lines, page_median):
+        return False
+    uniformity = interior_uniformity(
+        page.rgb,
+        detected.polygon,
+        page_height=page.height,
+        tolerance=config.detect.uniformity_tolerance,
+    )
+    return uniformity < config.artefact_uniformity
+
+
 def _to_region(
     page: PageImage,
     detected: DetectedRegion,
     order: int,
     plan_dir: Path,
     config: ExtractConfig,
+    page_median: float,
 ) -> Region:
     # Rounded here rather than at write time so the in-memory plan and the
     # file on disk are the same thing.
@@ -78,7 +114,14 @@ def _to_region(
     # dots — is kept so it can be checked, but not seeded: seeding would make
     # it actionable, and apply would erase the artwork to letter nonsense onto
     # it. Left empty, apply leaves it alone and the run says so.
-    readable = looks_like_text(source_text)
+    #
+    # Two tests, because artwork can read as a perfectly good word. A window
+    # frame came back as "INA", passed for language, and was lettered back
+    # onto the page six times the size of the real text around it — erasing
+    # the frame it was read from on the way.
+    readable = looks_like_text(source_text) and not _letters_on_artwork(
+        page, detected, page_median, config
+    )
     return Region(
         id=_region_id(page, order),
         image=relative_posix(page.path, plan_dir),
@@ -113,8 +156,11 @@ def extract_page(
     detected = find_regions(page, lines, config.detect)
     if debug_dir is not None:
         dump_debug(page, detected, config.detect, debug_dir)
+    # One yardstick for the whole page, from every line on it, so a region is
+    # measured against the page rather than against itself.
+    page_median = median_line_height([line for region in detected for line in region.lines])
     return [
-        _to_region(page, region, order, plan_dir, config)
+        _to_region(page, region, order, plan_dir, config, page_median)
         for order, region in enumerate(detected, start=1)
     ]
 
@@ -157,7 +203,9 @@ def extract(
         report.regions += len(page_regions)
         report.low_confidence += sum(1 for r in page_regions if r.low_confidence)
         report.approximate += sum(1 for r in page_regions if r.geometry is Geometry.APPROXIMATE)
-        report.artefacts += sum(1 for r in page_regions if not r.translation)
+        unseeded = [r for r in page_regions if not r.translation]
+        report.artefacts += sum(1 for r in unseeded if not looks_like_text(r.source_text))
+        report.on_artwork += sum(1 for r in unseeded if looks_like_text(r.source_text))
         log.info("%s: %d region(s)", path.name, len(page_regions))
 
     header = PlanHeader(

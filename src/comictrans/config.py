@@ -213,6 +213,19 @@ class ExtractConfig:
     font_size_min_ratio: float = DEFAULT_FONT_SIZE_MIN_RATIO
     condense_min: float = DEFAULT_CONDENSE_MIN
 
+    artefact_uniformity: float = 0.75
+    """How flat the ground under oversized lettering must be to believe it.
+
+    Only ever asked of a region whose lettering already dwarfs the page's, so
+    it separates a genuine display caption from artwork OCR read as text.
+    Measured on the fixtures: real captions that tripped the size test scored
+    0.83 to 0.95, the artwork 0.00 to 0.68.
+
+    Higher than the detection guard of the same name because it answers a
+    narrower question. That one tells a balloon from a whole panel; this one
+    has already been told the lettering is wrong-sized and only asks whether
+    anything is drawn underneath it."""
+
 
 DEFAULT_LINE_SPACING = 1.15
 

@@ -362,6 +362,7 @@ def _report_summary(
     print(f"  low confidence:    {report.low_confidence}")
     print(f"  approximate shape: {report.approximate}")
     print(f"  not text-like:     {report.artefacts}")
+    print(f"  artwork as text:   {report.on_artwork}")
     for path, reason in report.skipped_inputs:
         print(f"  skipped input:     {path.name} ({reason})")
     for path in report.empty_pages:
@@ -384,6 +385,14 @@ def _report_summary(
             f"\n{report.artefacts} region(s) hold something that does not read "
             "as text; their translation was left empty so apply leaves the art "
             "alone. Check them, then delete them or set skip: true."
+        )
+    if report.on_artwork:
+        print(
+            f"\n{report.on_artwork} region(s) look like artwork read as text: "
+            "lettering far larger than the rest of the page, on a background "
+            "that is not a flat ground. Their translation was left empty so "
+            "apply leaves the art alone. Check them, then delete them or set "
+            "skip: true."
         )
     if report.approximate:
         print(

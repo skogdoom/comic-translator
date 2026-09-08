@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from comictrans.config import ExtractConfig, OcrConfig
@@ -380,6 +381,91 @@ def test_real_lettering_is_still_seeded(
     plan, report = _run(directory, recognizer)
     assert all(r.translation == r.source_text for r in plan.regions)
     assert report.artefacts == 0
+
+
+def _page_with_a_window_frame(path: Path, boxes: list[Box], frame: Box) -> Path:
+    """A balloon with ordinary lettering, plus a drawn frame OCR can misread."""
+    from PIL import Image, ImageDraw
+
+    array = make_page_array(
+        (600, 800),
+        ART_DARK,
+        [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes)],
+    )
+    image = Image.fromarray(array)
+    draw = ImageDraw.Draw(image)
+    # Structure, not a flat ground: the uprights and rail of a window, which is
+    # what OCR reads as tall letters.
+    draw.rectangle([frame.left, frame.top, frame.right, frame.bottom], fill=(214, 150, 40))
+    for x in (frame.left + 30, frame.right - 30):
+        draw.line([(x, frame.top), (x, frame.bottom)], fill=(120, 60, 20), width=14)
+    draw.line(
+        [(frame.left, frame.top + 60), (frame.right, frame.top + 60)],
+        fill=(120, 60, 20),
+        width=14,
+    )
+    return save_page(np.asarray(image, dtype=np.uint8), path)
+
+
+def test_artwork_read_as_a_real_word_is_not_seeded(tmp_path: Path) -> None:
+    # The costly artefact. "INA", read off a window frame, is a perfectly good
+    # run of letters, so the language test passes it. Seeded, apply erases the
+    # frame it was read from and letters "INA" over the hole — measured at 28%
+    # of that region's pixels destroyed on a real page.
+    directory = tmp_path / "pages"
+    directory.mkdir()
+    boxes = [Box(160, 140, 360, 164), Box(160, 180, 340, 204)]
+    frame = Box(430, 330, 590, 560)
+    _page_with_a_window_frame(directory / "page1.png", boxes, frame)
+    recognizer = FakeRecognizer(
+        {"page1.png": lines_for([*boxes, frame], ["NON CI POSSO", "CREDERE!", "INA"])}
+    )
+
+    plan, report = _run(directory, recognizer)
+
+    frames = [r for r in plan.regions if r.source_text == "INA"]
+    assert len(frames) == 1, "the region is kept in the plan so it can be checked"
+    assert frames[0].translation == "", "but apply must leave the artwork alone"
+    assert not frames[0].is_actionable
+    assert report.on_artwork == 1
+    assert report.artefacts == 0, "it reads as language; it is the size that gives it away"
+
+    speech = [r for r in plan.regions if r.source_text != "INA"]
+    assert speech and all(r.translation == r.source_text for r in speech), (
+        "real lettering on the same page must still be seeded"
+    )
+
+
+def test_oversized_lettering_on_a_flat_ground_is_still_seeded(tmp_path: Path) -> None:
+    # The other half of the test. Size alone is not enough to condemn a region:
+    # a display caption is genuinely bigger than body text, and on the
+    # screentoned fixture halftone noise drags the page median down until four
+    # real captions look oversized. What separates them is what they sit on.
+    directory = tmp_path / "pages"
+    directory.mkdir()
+    boxes = [Box(160, 140, 360, 164), Box(160, 180, 340, 204)]
+    # One line of display lettering, 3.75x the page's own, in a caption box
+    # with the leading a real one has around it.
+    shout = Box(160, 430, 440, 520)
+    array = make_page_array(
+        (600, 800),
+        ART_DARK,
+        [
+            ("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes),
+            ("rect", Box(120, 340, 480, 620), BALLOON_WHITE, INK_BLACK, [shout]),
+        ],
+    )
+    save_page(array, directory / "page1.png")
+    recognizer = FakeRecognizer(
+        {"page1.png": lines_for([*boxes, shout], ["NON CI POSSO", "CREDERE!", "BASTA"])}
+    )
+
+    plan, report = _run(directory, recognizer)
+
+    big = [r for r in plan.regions if r.source_text == "BASTA"]
+    assert len(big) == 1
+    assert big[0].translation == "BASTA", "a flat ground under big lettering is a caption"
+    assert report.on_artwork == 0
 
 
 def test_a_one_word_balloon_is_not_mistaken_for_an_artefact(tmp_path: Path) -> None:
