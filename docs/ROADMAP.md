@@ -11,14 +11,14 @@ This file describes what it is not yet.
 Nothing here is a commitment, and nothing here is a work item an agent
 should pick up on its own — the same rule `known-bugs.md` carries. Work a
 milestone when the request names it. Sizes are relative effort, not
-estimates. When a milestone ships, delete its section and move the line in
-the table to the Status section of `README.md`.
+estimates. When a milestone ships, delete its section and its row from the
+table; when a whole milestone ships, say so in the Status section of
+`README.md` as well.
 
 ## Order
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.1 | Inspector and startup polish | S |
 | 4.2 | Toolbar, Window menu, layout, navigation | S |
 | 4.3 | Help menu and About | S |
 | 4.4 | Undo and redo | M |
@@ -36,8 +36,8 @@ bottom because nothing else waits on it, not because it matters least.
 
 Three things decide this order.
 
-**Cheap and immediately felt comes first.** 4.1 to 4.3 are a day's work
-between them and every one of them is visible the moment the window opens.
+**Cheap and immediately felt comes first.** 4.2 and 4.3 are small and
+visible the moment the window opens, as 4.1 was before them.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
@@ -55,30 +55,6 @@ from a terminal, once per chapter. A bad polygon cannot be fixed anywhere
 at all today — not in the GUI, and not without hand-editing pixel
 coordinates in YAML. Given what `known-bugs.md` already records about
 detection, editing earns its place first despite being the larger job.
-
-## 4.1 Inspector and startup polish
-
-Three unrelated small fixes, grouped because they are all in the same two
-files.
-
-- The font size spin box is too narrow for the word `auto`. `QSpinBox`
-  sizes itself from its numeric range, not from `setSpecialValueText`.
-  Measure the word with `QFontMetrics` rather than hardcoding a width, so
-  it survives a different UI scale.
-- `notes` is a `QLineEdit` and should be a text box. Note that
-  `editingFinished`, which the current field commits on, does not exist on
-  `QPlainTextEdit`.
-- `review` with no plan argument opens an empty window. It should open the
-  file dialog.
-
-The startup dialog belongs in `gui.app.run`, **not** in `MainWindow`'s
-constructor. The widget tests construct a bare `MainWindow()`; a modal
-dialog in the constructor would hang every one of them, the same way a real
-`QMessageBox` does under the offscreen platform, with nothing there to
-click it.
-
-Settle one thing here that 4.4 inherits: whether a multi-line field commits
-per keystroke, as `translation` does now, or on focus loss.
 
 ## 4.2 Toolbar, Window menu, layout, navigation
 
@@ -144,10 +120,11 @@ with no undo code written for any of them.
 
 Two decisions:
 
-- **Coalescing.** `translation` writes on every keystroke, so raw snapshots
-  give per-character undo. Merge consecutive edits to the same region and
-  field until focus changes or a timeout expires. This is what
-  `QUndoCommand.mergeWith` exists for.
+- **Coalescing.** 4.1 settled that the prose fields commit on every
+  keystroke — for the reasons in `gui/inspector.py`'s module docstring — so
+  raw snapshots would give per-character undo. Merge consecutive edits to
+  the same region and field until focus changes or a timeout expires. This
+  is what `QUndoCommand.mergeWith` exists for.
 - **Ctrl+Z while typing.** Qt dispatches shortcuts before key events reach
   the focused widget, so a window-level undo action takes undo away from a
   text field mid-sentence. Decide the rule deliberately.

@@ -43,7 +43,11 @@ def unavailable_reason() -> str:
 
 
 def run(plan_path: Path | None = None) -> int:
-    """Open the review window, optionally on a plan file already. Blocks until closed.
+    """Open the review window, on a plan file if one was named. Blocks until closed.
+
+    With no plan file, the window opens the file dialog straight away: there
+    is nothing to do in an empty review window, so asking is more use than
+    waiting to be asked.
 
     Raises :class:`GuiUnavailableError` rather than letting an import error or
     a platform-plugin failure escape as something unreadable — both are things
@@ -66,8 +70,14 @@ def run(plan_path: Path | None = None) -> int:
             "usually means a system Qt/X11 library is missing; on macOS it should just work."
         ) from exc
 
+    from PySide6.QtCore import QTimer
+
     from .main_window import MainWindow
 
     window = MainWindow(plan_path)
     window.show()
+    if plan_path is None:
+        # Once the loop is running and the window is painted, so the dialog
+        # opens over the window rather than in front of nothing.
+        QTimer.singleShot(0, window.open_plan_dialog)
     return app.exec()

@@ -336,7 +336,7 @@ def _add_review(
         ),
     )
     review_parser.add_argument(
-        "plan", type=Path, nargs="?", help="plan file to open (optional; File > Open works too)"
+        "plan", type=Path, nargs="?", help="plan file to open (optional; asks for one if omitted)"
     )
 
 

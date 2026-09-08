@@ -7,6 +7,14 @@ emitted after every write so the window can refresh whatever depends on it
 (the window title's dirty marker, the page list's flag counts, the canvas's
 outline for this region) without the inspector needing to know about any of
 those things itself.
+
+**The two prose fields commit on every keystroke, not on focus loss.** A
+half-written sentence is still worth keeping: committing on focus loss would
+leave an edit sitting in a widget nothing else in the window knows about, so
+the dirty marker would be wrong and closing the window straight after typing
+would discard the text without asking. The cost is that an undo stack built
+over this has to coalesce consecutive keystrokes rather than treat each one
+as a step of its own.
 """
 
 from __future__ import annotations
@@ -14,6 +22,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 
 from PySide6.QtCore import QSignalBlocker, Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -30,6 +39,32 @@ from .document import PlanDocument, RegionFlags
 
 _FONT_SIZE_AUTO = 0
 """The spin box's special value for "no override", shown as the word "auto"."""
+
+_NOTES_HEIGHT = 60
+"""Enough for a few lines. Notes are usually a sentence, not a paragraph."""
+
+
+def _widen_for_special_value(box: QSpinBox) -> None:
+    """Give a spin box's special value text as much room as its widest number.
+
+    ``QAbstractSpinBox.sizeHint`` is computed from the numeric range and
+    ignores ``specialValueText`` — measured rather than assumed: the hint
+    comes out identical with and without one set. That goes unnoticed
+    wherever the form stretches its fields to the panel width, which is what
+    every platform this suite runs on does. macOS is the one that does not:
+    its style asks ``QFormLayout`` for ``FieldsStayAtSizeHint``, and the word
+    "auto" then has to sit in a box measured for three digits.
+
+    Measured from the font rather than set to a pixel count, so it holds at
+    whatever size the UI is actually running at.
+    """
+    metrics = QFontMetrics(box.font())
+    widest_number = max(
+        metrics.horizontalAdvance(str(box.minimum())),
+        metrics.horizontalAdvance(str(box.maximum())),
+    )
+    chrome = box.sizeHint().width() - widest_number
+    box.setMinimumWidth(metrics.horizontalAdvance(box.specialValueText()) + chrome)
 
 
 def _flags_text(flags: RegionFlags) -> str:
@@ -61,13 +96,16 @@ class RegionInspector(QWidget):
         self._source_text.setMaximumHeight(100)
         self._translation = QPlainTextEdit()
         self._translation.setMaximumHeight(100)
-        self._notes = QLineEdit()
+        self._notes = QPlainTextEdit()
+        self._notes.setMaximumHeight(_NOTES_HEIGHT)
+        self._notes.setPlaceholderText("never rendered; kept when re-extracting")
         self._skip = QCheckBox("skip: leave this region untouched")
         self._font = QLineEdit()
         self._font.setPlaceholderText("(plan default)")
         self._font_size = QSpinBox()
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
         self._font_size.setSpecialValueText("auto")
+        _widen_for_special_value(self._font_size)
 
         form = QFormLayout()
         form.addRow("region", self._id_label)
@@ -84,7 +122,7 @@ class RegionInspector(QWidget):
         layout.addStretch(1)
 
         self._translation.textChanged.connect(self._on_translation_changed)
-        self._notes.editingFinished.connect(self._on_notes_changed)
+        self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
         self._font.editingFinished.connect(self._on_font_changed)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
@@ -130,7 +168,7 @@ class RegionInspector(QWidget):
             self._flags_label.setText("—")
             self._source_text.setPlainText("")
             self._translation.setPlainText("")
-            self._notes.setText("")
+            self._notes.setPlainText("")
             self._skip.setChecked(False)
             self._font.setText("")
             self._font_size.setValue(_FONT_SIZE_AUTO)
@@ -140,7 +178,7 @@ class RegionInspector(QWidget):
         self._flags_label.setText(_flags_text(document.flags(region.id)))
         self._source_text.setPlainText(region.source_text)
         self._translation.setPlainText(region.translation)
-        self._notes.setText(region.notes)
+        self._notes.setPlainText(region.notes)
         self._skip.setChecked(region.skip)
         self._font.setText(region.font or "")
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
@@ -159,7 +197,7 @@ class RegionInspector(QWidget):
 
     def _on_notes_changed(self) -> None:
         if self._document is not None and self._region_id is not None:
-            self._document.set_notes(self._region_id, self._notes.text())
+            self._document.set_notes(self._region_id, self._notes.toPlainText())
         self._commit()
 
     def _on_skip_changed(self, checked: bool) -> None:

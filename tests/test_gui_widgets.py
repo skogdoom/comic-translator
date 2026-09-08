@@ -338,3 +338,104 @@ def test_render_preview_reports_a_font_error_instead_of_crashing(
 
     assert shown
     assert not window._showing_preview
+
+
+def test_the_font_size_box_has_room_for_the_word_auto(qapp: object) -> None:
+    """The special value text has to fit where the numbers fit.
+
+    Nothing shows here, where the form stretches its fields to the panel
+    width. On macOS the style asks for ``FieldsStayAtSizeHint`` instead, and
+    a size hint measured for three digits is what "auto" then has to sit in.
+    """
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QSpinBox
+
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()  # held, or its children go with it
+    box = inspector._font_size
+    assert box.specialValueText() == "auto"
+
+    plain = QSpinBox()
+    plain.setRange(box.minimum(), box.maximum())
+    metrics = QFontMetrics(box.font())
+    wider_by = metrics.horizontalAdvance("auto") - metrics.horizontalAdvance(str(box.maximum()))
+
+    assert box.minimumWidth() >= plain.sizeHint().width() + wider_by
+
+
+def test_notes_is_a_text_box_and_writes_through_as_it_is_typed(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    # Multi-line: a note spanning lines survives as typed, which a QLineEdit
+    # could not hold in the first place.
+    window._inspector._notes.setPlainText("check the tail\nsecond line")
+
+    assert window.document.region("page-001-001").notes == "check the tail\nsecond line"  # type: ignore[union-attr]
+    assert window.document.dirty  # type: ignore[union-attr]
+
+
+def test_selecting_another_region_does_not_carry_notes_across(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._notes.setPlainText("only about the first one")
+
+    window._on_region_selected("page-001-002")
+
+    assert window._inspector._notes.toPlainText() == ""
+    assert window.document.region("page-001-002").notes == ""  # type: ignore[union-attr]
+    assert window.document.region("page-001-001").notes == "only about the first one"  # type: ignore[union-attr]
+
+
+def test_open_plan_dialog_opens_what_it_is_given_and_ignores_a_cancel(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QFileDialog
+
+    window = MainWindow()
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", "")))
+    window.open_plan_dialog()
+    assert window.document is None, "cancelling the dialog must not open anything"
+
+    monkeypatch.setattr(
+        QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(two_page_plan), ""))
+    )
+    window.open_plan_dialog()
+    assert window.document is not None
+    assert window.document.path == two_page_plan
+
+
+def test_review_without_a_plan_asks_for_one(qapp: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole point of 'review' with no argument: don't sit there empty."""
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import app as gui_app
+
+    asked: list[bool] = []
+    monkeypatch.setattr(MainWindow, "open_plan_dialog", lambda self: asked.append(True))
+    # Stand in for the event loop: run the queued zero-timer, then return.
+    monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
+
+    assert gui_app.run() == 0
+    assert asked, "no plan file means the file dialog, not an empty window"
+
+
+def test_review_with_a_plan_does_not_ask(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import app as gui_app
+
+    asked: list[bool] = []
+    monkeypatch.setattr(MainWindow, "open_plan_dialog", lambda self: asked.append(True))
+    monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
+
+    assert gui_app.run(two_page_plan) == 0
+    assert not asked

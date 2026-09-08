@@ -209,9 +209,10 @@ uv run comictrans review pages/comic-plan.yaml
 
 Opens a plan file in a window: pages on the left, the current page in the
 middle with its region polygons overlaid, one region's fields on the right.
-Needs PySide6, a separate extra like tesseract — most work on this
-repository never opens a window. Without it, `review` fails with a clear
-message rather than an import error.
+Run it without a path and it asks for a plan file to open. Needs PySide6, a
+separate extra like tesseract — most work on this repository never opens a
+window. Without it, `review` fails with a clear message rather than an
+import error.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
 contour, orange for approximate. A region with something worth checking —

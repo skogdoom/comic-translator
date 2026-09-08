@@ -85,7 +85,7 @@ class MainWindow(QMainWindow):
 
         self._open_action = QAction("&Open Plan…", self)
         self._open_action.setShortcut(QKeySequence.StandardKey.Open)
-        self._open_action.triggered.connect(self._on_open)
+        self._open_action.triggered.connect(self.open_plan_dialog)
         file_menu.addAction(self._open_action)
 
         self._reload_action = QAction("&Reload", self)
@@ -174,7 +174,14 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage(f"{path.name}: no regions in this plan")
 
-    def _on_open(self) -> None:
+    def open_plan_dialog(self) -> None:
+        """Ask for a plan file and open it. Does nothing if the user cancels.
+
+        Public because ``gui.app`` calls it too: ``review`` with no plan
+        argument opens this rather than an empty window. It cannot be done
+        from the constructor — a modal dialog opened there would block every
+        test that builds a bare window, with nothing to dismiss it.
+        """
         name, _filter = QFileDialog.getOpenFileName(
             self, "Open Plan", "", "Plan files (*.yaml *.yml);;All files (*)"
         )
