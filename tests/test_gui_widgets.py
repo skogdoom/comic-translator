@@ -1306,3 +1306,111 @@ def test_rescan_fonts_is_on_the_edit_menu(qapp: object) -> None:
     window = MainWindow()
     menu = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Edit")
     assert window._rescan_fonts_action in menu.actions()
+
+
+def _mac_form(inspector: object) -> None:
+    """Put a form under the policy macOS uses: fields stay at their size hint."""
+    from PySide6.QtWidgets import QFormLayout
+
+    form = inspector.layout().itemAt(0).layout()  # type: ignore[attr-defined]
+    assert isinstance(form, QFormLayout)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+
+
+def test_the_font_box_is_wide_enough_for_the_name_it_holds(qapp: object, font_dir: Path) -> None:
+    """A combo sizes itself from its items, not from the text typed into it.
+
+    Under the macOS field-growth policy that left six pixels for a
+    thirteen-character font name.
+    """
+    from PySide6.QtGui import QFontMetrics
+
+    from comictrans.gui.font_box import PLAN_DEFAULT
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    _mac_form(inspector)
+    inspector.resize(420, 700)
+    inspector.show()
+    QTest.qWaitForWindowExposed(inspector)
+
+    box = inspector._font
+    metrics = QFontMetrics(box.font())
+    for value, shown in ((None, PLAN_DEFAULT), ("Comic Sans MS", "Comic Sans MS")):
+        box.set_value(value)
+        QTest.qWait(1)
+        assert box.lineEdit() is not None
+        assert box.lineEdit().width() >= metrics.horizontalAdvance(shown), shown
+
+
+def test_the_header_font_box_is_wide_enough_too(qapp: object, two_page_plan: Path) -> None:
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QFormLayout
+
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+    form = dialog.layout().itemAt(0).layout()
+    assert isinstance(form, QFormLayout)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    dialog.adjustSize()
+    dialog.show()
+    QTest.qWaitForWindowExposed(dialog)
+
+    box = dialog._font
+    needed = QFontMetrics(box.font()).horizontalAdvance("Comic Sans MS")
+    assert box.lineEdit() is not None
+    assert box.lineEdit().width() >= needed
+
+
+def test_a_very_long_font_name_is_capped_but_kept_in_the_tooltip(
+    qapp: object, font_dir: Path
+) -> None:
+    """The cap stops one font name pushing the whole panel wide."""
+    from comictrans.gui.font_box import FontBox
+
+    box = FontBox(allow_default=True)
+    box.set_value("Comic Sans MS")
+    modest = box.minimumWidth()
+
+    enormous = "A Ridiculously Long Font Name Indeed And Then Some More"
+    box.set_value(enormous)
+
+    assert box.minimumWidth() > modest, "it does widen for a longer name"
+    assert box.minimumWidth() < modest * 3, "but not without limit"
+    assert box.value() == enormous, "the name itself is untouched"
+    assert enormous in box.toolTip(), "and readable somewhere"
+
+
+def test_the_font_size_box_has_room_to_spare_around_auto(qapp: object) -> None:
+    """It fit before, with eight pixels of slack, which reads as a mistake."""
+    from PySide6.QtGui import QFontMetrics
+
+    from comictrans.gui.inspector import RegionInspector
+
+    inspector = RegionInspector()
+    _mac_form(inspector)
+    inspector.resize(420, 700)
+    inspector.show()
+    QTest.qWaitForWindowExposed(inspector)
+
+    from PySide6.QtWidgets import QSpinBox
+
+    box = inspector._font_size
+    box.setValue(0)
+    QTest.qWait(1)
+    metrics = QFontMetrics(box.font())
+
+    # What the old rule gave: exactly the slack a three-digit number gets,
+    # measured at eight pixels, which fits the word without room to read it.
+    reference = QSpinBox()
+    reference.setRange(box.minimum(), box.maximum())
+    bare = (
+        reference.sizeHint().width()
+        - metrics.horizontalAdvance(str(box.maximum()))
+        + metrics.horizontalAdvance("auto")
+    )
+    assert box.minimumWidth() > bare, "no more air around 'auto' than before"
+    assert box.lineEdit().width() > metrics.horizontalAdvance("auto")

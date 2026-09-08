@@ -48,6 +48,9 @@ _FONT_SIZE_AUTO = 0
 _NOTES_HEIGHT = 60
 """Enough for a few lines. Notes are usually a sentence, not a paragraph."""
 
+_SPECIAL_VALUE_PADDING_CHARS = 2
+"""Air around the word "auto", beyond the room the widest number needs."""
+
 
 def _widen_for_special_value(box: QSpinBox) -> None:
     """Give a spin box's special value text as much room as its widest number.
@@ -69,7 +72,11 @@ def _widen_for_special_value(box: QSpinBox) -> None:
         metrics.horizontalAdvance(str(box.maximum())),
     )
     chrome = box.sizeHint().width() - widest_number
-    box.setMinimumWidth(metrics.horizontalAdvance(box.specialValueText()) + chrome)
+    # Plus a couple of characters of air. Matching the slack a three-digit
+    # number gets is enough to fit the word and not enough to read it
+    # comfortably: measured at eight pixels, which looks like a mistake.
+    padding = metrics.averageCharWidth() * _SPECIAL_VALUE_PADDING_CHARS
+    box.setMinimumWidth(metrics.horizontalAdvance(box.specialValueText()) + chrome + padding)
 
 
 _FLAG_LABELS = {
