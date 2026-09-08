@@ -22,9 +22,12 @@ changes the text and nothing else.
 - `planfile` never imports Pillow, OpenCV, or pyobjc.
 - `cli` and `extract` are the only modules that know about both sides.
 
-That is not tidiness for its own sake. It means `planfile` can be imported by
-the milestone-4 review GUI without dragging in Vision, and it means detection
-can be tested with synthetic images and hand-written OCR boxes.
+That is not tidiness for its own sake. It means the review GUI's
+`gui.document` — the module that loads a plan, tracks edits, and saves —
+imports only `planfile` and `model` and nothing else of ours, so it carries
+none of Pillow, OpenCV, pyobjc, or Qt; see "The review GUI" below. And it
+means detection can be tested with synthetic images and hand-written OCR
+boxes.
 
 ## Stage interfaces
 
@@ -68,8 +71,30 @@ render_page(page, regions, styles, cfg) -> (Image, list[RegionOutcome])
 ```
 
 `erase` and `typeset` both take a `Region`, not a page and an index, so a
-single region can be re-rendered in isolation — which is what the GUI's
-preview will do.
+single region can be re-rendered in isolation. The review GUI's preview does
+not go that far — it renders a whole page at once, through `render_page`
+itself, unmodified — but the same fact is what makes that safe to call
+straight from a GUI action: nothing about rendering one page reaches back
+into detection, OCR, or the plan file on disk.
+
+Milestone 4 added the review GUI, over the same interfaces and one new one:
+
+```python
+# gui.document — the GUI's view-model; imports only planfile and model
+class PlanDocument:
+    path: Path
+    plan: Plan
+    dirty: bool
+    def open(path: Path, *, check_images: bool = True) -> PlanDocument   # classmethod
+    def region(region_id: str) -> Region
+    def flags(region_id: str) -> RegionFlags
+    def set_translation(region_id: str, translation: str) -> Region     # and set_notes,
+    def save() -> None                                                  # set_skip, set_font,
+    def save_as(path: Path, *, force: bool = False) -> None             # set_font_size
+
+# gui.preview
+render_preview(document: PlanDocument, image: str) -> Preview   # .image, .outcomes, .problems
+```
 
 ## Fitting text to a polygon
 
@@ -450,3 +475,82 @@ simplified polygon on demand, since at most a handful are ever chosen.
 And `contains_box` rejects on bounding box before running any
 `pointPolygonTest`. Simplifying every candidate eagerly cost 13 s on the same
 page.
+
+## The review GUI
+
+`src/comictrans/gui/` splits along the same line as everything else: what
+decides, and what draws.
+
+```
+document.py   the loaded plan, its edits, and where they save — no Qt
+preview.py     render_page called on the current document — no Qt
+qimage.py      the one function that turns a Pillow image into a QPixmap
+canvas.py      the page: a pixmap, and clickable region outlines over it
+inspector.py   one region's fields, writing straight through to the document
+page_list.py   one row per page, with a region-and-flag-count summary
+main_window.py wires the four widgets together; the only module that
+               knows about all of them at once
+app.py         available() / run() — the CLI's entry point
+```
+
+`document.py` and `preview.py` need no display and import no Qt; they are
+tested directly, the same as any other module. The five widget modules do —
+`main_window.py` is the only one that imports more than one of the others,
+which is what keeps an edit's ripple effects (the window title's dirty
+marker, another region's overlap flag, the page list's flag count) in one
+place instead of three widgets each guessing at the other two's state.
+
+**Why a document, not a `Plan` passed around.** `apply` treats a `Plan` as
+immutable — load it, render it, done. The GUI cannot: the whole point is
+editing one in place before saving it. `PlanDocument` wraps a `Plan` and
+funnels every mutation through one of a handful of `set_*` methods, each of
+which does exactly one `dataclasses.replace` and sets `dirty = True`. That is
+what makes "unsaved changes" one fact the window can trust, rather than
+something it would otherwise have to reconstruct by asking every widget
+whether it has touched anything.
+
+**Why the overlay and the preview are two different things, not one.** The
+overlay — polygons over the original page — is recomputed from the document
+on every edit; it is cheap (nothing is rendered, only restyled) and always
+in sync. Rendering a real preview erases and typesets, the actual work
+`apply` does, and is comparatively expensive and worth doing deliberately
+rather than on every keystroke — `Ctrl+R`, not automatic. Both read from the
+same `PlanDocument`, so a preview always reflects the edit you just made,
+saved or not.
+
+**Why `render_preview` calls `render_page` directly instead of its own
+rendering path.** So it cannot drift. If preview had its own drawing code, a
+bug fixed in `render_page` would need fixing twice, and a difference between
+what the GUI shows and what `apply` writes would be a second bug on top of
+whichever one it was hiding. Calling the same function means there is
+exactly one way this tool draws a translated page, and the GUI's "does this
+fit" answer is `apply`'s answer, not a separate opinion.
+
+**The colour convention matches `--debug-dir`.** Green for a region traced
+from a contour, orange for one approximated from a padded box around its
+text — the same two colours `extract --debug-dir` has used since milestone
+1. A region with something to check goes dashed red instead, regardless of
+which of those two it would otherwise be, because the geometry colour and
+"look at this" are two different facts and only one dashed style was needed
+to say the second one. Selection is a separate colour again (blue), since it
+can coincide with either.
+
+**What counts as "something to check" is computed once, in
+`gui.document.RegionFlags`, and nowhere else.** Overlap uses the exact
+threshold `render._warn_about_overlaps` warns at, over actionable regions
+only, so a region the GUI flags as overlapping is exactly one `apply` would
+also warn about — never a surprise the GUI invented on its own reading of
+the plan.
+
+**Testing.** `gui.document` and `gui.preview` are tested like any other
+module, no different setup. The widget tests build a real `QApplication`
+under `QT_QPA_PLATFORM=offscreen` and skip — rather than fail — on a machine
+with no PySide6 installed or no windowing libraries available to construct
+one; see the `qapp` fixture and the third bullet under Development in the
+README. One thing they found worth recording here: closing (or reloading, or
+opening a different plan over) a *dirty* `MainWindow` without first
+stubbing `QMessageBox.question` hangs the test suite rather than failing
+it — a real `QMessageBox` opens a native modal event loop even under
+`offscreen`, and nothing will ever click its button. Every test that leaves
+a document dirty either saves or discards it, or patches the dialog, before
+the test ends.

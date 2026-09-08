@@ -26,8 +26,10 @@ describes choices.
 Spec, not preference. Breaking one of these is never a refactor:
 
 - Source images are never modified, moved, or written to; they are opened
-  read-only. Only `--debug-dir` and `--output` are ever written, and both
-  refuse to write inside the source tree.
+  read-only. The only things ever written are `--debug-dir`, `--output` (both
+  refuse to write inside the source tree), and a plan file, by `extract` or by
+  `review`'s Save / Save As — a plan file is not image data, so it living
+  beside the images it describes, the usual case, is expected and fine.
 - `apply` runs no detection and no OCR. Every polygon, colour and font
   decision comes from the plan file, which is what makes the pass
   deterministic and re-runnable: edit a translation, run it again, and only
@@ -52,3 +54,10 @@ All four are expected to pass before a commit. Thresholds and guards in
 `config.py` are tuned against the pages in `tests/fixtures/`; if you change
 one, re-run detection across every fixture and say what moved, rather than
 trusting the suite alone to catch it.
+
+Touching anything under `src/comictrans/gui/` needs PySide6: `uv sync --extra
+gui`. Without it those files still lint and still type-check — mypy falls
+back to treating PySide6 as untyped rather than failing outright, deliberately
+(see the comment on its override in `pyproject.toml`) — but `pytest` skips
+every widget test, so a change there is unverified until the extra is
+installed.

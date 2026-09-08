@@ -33,9 +33,9 @@ nothing else is.
 
 ## Status
 
-Milestones 1 and 2 are implemented: `extract` writes a plan file, `apply`
-renders translated pages from it. Milestone 3 (CBZ/PDF input) and milestone 4
-(the PySide review GUI) are not started.
+Milestones 1, 2 and 4 are implemented: `extract` writes a plan file, `apply`
+renders translated pages from it, and `review` opens a plan file in a GUI to
+check both. Milestone 3 (CBZ/PDF input) is not started.
 
 ## Requirements
 
@@ -43,6 +43,7 @@ renders translated pages from it. Milestone 3 (CBZ/PDF input) and milestone 4
 - Apple Vision for OCR, via pyobjc (installed automatically on macOS)
 - Tesseract as an optional fallback: `uv sync --extra tesseract` plus a
   `tesseract` binary with language data for your source language
+- PySide6 for the `review` GUI, optional: `uv sync --extra gui`
 
 Everything runs locally. There are no network calls anywhere in the pipeline —
 translation is manual by design.
@@ -196,6 +197,40 @@ Emphasis is `**bold**` — never italic, and the oblique face is never used. A
 literal asterisk is `\*`. Line breaks in a translation are advisory; typeset
 reflows to fit the shape.
 
+## review
+
+```
+uv sync --extra gui
+uv run comictrans review pages/comic-plan.yaml
+```
+
+Opens a plan file in a window: pages on the left, the current page in the
+middle with its region polygons overlaid, one region's fields on the right.
+Needs PySide6, a separate extra like tesseract — most work on this
+repository never opens a window. Without it, `review` fails with a clear
+message rather than an import error.
+
+The overlay uses the same colours as `--debug-dir`: green for a traced
+contour, orange for approximate. A region with something worth checking —
+approximate geometry, low confidence, held back with no translation, still
+identical to its source text, or overlapping another region — is outlined
+dashed red instead, regardless of its geometry colour, and the reason is
+named in the inspector. Click a region to select it; its fields are on the
+right, editable in place, written straight into the plan as you type.
+
+**Render Preview** (`Ctrl+R`) calls the exact `render_page` function `apply`
+itself uses, on the plan as it currently stands, unsaved edits included. What
+it shows is what `apply` would write for that page — not a mock-up — so a
+region that will not fit, needs condensing, or overlaps another one shows up
+here before you run `apply` for real. **Back to Overlay** returns to the
+polygon view.
+
+`Ctrl+S` saves back to the file it was opened from; **Save As** writes
+elsewhere and refuses to overwrite an existing file without confirming.
+Closing the window, reloading, or opening a different plan while there are
+unsaved changes asks first. Like every other pass, `review` never writes to
+a source image — only ever to the plan file you explicitly save to.
+
 ## The plan file
 
 YAML, UTF-8, stable key order, hand-editable. One entry per detected region.
@@ -295,7 +330,10 @@ Set `COMICTRANS_FONT_PATH` (colon-separated) to add font directories.
 | 2 | the run could not start: bad arguments, no OCR backend, no resolvable font |
 
 Both commands process every page and report at the end. Neither aborts on the
-first bad region.
+first bad region. `review` has no code 1: it is interactive, not a batch run,
+so there is nothing to report at the end beyond what is already on screen —
+it exits 0 when the window closes normally, 2 if it could not open one at all
+(PySide6 missing, or the platform's own windowing libraries).
 
 ## Out of scope
 
@@ -321,16 +359,21 @@ uv run pytest -k polygon              # one topic
 uv run pytest -x -vv                  # stop at the first failure, verbose
 ```
 
-Two groups of tests skip rather than fail when the host cannot run them:
+Three groups of tests skip rather than fail when the host cannot run them:
 
 - The font tests borrow a regular/bold TTF pair from the system, because no
   font ships with this repository. They skip if none is found.
 - `tests/test_fixtures.py` runs the real pipeline over any images in
   `tests/fixtures/`, and skips when that directory is empty or no OCR backend
   is installed.
+- `test_gui_widgets.py` skips when PySide6 is not installed (`uv sync
+  --extra gui`), or when it is but no display could actually be opened.
+  `test_gui_document.py` and `test_gui_preview.py` need neither and never
+  skip — nothing under `comictrans.gui` besides the widgets themselves
+  touches Qt.
 
-`-rs` tells you which. On macOS with `uv sync --group dev` you should see
-neither skipping except the empty fixtures directory.
+`-rs` tells you which. On macOS with `uv sync --group dev --extra gui` you
+should see none of these skip except the empty fixtures directory.
 
 Fixture images go in `tests/fixtures/`; see the README there.
 
