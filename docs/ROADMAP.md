@@ -15,13 +15,23 @@ estimates. When a milestone ships, delete its section and its row from the
 table; when a whole milestone ships, say so in the Status section of
 `README.md` as well.
 
+**The numbers are names, not positions.** They were allocated in the order
+the milestones were thought of, and the order worth building them in has
+moved since. The table below is the plan; a number is only there so that
+one section can refer to another without ambiguity.
+
 ## Order
 
 | # | Milestone | Size |
 |---|-----------|------|
 | 4.4 | Undo and redo | M |
+| 4.15 | Zoom | S |
+| 4.11 | Font selection dropdown | S–M |
+| 4.12 | Plan header editing | S–M |
 | 4.5 | Region editing | XL |
+| 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
+| 4.13 | Preferences | M |
 | 4.7 | Help instructions | S–M |
 | 4.8 | macOS look and feel | M |
 | 4.9 | Localisation | M |
@@ -35,24 +45,36 @@ bottom because nothing else waits on it, not because it matters least.
 Three things decide this order.
 
 **Cheap and immediately felt comes first.** 4.1 to 4.3 were small and
-visible the moment the window opened, which is why they went first.
+visible the moment the window opened, which is why they went first, and
+4.15, 4.11 and 4.12 are the same shape: each one is felt on every page of
+every review, and none of them waits on anything.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
-whatever the application is by then, so it goes after the milestone that
-decides whether OCR is part of it. Help text describes the UI, so it goes
+whatever the application is by then. Help text describes the UI, so it goes
 after the UI stops moving.
 
 **Foundations come before what stands on them.** Undo built for five text
 fields would need rewriting the moment a polygon can move, so 4.4 comes
-before 4.5 and is built knowing 4.5 is coming.
+before 4.5 and is built knowing 4.5 is coming. Zoom comes before 4.5 for a
+plainer reason: dragging a polygon vertex accurately means being able to
+see it.
 
-Region editing (4.5) before extract from the GUI (4.6) is the one ordering
-that is a judgement call rather than a dependency. Extract already works
-from a terminal, once per chapter. A bad polygon cannot be fixed anywhere
-at all today — not in the GUI, and not without hand-editing pixel
+Two orderings are judgement calls rather than dependencies.
+
+**Region editing (4.5) before the two pipeline milestones.** Extract and
+apply both already work from a terminal. A bad polygon cannot be fixed
+anywhere at all — not in the GUI, and not without hand-editing pixel
 coordinates in YAML. Given what `known-bugs.md` already records about
 detection, editing earns its place first despite being the larger job.
+
+**Rendering (4.14) before extract (4.6).** Both run a pipeline pass from
+the window, and both need the same worker thread, progress and cancel.
+Rendering is the simpler of the two — no OCR, so no question about what is
+safe to call off the main thread — and the more valuable, because reviewing
+a plan and then leaving for a terminal to render it is the obvious hole in
+the window as it stands. Build the threading on the easy case; extract
+reuses it with the harder question on top.
 
 ## 4.4 Undo and redo
 
@@ -68,7 +90,7 @@ regions costs nothing.
 The reason this matters is 4.5. A command-per-operation stack would need a
 new command class for every geometry operation added later. A snapshot
 stack covers add, delete, merge and polygon editing the day they land,
-with no undo code written for any of them.
+with no undo code written for any of them — and 4.12's header edits too.
 
 Two decisions:
 
@@ -89,6 +111,87 @@ true cannot express.
 
 Undo is in-memory and does not reach the file. Undoing past a save does not
 revert what is on disk.
+
+## 4.15 Zoom
+
+Zoom in, zoom out, zoom to fit, actual size.
+
+Half the groundwork is already there: `PageCanvas` sets
+`AnchorUnderMouse`, which is what makes wheel zoom land where the pointer
+is, and `ScrollHandDrag` already pans.
+
+**The real work is a fit-versus-manual mode flag.** `resizeEvent` calls
+`fit()` unconditionally, and so does `show_page`. Without a mode, resizing
+the window or turning a page silently throws the zoom away.
+
+**Preserve the zoom level across pages and into preview**, resetting only
+the pan. Reviewing a chapter at 200% and having it snap back on every page
+would be worse than no zoom at all, and holding the zoom through `Ctrl+R`
+is exactly what makes the overlay and the rendered page comparable.
+
+Qt has `StandardKey.ZoomIn` and `ZoomOut`; Ctrl+0 and Ctrl+1 are the
+conventional pair for fit and actual size. Clamp both ends. Zoom is a view
+transform over a scene held in unscaled page pixels, so it costs nothing
+and re-renders nothing — the property `canvas.py`'s module docstring
+already relies on.
+
+**One thing the suite cannot check.** A trackpad pinch on macOS arrives as
+`QNativeGestureEvent`, not as a wheel event. Wheel-with-modifier is
+testable under the offscreen platform; pinch is not, and needs trying by
+hand on the Mac.
+
+## 4.11 Font selection dropdown
+
+An editable `QComboBox` in place of the inspector's font line edit.
+
+**Populate it from `fonts.py`, never from `QFontDatabase`.** They answer
+different questions. Qt lists what Qt can draw with; `fonts.py` resolves a
+family by scanning `search_dirs()` for files, matching filename slugs, and
+demanding a real bold face — `resolve_family(..., require_bold=True)`
+raises `FontError` without one, because emphasis is bold and a bold is
+never synthesised. A dropdown built from Qt would offer families that
+`apply` then refuses, turning a two-click choice into a render failure.
+
+So: a new `fonts.available_families()` that enumerates faces across the
+search directories and then *verifies* each candidate through
+`resolve_family`. The verify step is not belt-and-braces —
+`_candidate_files` matches on filename slug, so a family whose internal
+name does not match its filename enumerates but does not resolve. Verifying
+is what lets the dropdown promise that everything it offers will render.
+
+**It must stay editable, and must keep a name it cannot resolve.** A plan
+written on another Mac can name a font this one does not have. A closed
+dropdown would silently swap that font the moment the field was touched,
+which is the one thing the spec says never happens. Editable, current value
+always shown, and marked when it will not resolve — that marking is worth
+having on its own, since it says so before you render rather than after.
+
+**Cache the scan.** Measured at roughly 4ms per font file, so a few hundred
+files is on the order of a second, and macOS `.ttc` collections hold many
+faces each. Scan once, behind a wait cursor on first use, with an explicit
+rescan for when a font is installed mid-session.
+
+The list needs an explicit "(plan default)" entry meaning `None`, which the
+empty line edit expresses today only by accident.
+
+## 4.12 Plan header editing
+
+The plan header — `font`, `case`, `font_size_min_ratio`, `condense_min`,
+`source_language`, `target_language`, `ocr_engine` — cannot be changed in
+the GUI at all. The inspector edits regions; the header is hand-edit-the-
+YAML. This is the milestone that actually delivers "set the font for this
+comic".
+
+A dialog, or a third dock. `PlanDocument` gains `set_header_*` beside the
+region setters: the same `dataclasses.replace`, the same dirty flag, and
+4.4's snapshot undo covers it without a line of undo code.
+
+Reuses 4.11's dropdown for the header font, which is why it sits directly
+after it.
+
+One thing to decide: changing the header font changes every region that has
+no override, so a preview changes wholesale. Worth a confirmation, or at
+least a status line saying how many regions it moves.
 
 ## 4.5 Region editing
 
@@ -162,6 +265,39 @@ self-intersecting and degenerate polygons at load, so the GUI could write a
 file it then refuses to reopen. Validate every geometry edit before it
 reaches the document.
 
+## 4.14 Render pages from the GUI
+
+Run `apply` without leaving the window.
+
+**Require a save first.** `apply_plan` takes a `Plan` object, so the GUI
+*could* render unsaved edits, and preview already does exactly that. But
+preview is ephemeral and output files are not: pages rendered from a plan
+that is not on disk are pages that cannot be regenerated, which is the
+whole point of the two-pass design. Offer "Save and Render…" rather than
+rendering a document that exists only in the window.
+
+**`check_output_dir` becomes a dialog with no override.** It refuses an
+output directory inside the source tree, which is how the invariant that
+source images are never written to is actually enforced. Every other
+refusal in this tool has a `--force`; this one must not grow one.
+
+**`apply_plan` needs an optional per-page progress callback.** Its loop is
+internal, so the alternative is the GUI reimplementing the loop, and a
+second copy of the loop is a second place for the two to drift. One
+optional parameter keeps a single implementation, the same way
+`render_preview` calls `render_page` rather than drawing its own.
+
+The rest follows the CLI: `--force` becomes a confirmation rather than a
+default, `--skip-hash-check` needs an equivalent or an explicit refusal,
+and the choice of erase strategy and output format belongs in the dialog.
+
+`resolve_styles` runs before any page is written, so an unresolvable font
+fails cleanly with nothing on disk. Keep that ordering.
+
+`ApplyReport` carries `pages_written`, `outcomes` and `page_failures`. In a
+window that wants to be a readable panel rather than a modal that vanishes
+— ideally one whose rows select the region that would not fit.
+
 ## 4.6 Extract from the GUI
 
 Choose an input and run extract without leaving the window.
@@ -169,11 +305,13 @@ Choose an input and run extract without leaving the window.
 **It cannot run on the UI thread.** Detection alone is 0.1 to 0.3 seconds
 per page, and 2.8 seconds on the screentoned fixture, before OCR. A
 forty-page chapter is a frozen window for a minute or more. It needs a
-worker thread, progress, and cancel. `extract_page` is the per-page hook
-for both; `extract` loops internally and offers nowhere to report from.
+worker thread, progress, and cancel — the harness 4.14 will already have
+built. `extract_page` is the per-page hook; `extract` loops internally and
+offers nowhere to report from.
 
 Verify that Apple Vision works off the main thread before building on the
-assumption.
+assumption. This is the question 4.14 does not have to answer, and the
+reason it goes first.
 
 Scope for a first version: input path, plan path, languages, OCR engine.
 Extract has around fifteen detection-tuning flags and they can stay on the
@@ -186,12 +324,37 @@ is a second feature. Extract to a new plan, then open it.
 Once 4.5 exists, re-extracting a page is destructive against hand-edited
 regions. Keep the two apart.
 
+## 4.13 Preferences
+
+Application defaults, in the `QSettings` 4.2 already set up.
+
+**A preference never overrides a plan value.** It fills in a blank when
+something new is created, and does nothing else, ever. A "default font"
+that quietly won over a plan's header would mean the same plan renders
+differently on two machines, and re-runnability — edit a translation, run
+it again, and only that text changes — is the property the whole two-pass
+design exists to have. 4.12 edits *this* plan; 4.13 decides what a *new*
+one starts from. Those two must not blur into each other.
+
+That is also why this milestone waits: 4.14 and 4.6 are the first things in
+the tool that create something a default could seed. Before them, a
+preferences dialog has almost nothing legitimate to hold.
+
+What it then holds:
+
+- For 4.14: default output directory, erase strategy, output format
+- For 4.6: default font, case, `font_size_min_ratio`, `condense_min`, OCR
+  engine and languages, seeded into a new plan's header
+- Everywhere: which directory the Open and Save dialogs start in
+
+On macOS this wants Cmd+, and the application menu — see 4.8.
+
 ## 4.7 Help instructions
 
 A short in-application guide to reviewing a plan: what the badge colours
 mean, what each flag means, what preview does and does not tell you.
 
-After 4.5 and 4.6, because it documents a UI that both of them change. A
+After the milestones that change the UI, because it documents them. A
 dialog with a `QTextBrowser` over a bundled document, rather than strings
 in the source, keeps 4.9 to one file per language.
 
@@ -199,16 +362,23 @@ in the source, keeps 4.9 to one file per language.
 
 ## 4.8 macOS look and feel
 
-Needs defining before it can be scheduled. Qt already supplies the native
-style, the native menu bar, and Cmd for Ctrl through
-`QKeySequence.StandardKey`, so less of this is missing than it appears.
-What is actually left, roughly by value:
+Qt already supplies the native style, the native menu bar, and Cmd for Ctrl
+through `QKeySequence.StandardKey`, so less of this is missing than it
+appears. What is actually left, roughly by value:
 
+- **Toolbar icons.** 4.2 shipped the toolbar text-only, because half of
+  these commands have no standard pixmap in any Qt style. Bundled SVGs
+  answer that, and bundling assets is the same plumbing the `.icns` icon
+  below and 4.10's build config already need — `QIcon.fromTheme` returns
+  nothing on macOS, so there is no route that avoids shipping files. Doing
+  it here rather than earlier also means drawing icons once for a toolbar
+  4.5 has finished adding buttons to. Icon sets carry licences; whichever
+  is chosen needs recording in `LICENSE` and in the About dialog.
 - An `.icns` icon and bundle identity, which mostly overlaps with 4.10
 - `AboutRole` on the About action, so macOS moves it into the application
-  menu where it belongs
+  menu where it belongs, and the same for a Preferences action once 4.13
+  exists
 - `setWindowModified` and `[*]`, already folded into 4.4
-- Preferences under Cmd+, once there are preferences
 - Dark mode: check the canvas overlay colours stay legible against dark
   chrome
 - Full screen, and the unified toolbar look
@@ -251,8 +421,9 @@ paid Developer ID and notarisation. Given the disclaimer in `README.md`,
 the honest target is an unsigned local build, documented as such, not a
 release artifact.
 
-Size depends entirely on 4.6. Without extract the bundle needs Pillow and
-PySide6. With it, add numpy, OpenCV and pyobjc-Vision.
+The bundle already needs Pillow, numpy and OpenCV whatever else happens:
+the review window renders previews through `render_page`, which erases and
+typesets like any other page. Only pyobjc-Vision is contingent, on 4.6.
 
 ## 3 CBZ and PDF input
 
