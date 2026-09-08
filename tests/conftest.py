@@ -8,9 +8,11 @@ the colour sampler relies on to tell text from balloon.
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -182,3 +184,40 @@ def font_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     shutil.copy(regular, directory / "Marker Felt.ttf")  # regular only, no bold
     monkeypatch.setenv("COMICTRANS_FONT_PATH", str(directory))
     yield directory
+
+
+@pytest.fixture(scope="session")
+def qapp(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
+    """A shared ``QApplication`` for the review GUI's tests.
+
+    The third skip-rather-than-fail group, alongside the font tests and
+    ``test_fixtures.py``: PySide6 is a separate extra (``uv sync --extra
+    gui``), and even once it is installed, actually constructing a
+    ``QApplication`` needs the host's windowing libraries — a bare `import
+    PySide6` does not touch them, so this is the one place both are checked.
+
+    ``QT_QPA_PLATFORM`` is defaulted to ``offscreen`` rather than forced, so a
+    developer who deliberately set a real platform (running the suite on an
+    actual Mac, say) is not overridden.
+    """
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        app = QApplication.instance() or QApplication(["comictrans-tests"])
+    except Exception as exc:  # Qt's platform-plugin failures are not typed
+        pytest.skip(f"cannot create a QApplication: {exc}")
+
+    # Anything that reaches for QSettings lands in a temporary directory, not
+    # in the config of whoever is running the suite. Widget tests build their
+    # windows without settings and so persist nothing; this covers the one
+    # test that goes through gui.app.run, which builds its own.
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path_factory.mktemp("qsettings")),
+    )
+    yield app

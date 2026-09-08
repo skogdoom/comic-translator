@@ -1,10 +1,13 @@
 [project]
 name = "comictrans"
-version = "0.1.0"
+# Read from src/comictrans/__init__.py by hatch, below. One version, in the
+# place that can report it without the package having been installed.
+dynamic = ["version"]
 description = "Two-pass comic page translation tool for macOS: extract, translate by hand, apply."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+authors = [{ name = "David Andreasson" }]
 
 dependencies = [
     "pillow>=10.3",
@@ -20,6 +23,9 @@ dependencies = [
 
 [project.optional-dependencies]
 tesseract = ["pytesseract>=0.3.10"]
+# The milestone-4 review GUI. A separate extra, like tesseract: most work on
+# this repository never opens a window, and PySide6 is a heavy download.
+gui = ["pyside6>=6.7"]
 
 [project.scripts]
 comictrans = "comictrans.cli:main"
@@ -34,6 +40,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/comictrans/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/comictrans"]
@@ -70,6 +79,16 @@ ignore_missing_imports = true
 module = ["pytesseract.*", "Vision.*", "Quartz.*", "Foundation.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
+
+# PySide6 is different from the two overrides above: it ships real, precise
+# stubs, and when the `gui` extra is installed those are used in full, same
+# as any other typed dependency. `ignore_missing_imports` only matters when
+# it is *not* installed — without this, every file under gui/ would fail to
+# type-check at all rather than fall back to Any, on a machine that never
+# ran `uv sync --extra gui`.
+[[tool.mypy.overrides]]
+module = ["PySide6.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

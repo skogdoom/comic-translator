@@ -95,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_extract(subparsers, verbosity)
     _add_apply(subparsers, verbosity)
+    _add_review(subparsers, verbosity)
     return parser
 
 
@@ -319,6 +320,26 @@ def _add_apply(
     )
 
 
+def _add_review(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    verbosity: argparse.ArgumentParser,
+) -> None:
+    review_parser = subparsers.add_parser(
+        "review",
+        parents=[verbosity],
+        help="open a plan file in the review GUI (needs the 'gui' extra)",
+        description=(
+            "Opens a plan file for visual review: pages with their region "
+            "polygons overlaid, translations and other fields editable in "
+            "place, and a live preview through the same render_page apply "
+            "itself uses. Needs PySide6: uv sync --extra gui."
+        ),
+    )
+    review_parser.add_argument(
+        "plan", type=Path, nargs="?", help="plan file to open (optional; asks for one if omitted)"
+    )
+
+
 def configure_logging(*, verbose: bool, quiet: bool) -> None:
     """Set the root log level. ``-v`` wins if both somehow arrive set."""
     level = logging.DEBUG if verbose else logging.WARNING if quiet else logging.INFO
@@ -528,12 +549,21 @@ def run_apply(args: argparse.Namespace) -> int:
     return EXIT_OK if report.ok else EXIT_PROBLEMS
 
 
+def run_review(args: argparse.Namespace) -> int:
+    # Imported here, not at module level, so `comictrans` stays importable
+    # without PySide6 — the same reason get_recognizer imports the OCR
+    # backends from inside itself rather than at the top of ocr/__init__.py.
+    from .gui import app as gui_app
+
+    return gui_app.run(args.plan)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(verbose=args.verbose, quiet=args.quiet)
 
-    handlers = {"extract": run_extract, "apply": run_apply}
+    handlers = {"extract": run_extract, "apply": run_apply, "review": run_review}
     try:
         return handlers[args.command](args)
     except ComictransError as exc:

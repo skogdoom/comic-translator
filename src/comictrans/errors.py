@@ -47,3 +47,7 @@ class OcrUnavailableError(ComictransError):
 
 class FontError(ComictransError):
     """A requested font (or its bold face) could not be resolved."""
+
+
+class GuiUnavailableError(ComictransError):
+    """PySide6 is not installed, or a display could not be opened."""
