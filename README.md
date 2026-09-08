@@ -17,6 +17,20 @@ comictrans apply pages/comic-plan.yaml --output out/
 read-only, and nothing but `--debug-dir` and (in milestone 2) `--output` is
 ever written.
 
+## Disclaimer
+
+This project relies heavily on vibe coding. Most of it was written by an AI
+assistant from prose descriptions, and it has not had the line-by-line human
+review you would want before trusting code with anything you care about.
+**Run it at your own risk.**
+
+Two things take the edge off that, and neither is a guarantee. Source images
+are opened read-only and never written to, so the worst case is a bad output
+file rather than a damaged scan — keep your originals backed up anyway. And
+`known-bugs.md` lists the defects found so far that have been left unfixed on
+purpose; it is a record of what is known to be wrong, not a claim that
+nothing else is.
+
 ## Status
 
 Milestones 1 and 2 are implemented: `extract` writes a plan file, `apply`
