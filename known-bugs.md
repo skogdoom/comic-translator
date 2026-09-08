@@ -78,3 +78,36 @@ or detection — that is what makes it deterministic and re-runnable — so it
 cannot re-measure the lettering at render time. A fix has to come from
 detection producing a polygon that covers the balloon's whole interior, and
 that has to stay safe for regions whose polygon is a padded box over artwork.
+
+## 3. A solid caption box is detected as a padded text box, not as the box
+
+Caption boxes drawn as a filled rectangle come back `geometry: approximate` —
+a padded box around the lettering rather than the box itself. Measured on an
+Apple Vision run over the fixtures, the polygon claims this much of the real
+box's width:
+
+| region | width claimed |
+| --- | --- |
+| `2-white-on-black-caption-box-001` | 60% |
+| `3-screentoned-halftone-comic-page-002` | 66% |
+| `7-1-combined-box-balloon-and-bare-caption-001` | 63% |
+
+**Impact is on fitting, not on the artwork.** The lettering is inside the
+padded box, so erase still removes it and destroys nothing. But the typesetter
+fits to the polygon, so it works with about 60% of the width the art actually
+offers, and a translation longer than its source shrinks or condenses when
+there was room to spare.
+
+**Why it is not a one-line fix.** The obvious cause does not survive
+measurement. The box's fill merges with the panel frame it touches into one
+colour component spanning 0.89 of the page, well past the `max_extent_ratio`
+cap of 0.75 — but the *same box at 0.3x resolution* measures 0.88 and traces
+exactly, covering 101% of the box (`7_2-...-001` against `7_1-...-001`, the
+same artwork at two sizes). So the extent cap alone does not explain it and
+the real trigger is still unidentified.
+
+Raising the cap is not the answer either: it is what catches a contour
+escaping onto a flat band of artwork, measured at 0.88 against real balloons
+at 0.25–0.45. A caption box fused to its frame sits in the same place on that
+scale, so no threshold separates them. Telling the box from the frame needs a
+different signal.
