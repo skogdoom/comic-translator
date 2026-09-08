@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import ImageFont
@@ -223,6 +224,74 @@ def resolve_default(*, require_bold: bool = True) -> FontFace:
     raise FontError(
         f"none of the fallback fonts could be resolved ({', '.join(FALLBACK_CHAIN)}):\n  {detail}"
     )
+
+
+def _resolves(family: str, *, require_bold: bool) -> bool:
+    try:
+        resolve_family(family, require_bold=require_bold)
+    except FontError:
+        return False
+    return True
+
+
+@lru_cache(maxsize=4)
+def _families_under(directories: tuple[Path, ...], require_bold: bool) -> tuple[str, ...]:
+    """Every family in these directories that :func:`resolve_family` accepts.
+
+    Two passes, and the second is the point of the exercise. The first reads
+    each font file's own idea of its family name. The second puts every one
+    of those back through ``resolve_family``, which finds files by matching a
+    slug against the *filename* — so a family whose internal name does not
+    match the file it lives in enumerates here but does not resolve, and a
+    family with no real bold is refused outright. Only what survives both is
+    a name this tool can actually render with.
+    """
+    found: list[str] = []
+    seen: set[str] = set()
+    for directory in directories:
+        if not directory.is_dir():
+            continue
+        for entry in sorted(directory.iterdir()):
+            if entry.suffix.lower() not in FONT_SUFFIXES or not entry.is_file():
+                continue
+            internal = [
+                family
+                for _index, family, style in _faces(entry)
+                if family and not _is_italic(style)
+            ]
+            names = [
+                name
+                for name in dict.fromkeys(internal)
+                if _resolves(name, require_bold=require_bold)
+            ]
+            # Only when none of them did: a file whose internal name is not
+            # what resolve_family searches by is still usable under the name
+            # it is filed as. Asking per file rather than globally is what
+            # keeps a font from being offered twice under two spellings.
+            if not names and _resolves(entry.stem, require_bold=require_bold):
+                names = [entry.stem]
+            for name in names:
+                if name not in seen:
+                    seen.add(name)
+                    found.append(name)
+    return tuple(sorted(found, key=str.casefold))
+
+
+def available_families(*, require_bold: bool = True) -> tuple[str, ...]:
+    """Font families installed here that this tool can render with.
+
+    Cached, because it opens every font file on the system: measured at
+    roughly 4ms each, so a few hundred of them is a noticeable pause. Keyed
+    on the search directories, so setting ``COMICTRANS_FONT_PATH`` gives a
+    different answer rather than a stale one. Installing a font mid-session
+    is what :func:`forget_available_families` is for.
+    """
+    return _families_under(search_dirs(), require_bold)
+
+
+def forget_available_families() -> None:
+    """Drop the cache, so the next call looks at the filesystem again."""
+    _families_under.cache_clear()
 
 
 def resolve(family: str | None, *, require_bold: bool = True) -> FontFace:

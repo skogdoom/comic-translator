@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
+from .. import fonts
 from ..errors import ComictransError
 from ..imaging import load_page
 from ..model import Geometry, Region
@@ -175,6 +176,13 @@ class MainWindow(QMainWindow):
         self._header_action = QAction("Plan &Header…", self)
         self._header_action.triggered.connect(self._on_edit_header)
         edit_menu.addAction(self._header_action)
+
+        # The installed fonts are read once and cached, since reading them
+        # means opening every font file on the system. This is how you tell
+        # the window you have installed one since it looked.
+        self._rescan_fonts_action = QAction("Rescan &Fonts", self)
+        self._rescan_fonts_action.triggered.connect(self._on_rescan_fonts)
+        edit_menu.addAction(self._rescan_fonts_action)
 
         view_menu = self.menuBar().addMenu("&View")
         self._preview_action = QAction("&Render Preview", self)
@@ -592,6 +600,11 @@ class MainWindow(QMainWindow):
     def _on_zoom_changed(self, factor: float) -> None:
         fitting = " (fit)" if self._canvas.fitting else ""
         self._zoom_label.setText(f"{round(factor * 100)}%{fitting}")
+
+    def _on_rescan_fonts(self) -> None:
+        self._inspector._font.rescan()
+        count = len(fonts.available_families())
+        self.statusBar().showMessage(f"{count} font families available", 5000)
 
     def _on_edit_header(self) -> None:
         """Edit the settings every region is drawn under.
