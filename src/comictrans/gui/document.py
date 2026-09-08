@@ -17,9 +17,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ..model import Geometry, Plan, PlanHeader, Region, TextCase
+from ..model import Geometry, Plan, PlanHeader, Polygon, Region, TextCase, polygon_is_simple
 from ..planfile import load_plan, write_plan
-from ..planfile.schema import CONDENSE_MIN_RANGE, FONT_SIZE_MIN_RATIO_RANGE
+from ..planfile.schema import (
+    CONDENSE_MIN_RANGE,
+    FONT_SIZE_MIN_RATIO_RANGE,
+    MIN_POLYGON_POINTS,
+)
 
 _NON_EMPTY_HEADER_FIELDS = frozenset({"font", "source_language", "target_language"})
 
@@ -38,6 +42,7 @@ session rather than about memory being tight. Coalescing means an entry is one
 act of typing, not one keystroke, so 500 is a long way back.
 """
 
+
 OVERLAP_BBOX_RATIO = 0.15
 """Share of the smaller region's bounding box that counts as an overlap.
 
@@ -45,6 +50,26 @@ The same threshold ``render._warn_about_overlaps`` uses at apply time, so a
 region flagged here is exactly one apply would also warn about — never a
 surprise the GUI invented and apply does not share.
 """
+
+
+def validated_polygon(polygon: Polygon) -> Polygon:
+    """A polygon the plan file reader will accept, or a ``ValueError`` saying why.
+
+    Exactly the reader's own rules — at least three points, whole pixels, no
+    negative coordinate, no edge crossing another — because an edit that got
+    past this and into a saved plan would be a file the GUI could not reopen.
+    The messages are written to be shown to whoever is dragging the shape.
+    """
+    points = tuple((round(x), round(y)) for x, y in polygon)
+    if len(points) < MIN_POLYGON_POINTS:
+        raise ValueError(f"a region needs at least {MIN_POLYGON_POINTS} corners")
+    if any(x < 0 or y < 0 for x, y in points):
+        raise ValueError("a corner cannot go off the top or left of the page")
+    if not polygon_is_simple(points):
+        # Covers a corner dragged onto its neighbour as well as a bow tie:
+        # both leave edges touching, and neither is a shape apply could fill.
+        raise ValueError("that shape crosses or folds over itself")
+    return points
 
 
 def overlapping_region_ids(regions: Sequence[Region]) -> frozenset[str]:
@@ -237,13 +262,19 @@ class PlanDocument:
         return ImageSummary(image=image, region_count=len(regions), flagged_count=flagged)
 
     def _update(self, region_id: str, **changes: object) -> Region:
-        """Replace one field on one region, in place in the plan, and record it.
+        """Replace fields on one region, in place in the plan, and record it.
 
         Not validated beyond what ``Region`` itself enforces (its fields carry
         no invariants of their own) — the schema is enforced once, at load
         time, by the plan file reader. A hand-typed ``font_size`` of ``0``
         would be caught there on the next load, the same as if you had typed
-        it into the YAML by hand.
+        it into the YAML by hand. The exceptions are the two edits that could
+        write a file the reader would refuse: the header, and a polygon, both
+        of which validate before they get here.
+
+        Usually one field. A caller passing two is saying they are one edit —
+        a polygon and the geometry that describes it — and the first names
+        the undo run.
         """
         current = self.region(region_id)
         updated = replace(current, **changes)  # type: ignore[arg-type]
@@ -334,6 +365,22 @@ class PlanDocument:
     def set_font_size(self, region_id: str, font_size: int | None) -> Region:
         """``None`` clears the override, back to automatic fitting."""
         return self._update(region_id, font_size=font_size)
+
+    def set_polygon(self, region_id: str, polygon: Polygon) -> Region:
+        """Reshape a region, and record that a person shaped it.
+
+        Validated, unlike the text fields and like the header: the reader
+        refuses a self-intersecting or degenerate polygon at load time, so an
+        edit that skipped this could write a plan the GUI itself could not
+        reopen. ``ValueError`` says which rule it broke, in words meant for
+        whoever is dragging the shape.
+
+        The geometry becomes ``manual`` in the same step, because it is no
+        longer what its old value claims: nothing traced this outline and no
+        OCR box bounded it. It also clears the ``approximate`` flag, which
+        says "check this" — which is precisely what has just been done.
+        """
+        return self._update(region_id, polygon=validated_polygon(polygon), geometry=Geometry.MANUAL)
 
     # -- the header ------------------------------------------------------
 

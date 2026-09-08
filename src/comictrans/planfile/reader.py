@@ -33,6 +33,7 @@ from .schema import (
     FONT_SIZE_MIN_RATIO_RANGE,
     IMAGE_KEYS,
     LEGACY_REGION_KEYS,
+    MIN_POLYGON_POINTS,
     PLAN_VERSION,
     READABLE_VERSIONS,
     REGION_KEYS,
@@ -153,8 +154,10 @@ def _parse_polygon(cursor: _Cursor) -> Polygon:
     raw = cursor.get("polygon")
     if not isinstance(raw, Sequence) or isinstance(raw, str):
         raise cursor.fail("polygon must be a list of [x, y] points", "polygon")
-    if len(raw) < 3:
-        raise cursor.fail(f"polygon needs at least 3 points, got {len(raw)}", "polygon")
+    if len(raw) < MIN_POLYGON_POINTS:
+        raise cursor.fail(
+            f"polygon needs at least {MIN_POLYGON_POINTS} points, got {len(raw)}", "polygon"
+        )
 
     points: list[Point] = []
     for index, item in enumerate(raw):

@@ -30,9 +30,16 @@ from PySide6.QtWidgets import (
 from .. import fonts
 from ..errors import ComictransError
 from ..imaging import load_page
-from ..model import Geometry, Region
+from ..model import Geometry, Polygon, Region
 from .about_dialog import AboutDialog
-from .canvas import COLOR_APPROXIMATE, COLOR_EXACT, PageCanvas, RegionAppearance, ViewState
+from .canvas import (
+    COLOR_APPROXIMATE,
+    COLOR_EXACT,
+    COLOR_MANUAL,
+    PageCanvas,
+    RegionAppearance,
+    ViewState,
+)
 from .document import PlanDocument
 from .header_dialog import HeaderDialog
 from .inspector import RegionInspector
@@ -52,8 +59,15 @@ that the state saves as unrestorable and Qt warns about it at runtime.
 """
 
 
+_GEOMETRY_COLORS = {
+    Geometry.EXACT: COLOR_EXACT,
+    Geometry.APPROXIMATE: COLOR_APPROXIMATE,
+    Geometry.MANUAL: COLOR_MANUAL,
+}
+
+
 def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
-    color = COLOR_EXACT if region.geometry is Geometry.EXACT else COLOR_APPROXIMATE
+    color = _GEOMETRY_COLORS[region.geometry]
     return RegionAppearance(
         region_id=region.id,
         polygon=region.polygon,
@@ -104,6 +118,7 @@ class MainWindow(QMainWindow):
         self._pages.image_selected.connect(self._on_image_selected)
         self._canvas.region_selected.connect(self._on_region_selected)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
+        self._canvas.polygon_edited.connect(self._on_polygon_edited)
         self._inspector.edited.connect(self._on_edited)
 
         # A permanent widget, so the zoom stays readable behind the transient
@@ -171,6 +186,16 @@ class MainWindow(QMainWindow):
         self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._redo_action.triggered.connect(self._on_redo)
         edit_menu.addAction(self._redo_action)
+
+        edit_menu.addSeparator()
+        # Checkable rather than always-on: dragging inside a region is also
+        # how the page is panned, so without a mode to be in, reaching for
+        # the page would sometimes move a balloon instead.
+        self._edit_shape_action = QAction("Edit Region &Shape", self)
+        self._edit_shape_action.setCheckable(True)
+        self._edit_shape_action.setShortcut(QKeySequence("Ctrl+E"))
+        self._edit_shape_action.toggled.connect(self._on_edit_shape_toggled)
+        edit_menu.addAction(self._edit_shape_action)
 
         edit_menu.addSeparator()
         self._header_action = QAction("Plan &Header…", self)
@@ -268,6 +293,8 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._undo_action)
         self._toolbar.addAction(self._redo_action)
         self._toolbar.addSeparator()
+        self._toolbar.addAction(self._edit_shape_action)
+        self._toolbar.addSeparator()
         self._toolbar.addAction(self._previous_region_action)
         self._toolbar.addAction(self._next_region_action)
         self._toolbar.addAction(self._next_flagged_action)
@@ -326,6 +353,17 @@ class MainWindow(QMainWindow):
             self._zoom_actual_action,
         ):
             action.setEnabled(has_image)
+
+        # Nothing to reshape while a rendered preview is on the canvas in
+        # place of the outlines. Unchecked rather than left checked and
+        # inert, so the mode on screen is the mode the canvas is in. Not
+        # conditioned on a region being selected: the mode belongs to the
+        # canvas, and dropping out of it on every page change would make it
+        # something to keep switching back on.
+        can_reshape = has_image and not self._showing_preview
+        self._edit_shape_action.setEnabled(can_reshape)
+        if not can_reshape and self._edit_shape_action.isChecked():
+            self._edit_shape_action.setChecked(False)
 
         # Disabled at the ends of the plan rather than silently doing
         # nothing, so the toolbar says where you are.
@@ -554,6 +592,39 @@ class MainWindow(QMainWindow):
         # Filling in a translation can clear a flag, which is the difference
         # between there being another flagged region ahead and there not. It
         # also makes undo available where a moment ago it was not.
+        self._update_actions_enabled()
+
+    def _on_edit_shape_toggled(self, on: bool) -> None:
+        self._canvas.set_edit_mode(on)
+        if on:
+            self.statusBar().showMessage(
+                "drag a corner to reshape, inside to move; double-click an edge to "
+                "add a corner or a corner to remove it; Esc cancels"
+            )
+
+    def _on_polygon_edited(self, region_id: str, polygon: Polygon) -> None:
+        """A dragged outline, on its way to the document if the reader will take it.
+
+        The canvas has already drawn it. This is the one place that decides
+        whether it is a shape a plan file can hold — and puts the old one
+        back on screen when it is not, so what is drawn is never something
+        the document does not have.
+        """
+        if self.document is None:
+            return
+        try:
+            self.document.set_polygon(region_id, polygon)
+        except ValueError as exc:
+            self.statusBar().showMessage(f"shape unchanged: {exc}", 5000)
+            self._canvas.set_appearance(
+                _appearance_for(self.document.region(region_id), self.document)
+            )
+            return
+        # One drag, one undo step: without this the next drag on the same
+        # region would coalesce into this one, the way typing does.
+        self.document.end_edit_run()
+        self._refresh_page_visuals()
+        self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
 
     def _on_undo(self) -> None:

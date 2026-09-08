@@ -32,10 +32,11 @@ from .conftest import (
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
+from comictrans.gui.canvas import COLOR_MANUAL
 from comictrans.gui.main_window import MainWindow
 
 BALLOON_A = Box(60, 60, 260, 200)
@@ -1451,3 +1452,231 @@ def test_the_font_size_box_has_room_to_spare_around_auto(qapp: object) -> None:
     )
     assert box.minimumWidth() > bare, "no more air around 'auto' than before"
     assert box.lineEdit().width() > metrics.horizontalAdvance("auto")
+
+
+# -- reshaping ---------------------------------------------------------------
+
+
+def _drag(canvas: object, start: QPoint, end: QPoint) -> None:
+    """Press, move and release on the canvas viewport, in view coordinates."""
+    viewport = canvas.viewport()  # type: ignore[attr-defined]
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(viewport, end)
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end)
+
+
+def test_edit_mode_puts_a_handle_on_every_corner(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    corners = len(window.document.region("page-001-001").polygon)  # type: ignore[union-attr]
+
+    assert canvas._handles == [], "no handles until the mode is on"
+
+    window._edit_shape_action.setChecked(True)
+
+    assert canvas.edit_mode
+    assert len(canvas._handles) == corners
+
+    window._edit_shape_action.setChecked(False)
+
+    assert canvas._handles == []
+
+
+def test_dragging_a_corner_reshapes_the_region(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    start = canvas.mapFromScene(canvas._handles[0].pos())
+    _drag(canvas, start, start + QPoint(20, 20))
+
+    after = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+    assert after != before
+    assert after[1:] == before[1:], "only the corner that was dragged moved"
+    assert window.document.region("page-001-001").geometry is Geometry.MANUAL  # type: ignore[union-attr]
+    assert window.isWindowModified()
+    assert canvas.dragMode() == canvas.DragMode.ScrollHandDrag, "the page pans again"
+
+
+def test_dragging_inside_the_region_moves_the_whole_shape(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    centre = canvas.mapFromScene(canvas._items["page-001-001"].polygon().boundingRect().center())
+    _drag(canvas, centre, centre + QPoint(15, 10))
+
+    after = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+    offsets = {(x2 - x1, y2 - y1) for (x1, y1), (x2, y2) in zip(before, after, strict=True)}
+    assert len(offsets) == 1, f"the shape was deformed, not moved: {offsets}"
+    assert offsets != {(0, 0)}, "nothing moved at all"
+
+
+def test_escape_abandons_a_drag_and_leaves_the_region_alone(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    start = canvas.mapFromScene(canvas._handles[0].pos())
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(canvas.viewport(), start + QPoint(30, 30))
+    assert canvas.polygon_of("page-001-001") != before, "the drag never started"
+
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=start + QPoint(30, 30))
+
+    assert canvas.polygon_of("page-001-001") == before, "the outline went back"
+    assert window.document.region("page-001-001").polygon == before  # type: ignore[union-attr]
+    assert not window.isWindowModified()
+
+
+def test_a_shape_the_reader_would_refuse_is_put_back(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    # Straight through the signal's handler: this is the case the canvas
+    # cannot judge for itself, and the drag that produces it is a bow tie.
+    window._on_polygon_edited("page-001-001", ((10, 10), (110, 110), (110, 10), (10, 110)))
+
+    assert window.document.region("page-001-001").polygon == before  # type: ignore[union-attr]
+    assert window._canvas.polygon_of("page-001-001") == before, "the canvas was put back too"
+    assert "crosses or folds" in window.statusBar().currentMessage()
+
+
+def test_undo_puts_a_reshaped_outline_back_on_the_canvas(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    window._on_polygon_edited("page-001-001", ((10, 10), (200, 10), (200, 150), (10, 150)))
+    assert window._canvas.polygon_of("page-001-001") != before
+
+    window._on_undo()
+
+    assert window._canvas.polygon_of("page-001-001") == before
+    assert not window.isWindowModified()
+
+
+def test_double_clicking_an_edge_adds_a_corner_and_a_corner_removes_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    corners = len(window.document.region("page-001-001").polygon)  # type: ignore[union-attr]
+
+    points = canvas._items["page-001-001"].points()
+    first, second = QPointF(*points[0]), QPointF(*points[1])
+    middle = canvas.mapFromScene(QPointF((first + second) / 2))
+    QTest.mouseDClick(canvas.viewport(), Qt.MouseButton.LeftButton, pos=middle)
+
+    assert len(window.document.region("page-001-001").polygon) == corners + 1  # type: ignore[union-attr]
+
+    QTest.mouseDClick(
+        canvas.viewport(),
+        Qt.MouseButton.LeftButton,
+        pos=canvas.mapFromScene(canvas._handles[1].pos()),
+    )
+
+    assert len(window.document.region("page-001-001").polygon) == corners  # type: ignore[union-attr]
+
+
+def test_a_triangle_keeps_its_last_three_corners(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._on_polygon_edited("page-001-001", ((60, 60), (260, 60), (160, 200)))
+    window._edit_shape_action.setChecked(True)
+
+    for _ in range(2):
+        corner = canvas.mapFromScene(canvas._handles[0].pos())
+        assert canvas.handle_at(QPointF(corner)) == 0, "the double-click missed the corner"
+        QTest.mouseDClick(canvas.viewport(), Qt.MouseButton.LeftButton, pos=corner)
+
+    assert len(window.document.region("page-001-001").polygon) == 3  # type: ignore[union-attr]
+
+
+def test_another_region_can_still_be_selected_while_reshaping(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+
+    other = canvas._items["page-001-002"]
+    QTest.mouseClick(
+        canvas.viewport(),
+        Qt.MouseButton.LeftButton,
+        pos=canvas.mapFromScene(other.polygon().boundingRect().center()),
+    )
+
+    assert window._current_region == "page-001-002"
+    assert canvas._handles, "the handles followed the selection"
+    assert canvas.mapFromScene(canvas._handles[0].pos()) == canvas.mapFromScene(
+        QPointF(*other.points()[0])
+    )
+
+
+def test_a_rendered_preview_leaves_edit_mode(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    # There are no outlines on a rendered page, so there is nothing to drag;
+    # leaving the mode checked would say otherwise.
+    window = _shown_window(two_page_plan)
+    window._edit_shape_action.setChecked(True)
+
+    window._on_render_preview()
+
+    assert not window._canvas.edit_mode
+    assert not window._edit_shape_action.isChecked()
+    assert not window._edit_shape_action.isEnabled()
+
+    window._on_back_to_overlay()
+
+    assert window._edit_shape_action.isEnabled(), "and it can be turned back on"
+
+
+def test_a_corner_is_grabbable_at_any_zoom(qapp: object, two_page_plan: Path) -> None:
+    # Handles ignore the view transform, so the grab distance is measured on
+    # screen: a corner is the same target at 25% as at 400%.
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+
+    for zoom in (0.25, 4.0):
+        canvas.set_zoom(zoom)
+        corner = canvas.mapFromScene(canvas._handles[2].pos())
+        assert canvas.handle_at(QPointF(corner)) == 2, f"missed the corner at {zoom}x"
+        assert canvas.handle_at(QPointF(corner + QPoint(40, 40))) is None
+
+
+def test_a_reshaped_region_is_redrawn_as_hand_drawn_geometry(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._pages.select_image("page-002.png")
+    region_id = "page-002-001"
+
+    window._on_polygon_edited(region_id, ((10, 10), (200, 10), (200, 150), (10, 150)))
+
+    assert "manual" in window._inspector._id_label.text()
+    assert window._canvas._appearances[region_id].color == COLOR_MANUAL
+    assert window._canvas.polygon_of(region_id) == ((10, 10), (200, 10), (200, 150), (10, 150))
+
+
+def test_edit_mode_survives_a_page_change(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._edit_shape_action.setChecked(True)
+
+    window._pages.select_image("page-002.png")
+
+    assert window._edit_shape_action.isChecked()
+    assert window._canvas.edit_mode
+    assert len(window._canvas._handles) == len(
+        window.document.region("page-002-001").polygon  # type: ignore[union-attr]
+    )

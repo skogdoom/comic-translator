@@ -657,11 +657,39 @@ fit" answer is `apply`'s answer, not a separate opinion.
 **The colour convention matches `--debug-dir`.** Green for a region traced
 from a contour, orange for one approximated from a padded box around its
 text — the same two colours `extract --debug-dir` has used since milestone
-1. A region with something to check goes dashed red instead, regardless of
-which of those two it would otherwise be, because the geometry colour and
+1. A polygon shaped by hand in the window is a third colour (violet),
+because it is a third thing: `manual` geometry, neither traced nor guessed.
+A region with something to check goes dashed red instead, regardless of
+which of those it would otherwise be, because the geometry colour and
 "look at this" are two different facts and only one dashed style was needed
 to say the second one. Selection is a separate colour again (blue), since it
-can coincide with either.
+can coincide with any of them.
+
+**Reshaping: the canvas drags, the window decides, the document validates.**
+Dragging a corner changes only what is drawn; the polygon reaches the
+document once, when the mouse comes up, which is what makes one drag one
+undo step. The canvas cannot judge the result — it draws shapes and knows
+nothing about what a plan file will hold — so it reports the new outline and
+`main_window` puts it to `PlanDocument.set_polygon`, which validates by the
+reader's own rules and raises rather than accept a shape that could not be
+read back. A refused edit is put back on the canvas from the document, so
+what is on screen is never something the document does not have.
+
+That validation is the one place this could have gone wrong quietly.
+`write_plan` performs no schema checking — the reader does — which was
+harmless while the GUI could only edit text, and stops being harmless the
+moment a polygon can move: a self-intersecting outline would save fine and
+fail to load, taking the rest of the file's translations with it. The rules
+live in `planfile.schema` where both the reader and `gui.document` can reach
+them, rather than being written out twice and drifting.
+
+**Editing a polygon makes it `manual`.** The value describes how the outline
+was arrived at, and once someone has dragged it, "traced from a contour" and
+"a padded box around the OCR" are both false. It is also the useful thing to
+know on a second pass — which regions have already been fixed by hand — and
+it clears the `approximate` flag, which means "check this" and has by then
+been done. Moving a shape without reshaping it counts the same: a polygon
+that has been put somewhere by hand is a polygon someone decided on.
 
 **What counts as "something to check" is computed once, in
 `gui.document.RegionFlags`, and nowhere else.** Overlap uses the exact

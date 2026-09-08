@@ -17,6 +17,14 @@ same information — every region names its image and its hash — so it is
 upgraded on the way in rather than refused. Refusing would orphan every plan
 written before the change, translations and all."""
 
+MIN_POLYGON_POINTS = 3
+"""Fewest points a polygon may have.
+
+Here rather than in the reader alone because the review GUI edits polygons
+and has to refuse exactly what the reader would: a shape it accepted and
+wrote out would be a plan file the GUI itself could not reopen.
+"""
+
 FONT_SIZE_MIN_RATIO_RANGE = (0.0001, 1.0)
 CONDENSE_MIN_RANGE = (0.5, 1.0)
 """What the header's two fit limits may be set to.

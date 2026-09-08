@@ -78,7 +78,7 @@ Edit a region's polygon, add a region, delete a region, merge two.
 
 The largest milestone on the list and the one that changes what the GUI is.
 Four passes: model and schema, then move and reshape, then add and delete,
-then merge. **The model and schema pass is done** — what it settled is
+then merge. **The first two passes are done** — what they settled is
 recorded below as done, not as a plan.
 
 ### Done: model and schema
@@ -93,6 +93,23 @@ orphaned. `README.md` and `ARCHITECTURE.md` carry the details.
 Note the compatibility direction: an older comictrans meeting `geometry:
 manual` or an `images` list fails with a `PlanError`. At `0.1.0` with one
 user that is cheap, and it will not stay cheap.
+
+### Done: move and reshape
+
+**Edit > Edit Region Shape** (`Ctrl+E`) puts handles on the selected
+region's corners: drag one to move it, drag inside to move the whole shape,
+double-click an edge to add a corner or a corner to remove one, `Esc` to
+abandon a drag. A mode rather than always on, because dragging inside a
+region is also how the page pans.
+
+The canvas draws the drag and reports the outline once, on mouse up, so one
+drag is one undo step. `PlanDocument.set_polygon` validates it by the
+reader's own rules — the correctness trap below, now closed — and marks the
+geometry `manual`; a refused shape is put back on screen from the document.
+`README.md` and `ARCHITECTURE.md` carry the details.
+
+Vertex editing did not need a colour of its own, but `manual` did: violet,
+beside green for traced and orange for approximate.
 
 ### Settled, not yet built
 
@@ -145,14 +162,17 @@ document layer.
   terrible OCR result and would flag the region as low confidence forever;
   the field is not optional. Decide during the add-and-delete pass.
 
-### One correctness trap
+### The correctness trap, closed
 
-`write_plan` performs no schema validation — the reader does. Today that is
-harmless, because the GUI cannot produce a plan the reader would reject.
-Once polygons are editable it can: `polygon_is_simple` rejects
-self-intersecting and degenerate polygons at load, so the GUI could write a
-file it then refuses to reopen. Validate every geometry edit before it
-reaches the document.
+`write_plan` performs no schema validation — the reader does, which was
+harmless only while the GUI could not produce a plan the reader would
+reject. Editable polygons could: `polygon_is_simple` rejects
+self-intersecting and degenerate polygons at load, so the window could have
+written a file it then refused to reopen. Geometry edits are validated in
+`gui.document` before they reach the plan, against limits shared with the
+reader through `planfile.schema`. The two passes still to come add
+polygons of their own and inherit that: an added or merged region goes
+through the same `set_polygon` gate.
 
 ## 4.14 Render pages from the GUI
 

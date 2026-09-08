@@ -215,12 +215,29 @@ window. Without it, `review` fails with a clear message rather than an
 import error.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
-contour, orange for approximate. A region with something worth checking —
+contour, orange for approximate, violet for a shape edited here by hand. A
+region with something worth checking —
 approximate geometry, low confidence, held back with no translation, still
 identical to its source text, or overlapping another region — is outlined
 dashed red instead, regardless of its geometry colour, and the reason is
 named in the inspector. Click a region to select it; its fields are on the
 right, editable in place, written straight into the plan as you type.
+
+**Edit > Edit Region Shape** (`Ctrl+E`) puts a handle on every corner of the
+selected region. Drag a corner to move it, drag anywhere inside the outline
+to move the whole shape, and double-click an edge to add a corner or a corner
+to remove it — four corners is what detection produces for a caption box and
+never enough to trace a balloon. `Esc` abandons a drag in progress. Each drag
+is one undo step, and a shape a plan file could not hold — fewer than three
+corners, off the top or left of the page, an outline that crosses itself — is
+refused with a message and the region left as it was, rather than saved and
+discovered the next time the file is opened.
+
+It is a mode rather than always on, because dragging inside a region is also
+how the page is panned. A region you reshape is recorded as `geometry:
+manual`: what it says about itself is no longer that detection traced or
+guessed it, and the "check this" flag an approximate region carries clears,
+because checking it is exactly what you have just done.
 
 **Render Preview** (`Ctrl+R`) calls the exact `render_page` function `apply`
 itself uses, on the plan as it currently stands, unsaved edits included. What
@@ -352,7 +369,9 @@ regions:
   bottom-left coordinates are converted inside the OCR adapter and never leak
   past it.
 - `geometry: approximate` means no clean balloon contour was found and the
-  polygon is a padded box around the text. Check those regions.
+  polygon is a padded box around the text. Check those regions. `geometry:
+  manual` is a polygon shaped by hand in `review`, which is neither of the
+  other two: nothing traced it and no OCR box bounded it.
 - Regions are found by tracing a contour on a luminance threshold. When that
   finds nothing — a caption box the same brightness as the art behind it, a
   white balloon over near-white art — a second pass seeds a region from the

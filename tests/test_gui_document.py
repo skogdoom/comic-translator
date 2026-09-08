@@ -513,3 +513,89 @@ def test_regions_using_header_font_counts_the_ones_without_an_override(project: 
     doc.set_font("page-001-001", "Marker Felt")
 
     assert doc.regions_using_header_font() == 1
+
+
+# -- reshaping ---------------------------------------------------------------
+
+SQUARE = ((10, 10), (110, 10), (110, 110), (10, 110))
+
+
+def test_setting_a_polygon_records_it_as_hand_drawn_geometry() -> None:
+    doc = _document(_apart(1, geometry=Geometry.APPROXIMATE))
+
+    region = doc.set_polygon("r1", SQUARE)
+
+    assert region.polygon == SQUARE
+    assert region.geometry is Geometry.MANUAL, "someone shaped this; nothing traced it"
+    assert not doc.flags("r1").approximate, "'check this' is what has just been done"
+    assert doc.dirty
+
+
+def test_a_reshape_is_one_undo_step_that_takes_the_geometry_back_with_it() -> None:
+    doc = _document(_apart(1, geometry=Geometry.APPROXIMATE))
+    before = doc.region("r1").polygon
+    doc.set_polygon("r1", SQUARE)
+
+    assert doc.undo()
+
+    assert doc.region("r1").polygon == before
+    assert doc.region("r1").geometry is Geometry.APPROXIMATE
+    assert not doc.can_undo
+
+
+def test_two_drags_are_two_undo_steps() -> None:
+    # Unlike typing, which coalesces: each drag is a separate act, and the
+    # window ends the run after every one of them.
+    doc = _document(_apart(1))
+    doc.set_polygon("r1", SQUARE)
+    doc.end_edit_run()
+    doc.set_polygon("r1", ((20, 20), (120, 20), (120, 120), (20, 120)))
+
+    doc.undo()
+
+    assert doc.region("r1").polygon == SQUARE
+
+
+def test_polygon_coordinates_are_rounded_to_whole_pixels() -> None:
+    doc = _document(_apart(1))
+
+    region = doc.set_polygon("r1", ((10.4, 10.6), (110.5, 10.0), (110.0, 110.0)))  # type: ignore[arg-type]
+
+    assert region.polygon == ((10, 11), (110, 10), (110, 110))
+    assert all(isinstance(value, int) for point in region.polygon for value in point)
+
+
+@pytest.mark.parametrize(
+    ("polygon", "message"),
+    [
+        (((10, 10), (110, 10)), "at least 3 corners"),
+        (((-1, 10), (110, 10), (110, 110)), "off the top or left"),
+        (((10, 10), (110, 110), (110, 10), (10, 110)), "crosses or folds"),
+    ],
+)
+def test_a_polygon_the_reader_would_refuse_is_refused_here(
+    polygon: tuple[tuple[int, int], ...], message: str
+) -> None:
+    # The trap this guards: a shape the GUI accepted and saved would be a
+    # plan file the GUI itself could not reopen.
+    doc = _document(_apart(1))
+    before = doc.region("r1").polygon
+
+    with pytest.raises(ValueError, match=message):
+        doc.set_polygon("r1", polygon)
+
+    assert doc.region("r1").polygon == before
+    assert not doc.dirty, "a refused edit is not an edit"
+
+
+def test_a_reshaped_region_saves_and_reopens(project: Path) -> None:
+    # The whole point of validating the edit: what the GUI writes has to be
+    # something the reader will take back.
+    doc = PlanDocument.open(project)
+    doc.set_polygon("page-001-001", ((5, 5), (60, 5), (60, 60), (5, 60)))
+    doc.save()
+
+    reopened = PlanDocument.open(project)
+
+    assert reopened.region("page-001-001").polygon == ((5, 5), (60, 5), (60, 60), (5, 60))
+    assert reopened.region("page-001-001").geometry is Geometry.MANUAL
