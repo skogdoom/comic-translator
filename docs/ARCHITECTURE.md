@@ -552,13 +552,15 @@ run_job.py      a pipeline pass on a worker thread, reporting by signal
 render_dialog.py where to write, in what format, erasing how
 extract_dialog.py what to read, where the plan goes, in what languages
 run_panel.py    the dock a run reports into, whose rows go where they name
+preferences.py  what a new run starts from — no Qt
+preferences_dialog.py  those defaults, and a reminder of what they are not
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py`, `sampling.py`, `about.py` and `run_report.py`
-need no display and import no Qt;
+`document.py`, `preview.py`, `sampling.py`, `about.py`, `run_report.py` and
+`preferences.py` need no display and import no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that knows about more than one other
 widget, which is what keeps an edit's ripple effects (the window title's
@@ -990,6 +992,40 @@ both and a row knows whether there is anywhere to go. An extract does *not*
 list the regions that merely need checking: the plan it just wrote flags every
 one of them, the page list counts them, and Next Flagged Region walks them, so
 a second copy in a panel would go stale the moment one was fixed.
+
+**A preference never overrides a plan value.** It fills in a blank when
+something is created, and does that only. This is the whole of milestone
+4.13 and the one way it could have gone wrong: a default font that quietly
+won over a plan's header would mean the same plan renders differently on two
+machines, and re-runnability is the property the two passes exist to have.
+The header dialog edits *this* plan; preferences decide what a *new* one
+starts from.
+
+What keeps them apart is not vigilance but where the values can reach. Every
+field either seeds a new plan's header — the language pair, the OCR settings,
+the font `extract` records — or picks a run-wide setting that is not part of
+a plan at all: the erase strategy, which a region's own `erase` still beats,
+and the output directory and format, which no plan has ever held. There is no
+code path from `Preferences` to an open `PlanDocument`, and a test asserts
+the header, the dirty flag and the file on disk are all untouched by editing
+one.
+
+A preference also gets no more trust than anything typed by hand. A stored
+output directory inside the source tree is refused by `check_output_dir` on
+the way through the render dialog, the same as one typed there.
+
+**`preferences.py` imports no Qt**, because `QSettings` satisfies its store
+protocol structurally: `value` and `setValue` and nothing else. The tests
+pass a dictionary, so they never build a `QSettings` — which would want a
+real application name and write into the config of whoever runs the suite.
+Every field is a string, and an empty one always means "the behaviour you
+would get without this setting". One rule instead of a scattering of
+sentinels, and it round-trips through an INI file without the type guessing
+that makes `QSettings` booleans a trap.
+
+Loading falls back field by field rather than all at once. A settings file is
+hand-editable and outlives the version that wrote it, so a stale engine name
+costs that one field and leaves the rest of the file standing.
 
 **Testing.** `gui.document` and `gui.preview` are tested like any other
 module, no different setup. The widget tests build a real `QApplication`

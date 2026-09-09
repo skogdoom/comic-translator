@@ -39,10 +39,11 @@ from PySide6.QtWidgets import (
 )
 
 from ..apply import check_output_dir, source_for
-from ..config import DEFAULT_ERASE_STRATEGY, EraseConfig
+from ..config import EraseConfig
 from ..errors import ComictransError
 from ..model import Plan
 from .document import PlanDocument
+from .preferences import DEFAULTS, Preferences
 from .preview import apply_config_for
 from .run_job import RenderRequest
 
@@ -75,13 +76,16 @@ SAVE_AND_RENDER = "Save and Render"
 first — see the class docstring."""
 
 
-def suggested_output(plan_path: Path) -> Path:
-    """A directory beside the pages, not inside them.
+def suggested_output(plan_path: Path, preferences: Preferences = DEFAULTS) -> Path:
+    """Where to write, before anyone has said: a preference, or beside the pages.
 
-    A suggestion, not a decision: it is prefilled so the common case is one
-    keystroke, and it is validated like anything typed by hand. Beside rather
-    than under, because under is the one place it can never go.
+    A suggestion either way, not a decision — it is prefilled so the common
+    case is one keystroke, and it is validated like anything typed by hand,
+    a stored preference included. The fallback is *beside* the pages rather
+    than under them, because under is the one place it can never go.
     """
+    if preferences.output_directory:
+        return Path(preferences.output_directory).expanduser()
     pages = plan_path.parent
     return pages.parent / f"{pages.name}-translated"
 
@@ -94,13 +98,19 @@ def source_dirs(plan: Plan, plan_path: Path) -> list[Path]:
 class RenderDialog(QDialog):
     """Settings for one run of the apply pass."""
 
-    def __init__(self, document: PlanDocument, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        document: PlanDocument,
+        parent: QWidget | None = None,
+        *,
+        preferences: Preferences = DEFAULTS,
+    ) -> None:
         super().__init__(parent)
         self._document = document
         self._sources = source_dirs(document.plan, document.path)
         self.setWindowTitle("Render Pages")
 
-        self._output = QLineEdit(str(suggested_output(document.path)))
+        self._output = QLineEdit(str(suggested_output(document.path, preferences)))
         choose = QPushButton("Choose…")
         choose.setAutoDefault(False)
         choose.clicked.connect(self._on_choose)
@@ -114,11 +124,14 @@ class RenderDialog(QDialog):
         self._format = QComboBox()
         for label, value in FORMAT_CHOICES:
             self._format.addItem(label, value)
+        # A preference stores "" for "match the source"; the request wants
+        # None. One conversion, here, at the edge.
+        self._format.setCurrentIndex(self._format.findData(preferences.image_format or None))
 
         self._erase = QComboBox()
         for label, value, _description in STRATEGY_CHOICES:
             self._erase.addItem(label, value)
-        self._erase.setCurrentIndex(self._erase.findData(DEFAULT_ERASE_STRATEGY))
+        self._erase.setCurrentIndex(self._erase.findData(preferences.erase_strategy))
         self._erase_help = QLabel()
         self._erase_help.setWordWrap(True)
         self._quieten(self._erase_help)

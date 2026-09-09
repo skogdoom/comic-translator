@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.13 | Preferences | M |
 | 4.7 | Help instructions | S–M |
 | 4.8 | macOS look and feel | M |
 | 4.9 | Localisation | M |
@@ -63,39 +62,6 @@ plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
 
-## 4.13 Preferences
-
-Application defaults, in the `QSettings` 4.2 already set up.
-
-**A preference never overrides a plan value.** It fills in a blank when
-something new is created, and does nothing else, ever. A "default font"
-that quietly won over a plan's header would mean the same plan renders
-differently on two machines, and re-runnability — edit a translation, run
-it again, and only that text changes — is the property the whole two-pass
-design exists to have. 4.12 edits *this* plan; 4.13 decides what a *new*
-one starts from. Those two must not blur into each other.
-
-That is also why this milestone waited: 4.14 and 4.6 were the first things in
-the tool that create something a default could seed. Both have shipped, and
-both now ask the same questions on every run.
-
-What it holds:
-
-- For the render dialog: default output directory, erase strategy, output
-  format
-- For the extract dialog: source and target language, OCR languages and
-  engine, and a default font to record in a new plan's header — extract
-  currently walks its own fallback chain, which is right as a default and
-  wrong as the only answer
-- Everywhere: which directory the Open and Save dialogs start in
-
-A fourth is now visible that was not before: **the detection-tuning flags.**
-The extract dialog deliberately leaves all fifteen on the command line, and
-preferences is where a machine-wide default for one of them would go if any
-of them turns out to want one. None has yet.
-
-On macOS this wants Cmd+, and the application menu — see 4.8.
-
 ## 4.7 Help instructions
 
 A short in-application guide to reviewing a plan: what the badge colours
@@ -123,8 +89,9 @@ appears. What is actually left, roughly by value:
   whichever is chosen needs recording in `LICENSE` and in the About dialog.
 - An `.icns` icon and bundle identity, which mostly overlaps with 4.10
 - `AboutRole` on the About action, so macOS moves it into the application
-  menu where it belongs, and the same for a Preferences action once 4.13
-  exists
+  menu where it belongs. Preferences already carries `PreferencesRole` and
+  `QKeySequence.StandardKey.Preferences`, set when 4.13 shipped; like the
+  rest of this milestone, neither has been seen working on a Mac
 - Dark mode: check the canvas overlay colours stay legible against dark
   chrome
 - Full screen, and the unified toolbar look

@@ -13,6 +13,7 @@ at the others' state.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from PIL import Image
@@ -53,6 +54,8 @@ from .header_dialog import HeaderDialog
 from .hint_line import HintLine
 from .inspector import RegionInspector
 from .page_list import PageList
+from .preferences import Preferences, load_preferences, save_preferences
+from .preferences_dialog import PreferencesDialog
 from .preview import render_preview
 from .qimage import to_pixmap
 from .render_dialog import RenderDialog
@@ -125,6 +128,11 @@ class MainWindow(QMainWindow):
         never a second thread to keep track of or a second report arriving
         out of order."""
         self._settings = settings
+        self._preferences: Preferences = load_preferences(settings)
+        """What a new run starts from. Read once at construction; a window
+        built without settings gets the built-in defaults and stores
+        nothing, the same as it does with the layout."""
+
         self._views: dict[str, ViewState] = {}
         """How each page was last being read, keyed by image.
 
@@ -313,6 +321,17 @@ class MainWindow(QMainWindow):
         self._rescan_fonts_action = QAction("Rescan &Fonts", self)
         self._rescan_fonts_action.triggered.connect(self._on_rescan_fonts)
         edit_menu.addAction(self._rescan_fonts_action)
+
+        edit_menu.addSeparator()
+        # PreferencesRole is what moves this into the application menu on
+        # macOS, where it belongs and where Cmd+, opens it. Qt's standard key
+        # is Cmd+, there and Ctrl+, everywhere else, so the shortcut is not
+        # spelled out either.
+        self._preferences_action = QAction("&Preferences…", self)
+        self._preferences_action.setMenuRole(QAction.MenuRole.PreferencesRole)
+        self._preferences_action.setShortcut(QKeySequence.StandardKey.Preferences)
+        self._preferences_action.triggered.connect(self._on_preferences)
+        edit_menu.addAction(self._preferences_action)
 
         view_menu = self.menuBar().addMenu("&View")
         # One action rather than two, because they are two halves of one
@@ -561,6 +580,7 @@ class MainWindow(QMainWindow):
             return
 
         self.document = document
+        self._remember_directory(path)
         self._current_image = None
         self._current_region = None
         self._showing_preview = False
@@ -581,7 +601,10 @@ class MainWindow(QMainWindow):
     def open_plan_dialog(self) -> None:
         """Ask for a plan file and open it. Does nothing if the user cancels."""
         name, _filter = QFileDialog.getOpenFileName(
-            self, "Open Plan", "", "Plan files (*.yaml *.yml);;All files (*)"
+            self,
+            "Open Plan",
+            str(self._start_directory()),
+            "Plan files (*.yaml *.yml);;All files (*)",
         )
         if name:
             self.open_plan(Path(name))
@@ -1015,7 +1038,7 @@ class MainWindow(QMainWindow):
         """Ask what to render and where, save the plan, then start the run."""
         if self.document is None:
             return
-        dialog = RenderDialog(self.document, self)
+        dialog = RenderDialog(self.document, self, preferences=self._preferences)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -1043,11 +1066,11 @@ class MainWindow(QMainWindow):
         is on disk and complete — which is also why a cancelled extract has
         nothing to show you.
         """
-        start_in = self.document.path.parent if self.document is not None else None
-        dialog = ExtractDialog(start_in, self)
+        dialog = ExtractDialog(self._start_directory(), self, preferences=self._preferences)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         request = dialog.request()
+        self._remember_directory(request.plan_path)
         job = ExtractJob(request, self)
         job.completed.connect(self._on_extract_finished)
         self._start(job, "Reading", request.total, request.plan_path)
@@ -1179,6 +1202,33 @@ class MainWindow(QMainWindow):
             # What is on screen was rendered under the old header.
             self._on_render_preview()
         self._update_actions_enabled()
+
+    def _on_preferences(self) -> None:
+        """Edit what a new run starts from. Nothing here touches the plan.
+
+        Modal and writing through as it is edited, like the header dialog:
+        there is nothing to apply and nothing to cancel, which is also what
+        macOS expects of a Preferences window.
+        """
+        dialog = PreferencesDialog(self._preferences, self)
+        dialog.changed.connect(lambda: self._on_preferences_changed(dialog.preferences()))
+        dialog.exec()
+
+    def _on_preferences_changed(self, preferences: Preferences) -> None:
+        self._preferences = preferences
+        save_preferences(self._settings, preferences)
+
+    def _remember_directory(self, path: Path) -> None:
+        """Where the next file dialog should start, after this one ended here."""
+        self._on_preferences_changed(replace(self._preferences, last_directory=str(path.parent)))
+
+    def _start_directory(self) -> Path:
+        """Where a file dialog opens: the plan on screen, else where you were."""
+        if self.document is not None:
+            return self.document.path.parent
+        if self._preferences.last_directory:
+            return Path(self._preferences.last_directory)
+        return Path.home()
 
     def _on_about(self) -> None:
         AboutDialog(self).exec()

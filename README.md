@@ -425,6 +425,32 @@ The **Window** menu closes and reopens the two panels, and **Reset Layout**
 puts them back where they started. The layout is remembered between
 sessions — the only thing this tool stores outside a plan file.
 
+**Edit > Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere) sets what a
+new run starts from: the language pair, OCR languages and recogniser a new
+plan is written with, a font to record in its header, and the output
+directory, erase strategy and format the render dialog opens holding. The
+Extract and Render dialogs are prefilled from these, and every one of them is
+still editable there — a preference is a starting point, never a decision.
+
+**A preference never changes a plan you already have.** That is the whole
+rule, and the dialog says so at the top. Every field either seeds a *new*
+plan's header or picks a run-wide setting that is not part of a plan at all;
+none of them is written into a plan that exists. A default font that quietly
+won over a plan's header would mean the same plan renders differently on two
+machines, and re-runnability — edit a translation, run it again, and only
+that text changes — is the property the two passes exist to have. Edit >
+Plan Header changes *this* plan; Preferences decides what a *new* one starts
+from.
+
+Fields write through as you edit them, so there is nothing to apply and
+nothing to cancel. A preferred output directory gets no more trust than a
+path typed by hand: if it is inside the source tree the render dialog refuses
+it, exactly as it would either way. Leaving a field empty means the behaviour
+you would get without it — no default output directory, the source language
+for OCR, the source image's own format, whatever font `extract` finds for
+itself. The window also remembers which directory you last opened a plan or
+read pages from, and starts the file dialogs there.
+
 **Help > About** reports the version, the author, the licence, and every
 declared dependency that is actually installed, with its version — read from
 the installed package at the time you open it, not written down anywhere. It

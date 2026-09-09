@@ -70,6 +70,8 @@ from comictrans.gui.canvas import (
 from comictrans.gui.extract_dialog import ExtractDialog
 from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
+from comictrans.gui.preferences import Preferences
+from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
 from comictrans.gui.render_dialog import (
     RENDER,
     SAVE_AND_RENDER,
@@ -2870,3 +2872,168 @@ def test_extract_needs_no_open_plan_and_render_does(qapp: object) -> None:
 
     assert window._extract_action.isEnabled(), "it is how you get a plan in the first place"
     assert not window._render_action.isEnabled()
+
+
+# -- preferences ---------------------------------------------------------
+#
+# What a preference *is* — load, save, fall back — is tested without Qt in
+# test_gui_preferences.py. What is left for here is the part that only shows
+# up in a window: that the two run dialogs actually open holding these
+# values, and that nothing here reaches a plan.
+
+
+def _preferences(**overrides: str) -> Preferences:
+    base: dict[str, str] = {
+        "source_language": "ja",
+        "target_language": "sv",
+        "ocr_languages": "ja, en",
+        "ocr_engine": "tesseract",
+        "font": "Marker Felt",
+        "erase_strategy": "inpaint",
+        "image_format": "tiff",
+    }
+    base.update(overrides)
+    return Preferences(**base)
+
+
+def test_the_preferences_dialog_writes_through_as_it_is_edited(qapp: object) -> None:
+    dialog = PreferencesDialog(Preferences(), None)
+    seen: list[Preferences] = []
+    dialog.changed.connect(lambda: seen.append(dialog.preferences()))
+
+    dialog._source_language.setText("de")
+    dialog._erase.setCurrentIndex(dialog._erase.findData("polygon"))
+
+    assert len(seen) >= 2, "each field is its own edit; there is nothing to apply"
+    assert seen[-1].source_language == "de"
+    assert seen[-1].erase_strategy == "polygon"
+
+
+def test_the_preferences_dialog_shows_what_it_was_given(qapp: object, font_dir: Path) -> None:
+    dialog = PreferencesDialog(_preferences(), None)
+
+    assert dialog._source_language.text() == "ja"
+    assert dialog._engine.currentData() == "tesseract"
+    assert dialog._font.value() == "Marker Felt"
+    assert dialog._format.currentData() == "tiff"
+    assert dialog.preferences() == _preferences()
+
+
+def test_an_unset_font_is_not_called_the_plan_default_here(qapp: object) -> None:
+    """There is no plan in this dialog; what happens instead is extract's chain."""
+    dialog = PreferencesDialog(Preferences(), None)
+
+    assert dialog._font.currentText() == FONT_DEFAULT
+    assert dialog.preferences().font == ""
+
+
+def test_the_dialog_carries_the_remembered_directory_through_untouched(qapp: object) -> None:
+    """It is remembered, not chosen, so the dialog never shows or clears it."""
+    dialog = PreferencesDialog(_preferences(last_directory="/tmp/somewhere"), None)
+    dialog._target_language.setText("fr")
+
+    assert dialog.preferences().last_directory == "/tmp/somewhere"
+
+
+def test_the_render_dialog_opens_holding_the_preferences(
+    qapp: object, two_page_plan: Path, tmp_path: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    elsewhere = tmp_path / "somewhere-else"
+
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=_preferences(output_directory=str(elsewhere)),
+    )
+
+    assert dialog.output_dir() == elsewhere
+    request = dialog.request()
+    assert request.config.erase.strategy == "inpaint"
+    assert request.image_format == "tiff"
+
+
+def test_a_preferred_output_directory_is_still_refused_inside_the_source_tree(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A stored preference gets no more trust than a path typed by hand."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=_preferences(output_directory=str(two_page_plan.parent)),
+    )
+
+    assert "inside the source directory" in dialog.refusal()
+    assert not dialog._ok.isEnabled()
+
+
+def test_the_extract_dialog_opens_holding_the_preferences(
+    qapp: object, loose_pages: Path, font_dir: Path
+) -> None:
+    dialog = ExtractDialog(None, None, preferences=_preferences())
+    dialog._source.setText(str(loose_pages))
+
+    request = dialog.request()
+
+    assert request.source_language == "ja"
+    assert request.target_language == "sv"
+    assert request.config.ocr.languages == ("ja", "en")
+    assert request.config.ocr.engine == "tesseract"
+    assert request.font == "Marker Felt", "recorded in the header of the plan it writes"
+
+
+def test_no_preferred_font_leaves_extract_to_its_own_fallback_chain(
+    qapp: object, loose_pages: Path
+) -> None:
+    dialog = ExtractDialog(None, None, preferences=Preferences())
+    dialog._source.setText(str(loose_pages))
+
+    assert dialog.request().font is None
+
+
+def test_a_preference_never_reaches_a_plan_already_open(qapp: object, two_page_plan: Path) -> None:
+    """The one thing this milestone must not do. 4.12 edits this plan; 4.13
+    decides what a new one starts from."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    header_before = window.document.plan.header  # type: ignore[union-attr]
+    file_before = two_page_plan.read_text(encoding="utf-8")
+
+    window._on_preferences_changed(_preferences(font="Comic Sans MS"))
+
+    assert window.document.plan.header == header_before  # type: ignore[union-attr]
+    assert not window.document.dirty  # type: ignore[union-attr]
+    assert two_page_plan.read_text(encoding="utf-8") == file_before
+
+
+def test_the_window_remembers_where_the_last_plan_came_from(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    assert window._preferences.last_directory == ""
+
+    window.open_plan(two_page_plan)
+
+    assert window._preferences.last_directory == str(two_page_plan.parent)
+    assert window._start_directory() == two_page_plan.parent
+
+
+def test_a_window_with_no_plan_starts_where_it_was_last(qapp: object, tmp_path: Path) -> None:
+    window = MainWindow()
+    window._preferences = Preferences(last_directory=str(tmp_path))
+
+    assert window._start_directory() == tmp_path
+
+
+def test_a_window_without_settings_stores_nothing(qapp: object) -> None:
+    """Every widget test builds one, and none of them may leak into the next."""
+    window = MainWindow()
+    assert window._settings is None
+
+    window._on_preferences_changed(_preferences())
+
+    assert window._preferences.source_language == "ja", "held, but only in this window"
