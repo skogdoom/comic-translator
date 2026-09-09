@@ -38,11 +38,11 @@ from .canvas import (
     COLOR_APPROXIMATE,
     COLOR_EXACT,
     COLOR_MANUAL,
-    MODE_HINTS,
     CanvasMode,
     PageCanvas,
     RegionAppearance,
     ViewState,
+    mode_hint,
 )
 from .document import PlanDocument
 from .header_dialog import HeaderDialog
@@ -129,7 +129,7 @@ class MainWindow(QMainWindow):
         # the next message replaced, so they were discoverable only in the
         # second after switching mode. This line stays put.
         self._hint = HintLine()
-        self._hint.set_hint(MODE_HINTS[CanvasMode.SELECT])
+        self._hint.set_hint(mode_hint(CanvasMode.SELECT))
 
         centre = QWidget()
         stack = QVBoxLayout(centre)
@@ -693,7 +693,7 @@ class MainWindow(QMainWindow):
         round. Signals are blocked because setting a check mark here must not
         look like someone clicking it.
         """
-        self._hint.set_hint(MODE_HINTS[CanvasMode(mode)])
+        self._hint.set_hint(mode_hint(CanvasMode(mode)))
         # Entering a mode is a deliberate act, so it breaks a run of nudges
         # the way moving the selection does.
         if self.document is not None:

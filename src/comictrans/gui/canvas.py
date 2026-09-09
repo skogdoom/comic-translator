@@ -16,6 +16,7 @@ from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
+    QKeySequence,
     QMouseEvent,
     QNativeGestureEvent,
     QPainter,
@@ -75,12 +76,24 @@ EDGE_GRAB = 8.0
 """How near an edge a double-click has to land to put a corner in it."""
 
 NUDGE_STEP = 1
-NUDGE_STRIDE = 10
+NUDGE_STRIDE = 20
 """How far an arrow key moves the selected region, plain and with Shift.
 
 One pixel because that is the unit the plan file is written in and the
-smallest thing worth correcting; ten because crossing a balloon one pixel at
-a time is not a correction, it is a chore.
+smallest thing worth correcting; twenty because crossing a balloon one pixel
+at a time is not a correction, it is a chore.
+"""
+
+NUDGE_ACCELERATES_AFTER = 3
+NUDGE_MAX_STEP = 12
+"""How a held arrow key speeds up: every three repeats it moves one step
+further, up to this many pixels a repeat.
+
+So that one gesture covers both jobs. A tap is a pixel, which is what makes
+the keys worth having at all — no drag lands on an exact pixel — and holding
+the key turns into a glide rather than a slow crawl at the same pixel a
+repeat. The count resets on the next fresh press, so precision is always one
+tap away.
 """
 
 MOVE_MODIFIER = Qt.KeyboardModifier.ControlModifier
@@ -162,8 +175,8 @@ class CanvasMode(StrEnum):
 
 MODE_HINTS: dict[CanvasMode, str] = {
     CanvasMode.SELECT: (
-        "click a region to select it · Ctrl-drag or the arrow keys move it · "
-        "drag to pan · Ctrl and the wheel zooms"
+        "click a region to select it · {move}-drag or the arrow keys move it · "
+        "drag to pan · {move} and the wheel zooms"
     ),
     CanvasMode.RESHAPE: (
         "drag a corner to reshape · drag inside or use the arrow keys to move · "
@@ -178,11 +191,38 @@ MODE_HINTS: dict[CanvasMode, str] = {
 }
 """What each mode does to a click, in one line, for the window to show.
 
+``{move}`` is filled in with what this platform calls the move modifier, by
+:func:`mode_hint`, which is what the window asks for rather than reaching in
+here directly.
+
 Beside the modes rather than in the window, because the gestures are this
 widget's own behaviour: a mode that gains a gesture should gain its line in
 the same edit. Written to be read at a glance and to stay short — the line
 sits under the canvas, where a long one would be cut off rather than wrap.
 """
+
+
+def move_modifier_name() -> str:
+    """What to call :data:`MOVE_MODIFIER` on the platform this is running on.
+
+    Qt maps ``ControlModifier`` to Command on macOS, so a hint that said
+    "Ctrl" would be wrong on the machine this tool is written for. Asked of
+    Qt rather than decided from ``sys.platform``: whatever it renders the
+    modifier as in a menu is what the keyboard in front of you is labelled.
+
+    Read by pairing the modifier with a key and taking that key's own text
+    back off — a bare modifier renders as an empty string.
+    """
+    key = QKeySequence(Qt.Key.Key_A).toString(QKeySequence.SequenceFormat.NativeText)
+    combined = QKeySequence(MOVE_MODIFIER | Qt.Key.Key_A).toString(
+        QKeySequence.SequenceFormat.NativeText
+    )
+    return combined.removesuffix(key).rstrip("+") or "Ctrl"
+
+
+def mode_hint(mode: CanvasMode) -> str:
+    """One line saying what a click does in this mode, named for this platform."""
+    return MODE_HINTS[mode].format(move=move_modifier_name())
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,6 +361,7 @@ class PageCanvas(QGraphicsView):
         self._mode = CanvasMode.SELECT
         self._handles: list[VertexHandle] = []
         self._drag: _ShapeDrag | None = None
+        self._nudge_repeats = 0
         self._draft: list[Point] = []
         self._draft_item: QGraphicsPathItem | None = None
         self._draft_handles: list[VertexHandle] = []
@@ -657,6 +698,17 @@ class PageCanvas(QGraphicsView):
             return False
         return bool(item.contains(item.mapFromScene(self.mapToScene(view_pos.toPoint()))))
 
+    def _nudge_step(self, base: int, *, repeating: bool) -> int:
+        """How far this key press moves the region, faster the longer it is held."""
+        if not repeating:
+            self._nudge_repeats = 0
+            return base
+        self._nudge_repeats += 1
+        grown = base * (1 + self._nudge_repeats // NUDGE_ACCELERATES_AFTER)
+        # Never below the base: Shift already asks for a stride, and a
+        # ceiling meant for the one-pixel step must not shorten it.
+        return min(grown, max(base, NUDGE_MAX_STEP))
+
     def _nudge(self, dx: int, dy: int) -> bool:
         """Move the selected region by whole pixels. False if there is none."""
         region_id = self._selected_id
@@ -935,7 +987,8 @@ class PageCanvas(QGraphicsView):
         reached it yet.
         """
         key = event.key()
-        step = NUDGE_STRIDE if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else NUDGE_STEP
+        base = NUDGE_STRIDE if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else NUDGE_STEP
+        step = self._nudge_step(base, repeating=event.isAutoRepeat())
         # Keyed by the int QKeyEvent reports, not by the enum member.
         offsets: dict[int, tuple[int, int]] = {
             Qt.Key.Key_Left.value: (-step, 0),

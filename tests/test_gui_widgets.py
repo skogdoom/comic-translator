@@ -41,16 +41,19 @@ from .conftest import (
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
-    MODE_HINTS,
+    NUDGE_ACCELERATES_AFTER,
     NUDGE_STEP,
     NUDGE_STRIDE,
     CanvasMode,
+    mode_hint,
+    move_modifier_name,
 )
 from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
@@ -2089,17 +2092,17 @@ def test_the_hint_line_says_what_a_click_does_in_each_mode(
     # The gestures used to be announced once, in a status bar message the next
     # message replaced. This line stays put for as long as the mode does.
     window = _shown_window(two_page_plan)
-    assert window._hint.hint() == MODE_HINTS[CanvasMode.SELECT]
+    assert window._hint.hint() == mode_hint(CanvasMode.SELECT)
 
     window._edit_shape_action.setChecked(True)
-    assert window._hint.hint() == MODE_HINTS[CanvasMode.RESHAPE]
+    assert window._hint.hint() == mode_hint(CanvasMode.RESHAPE)
     assert "double-click an edge" in window._hint.hint()
 
     window._add_region_action.setChecked(True)
-    assert window._hint.hint() == MODE_HINTS[CanvasMode.DRAW]
+    assert window._hint.hint() == mode_hint(CanvasMode.DRAW)
 
     window._add_region_action.setChecked(False)
-    assert window._hint.hint() == MODE_HINTS[CanvasMode.SELECT], "and it comes back"
+    assert window._hint.hint() == mode_hint(CanvasMode.SELECT), "and it comes back"
 
 
 def test_the_hint_line_names_the_colour_being_taken(qapp: object, two_page_plan: Path) -> None:
@@ -2113,7 +2116,7 @@ def test_the_hint_line_names_the_colour_being_taken(qapp: object, two_page_plan:
 
     _click_scene(window._canvas, 20, 20)
 
-    assert window._hint.hint() == MODE_HINTS[CanvasMode.SELECT]
+    assert window._hint.hint() == mode_hint(CanvasMode.SELECT)
 
 
 def test_the_hint_line_sits_under_the_canvas_and_cannot_widen_the_window(
@@ -2131,12 +2134,12 @@ def test_the_hint_line_sits_under_the_canvas_and_cannot_widen_the_window(
 
     # What will not fit is elided rather than cut off mid-word, and the whole
     # line stays readable in the tooltip.
-    window._hint.set_hint(MODE_HINTS[CanvasMode.RESHAPE])
+    window._hint.set_hint(mode_hint(CanvasMode.RESHAPE))
     window._hint.resize(200, window._hint.height())
 
     assert window._hint.text() != window._hint.hint(), "a long line in a narrow one"
     assert window._hint.text().endswith("…")
-    assert window._hint.toolTip() == MODE_HINTS[CanvasMode.RESHAPE]
+    assert window._hint.toolTip() == mode_hint(CanvasMode.RESHAPE)
 
 
 # -- moving a region ----------------------------------------------------------
@@ -2280,3 +2283,43 @@ def test_the_cursor_says_where_a_modifier_drag_would_move_something(
     assert not canvas.wants_move_cursor(inside, Qt.KeyboardModifier.ControlModifier), (
         "not while drawing"
     )
+
+
+def test_the_hint_calls_the_move_modifier_what_this_platform_calls_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    # Qt maps ControlModifier to Command on macOS, so a hint hard-coded to
+    # "Ctrl" would be wrong on the machine this tool is written for.
+    window = _shown_window(two_page_plan)
+
+    assert f"{move_modifier_name()}-drag" in window._hint.hint()
+    assert "{move}" not in window._hint.hint(), "the placeholder was filled in"
+
+
+def test_a_held_arrow_key_speeds_up_and_a_fresh_press_does_not(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._go_to_region("page-001-001")
+
+    def press(*, repeating: bool) -> int:
+        before = window.document.region("page-001-001").polygon[0][0]  # type: ignore[union-attr]
+        canvas.keyPressEvent(
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Right,
+                Qt.KeyboardModifier.NoModifier,
+                "",
+                repeating,
+            )
+        )
+        return window.document.region("page-001-001").polygon[0][0] - before  # type: ignore[union-attr]
+
+    assert press(repeating=False) == NUDGE_STEP, "a tap is a pixel"
+    for _ in range(NUDGE_ACCELERATES_AFTER - 1):
+        assert press(repeating=True) == NUDGE_STEP, "and so are the first repeats"
+
+    assert press(repeating=True) > NUDGE_STEP, "then it picks up"
+
+    assert press(repeating=False) == NUDGE_STEP, "and a fresh press is a pixel again"
