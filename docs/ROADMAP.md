@@ -105,32 +105,52 @@ and exit 134, both caught, both into a file rather than a terminal. Without
 it there is nothing to work from; with it the next crash names itself.
 `all_threads` matters, because the newest code in the window runs on one.
 
-**Where a hard crash would come from here**, in the order worth checking:
+**What is known so far.** It was seen during **preview**, which eliminates
+more than it implicates: `render_preview` is synchronous on the main thread
+and touches no OCR, no recogniser and no worker thread at all. If the crash
+is only ever in preview, the whole thread-related branch of the search is
+out — Apple Vision on a `QThread`, a `QThread` destroyed while running, the
+job read after `deleteLater`. Those stay worth a look only if it turns out to
+happen elsewhere too.
 
-- **Apple Vision on a `QThread`.** The newest thing in the window and the
-  least proven: 4.6's autorelease pool shipped as an argument, and Vision has
-  only been seen working on a Mac once. The specific hazard beyond the pool is
-  that Cocoa's internal locking historically stays off until the process
-  "becomes multithreaded", which means an `NSThread` has been detached — and a
-  `QThread` is a pthread Qt made, not an `NSThread`. Check
-  `NSThread.isMultiThreaded()` from the worker; if it answers false, detaching
-  one no-op `NSThread` at startup is the whole fix. Verify before believing:
-  this is a hypothesis with a one-line test, not a diagnosis.
-- **A `QThread` destroyed while running**, which is `qFatal` and therefore
-  abort. `closeEvent` guards it today, so the question is which paths reach
-  teardown without `closeEvent`.
-- **A Qt object used after deletion.** `_finish_run` calls `deleteLater` and
-  then reads the job; nothing spins an event loop in between today, but
-  `_on_extract_finished` goes on to `open_plan`, which can open a modal, and a
-  modal is a nested event loop.
-- **`QGraphicsView`'s `ScrollHandDrag`**, already recorded in
-  `ARCHITECTURE.md` as segfaulting under the offscreen platform with synthetic
-  events. Real events on a real Mac are a different case, but it is the one
-  place in this codebase already known to be able to do this.
+**A reproduction was attempted and did not crash.** The reported plan and its
+page — `tests/fixtures/11-complex_six_panel_page.png`, byte-identical — were
+run through `render_preview`, `to_pixmap` and a real paint into a
+`QGraphicsScene`, on Linux under the offscreen platform with PySide6 6.11.2.
+It rendered 2840×3880 RGB, converted to a non-null pixmap and painted, twice
+over. So the preview path is not unconditionally broken on that input, and
+whatever this is depends on the platform, the display, or state built up
+across a session. Recorded because a negative result is worth as much as a
+positive one when the next person starts here.
 
-The first task is therefore not a fix at all: turn `faulthandler` on, get the
-next crash to write down where it happened, and let that pick which of the
-above is real.
+**What is left, in the order worth checking:**
+
+- **`to_pixmap`, which is `PIL.ImageQt`.** The one place a Pillow buffer
+  becomes something Qt paints, and the classic shape of this kind of crash:
+  `ImageQt` wraps the image's memory rather than copying it, so its lifetime
+  and Qt's have to be reasoned about rather than assumed. `QPixmap.fromImage`
+  copies, which is why it survives here, but the margin is one function call
+  wide. Converting through an explicit `QImage.copy()` — or through raw bytes
+  with an explicit `bytesPerLine` — would remove the question entirely, and is
+  cheap enough to do on suspicion.
+- **Three copies of an eleven-megapixel page, per preview.** That page is
+  2840×3880: about 33MB as PIL RGB, 44MB as ARGB32 inside `ImageQt`, and 44MB
+  again as the `QPixmap`. `Ctrl+R` toggles, so a session spent comparing the
+  overlay against the render does that repeatedly. Worth measuring what is
+  actually released between toggles before assuming it is fine; a graphics
+  allocation that fails on macOS need not come back as a `MemoryError`.
+- **The Retina backing store.** A 2× display doubles what the view rasterises,
+  and none of the testing has ever run on one. Nothing specific is suspected
+  here; it is simply an entire dimension the offscreen platform does not have.
+- **`QGraphicsScene.clear()` and a stale wrapper.** `show_page` clears the
+  scene and every dict that held its items, which is exactly right, so this
+  one looks handled — but it is the other classic, and preview is the code
+  path that calls it most.
+
+The first task is therefore still not a fix: turn `faulthandler` on, get the
+next crash to name its own line, and let that pick from the list rather than
+picking by argument. The attempt above is why — an afternoon of plausible
+reasoning narrowed this less than one captured trace would.
 
 **The log file.** `review` configures logging exactly as the CLI does —
 `basicConfig` onto stderr — and a window launched from Finder, or from a
