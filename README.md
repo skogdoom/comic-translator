@@ -152,7 +152,7 @@ warning.
 | --- | --- |
 | `--font NAME` | override the font for every region; logged, because the plan file is the record |
 | `--format {png,jpeg,tiff}` | override the output format |
-| `--erase {flat,polygon,inpaint}` | how to remove the old lettering (see below) |
+| `--erase {flat,polygon,inpaint,none}` | how to remove the old lettering (see below) |
 | `--min-font-ratio` / `--condense-min` | override the plan header's fit limits |
 | `--font-size-floor` | absolute floor below which a region fails instead of shrinking further |
 | `--no-hyphenation` | never hyphenate to make a line fit |
@@ -168,6 +168,17 @@ warning.
 - `inpaint` reconstructs the masked pixels from their surroundings, for
   textured balloons and borderless captions where a flat patch would read as a
   hole.
+- `none` paints nothing: the translation is lettered straight onto the page as
+  it is. For a sound effect, or a caption over art that must not be covered.
+
+**Any region can say for itself**, with an `erase` of its own in the plan
+file, the way it can override `font`. The flag is the default for regions
+that do not. This matters because `fill_color` is the colour the erase paints
+*with*, not the colour of the region: under `flat` it reaches only the pixels
+that read as lettering, so changing it repaints the old letters and leaves the
+balloon as it was. `erase: polygon` on that region is what fills the shape.
+Regions drawn by hand in `review` are written with `erase: polygon` for that
+reason — a person outlining an area means all of it.
 
 ### Fitting
 
@@ -251,11 +262,20 @@ back. It records `geometry: manual` and `confidence: 1.0` — there is no
 recogniser's score to report, and the reading is your own.
 
 Its **fill colour** and **text colour** are measured from the page inside the
-outline you drew, the same way `extract` measures a detected region's. Both
+outline you drew, the same way `extract` measures a detected region's, and it
+is written with `erase: polygon` so that colour fills the shape. Both
 are editable on any region: the swatch opens a menu with the standard
 lettering colours, a full colour dialog, and **Sample from the page…**, which
 takes the next click on the page as the colour. That last one is the answer
 when an outline strays onto artwork and drags a colour with it.
+
+The **erase** field says how much of a region `apply` paints over before it
+letters it: the plan default, the lettering only, the whole region, a
+reconstruction of the background, or nothing at all. *Nothing* is the
+transparent case — the translation goes straight onto the artwork — and the
+fill colour is disabled while it is chosen, because nothing is painted with
+it. This is the field to reach for when a fill colour appears to do nothing:
+under the default `flat`, it only ever repaints pixels that read as lettering.
 
 **Edit > Delete Region** (`Ctrl+Backspace`) removes the selected region. A
 delete is a delete, not a `skip: true` in disguise — the region is gone from
@@ -338,7 +358,7 @@ YAML, UTF-8, stable key order, hand-editable. One entry per detected region.
 Comments you add are preserved.
 
 ```yaml
-version: 2
+version: 3
 generator: comictrans 0.1.0
 created: 2026-09-06T19:22:04Z
 source_language: it
@@ -409,15 +429,18 @@ regions:
   art alone instead of erasing it to letter nonsense on top. They are counted
   under **not text-like** at the end of an extract run. Delete them, or set
   `skip: true`.
-- Per-region `font` and `font_size` override the header.
+- Per-region `font` and `font_size` override the header, and a per-region
+  `erase` (`none`, `flat`, `polygon`, `inpaint`) overrides the `--erase` flag.
+  All four are omitted unless set.
 
 Loading validates: unknown keys, malformed or self-intersecting polygons, bad
 colours, duplicate ids, a region naming an image the `images` list does not
 have, and image-hash mismatches are all errors that name the offending line.
 
-Version 1 plans, which carried an `image_sha256` on every region and had no
-`images` list, still load: the list is derived from the regions and the plan
-is a version 2 one from then on. Saving it writes the new shape.
+Older plans still load. Version 1 carried an `image_sha256` on every region
+and had no `images` list; the list is derived from the regions it does have.
+Version 2 is version 3 without the optional `erase` key. Either way the plan
+is a current one from then on, and saving it writes the current shape.
 
 ## Fonts
 

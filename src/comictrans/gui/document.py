@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..model import (
     Color,
+    Erase,
     Geometry,
     Plan,
     PlanHeader,
@@ -437,6 +438,15 @@ class PlanDocument:
         """What erase paints the region with before the translation goes on."""
         return self._update(region_id, fill_color=color)
 
+    def set_erase(self, region_id: str, mode: Erase | None) -> Region:
+        """How much of the region apply paints over. ``None`` follows the run's flag.
+
+        The colour above only reaches what this decides: under ``flat`` that
+        is the original lettering and nothing else, which is why recolouring a
+        balloon does nothing visible until this says ``polygon``.
+        """
+        return self._update(region_id, erase=mode)
+
     def set_text_color(self, region_id: str, color: Color) -> Region:
         return self._update(region_id, text_color=color)
 
@@ -508,6 +518,11 @@ class PlanDocument:
             confidence=MANUAL_CONFIDENCE,
             source_text=source_text,
             translation=translation,
+            # Written into the region rather than left to the run's flag,
+            # because a person drew this outline meaning all of it: under the
+            # default `flat` the fill colour would reach only lettering that
+            # matches text_color, and a drawn region usually has none.
+            erase=Erase.POLYGON,
         )
         index = self._insertion_index(image)
         regions = self.plan.regions

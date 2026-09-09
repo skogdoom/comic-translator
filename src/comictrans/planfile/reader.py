@@ -17,6 +17,7 @@ from ruamel.yaml.error import MarkedYAMLError
 from ..errors import PlanError
 from ..model import (
     Color,
+    Erase,
     Geometry,
     Plan,
     PlanHeader,
@@ -43,6 +44,7 @@ from .schema import (
 
 _VALID_GEOMETRY = {str(value) for value in Geometry}
 _VALID_CASE = {str(value) for value in TextCase}
+_VALID_ERASE = {str(value) for value in Erase}
 
 
 def _line_of(node: Any, key: str | None = None) -> int | None:
@@ -257,6 +259,7 @@ def _parse_region(
 
     font_size = cursor.integer("font_size", minimum=1) if "font_size" in node else None
     font = cursor.string("font", allow_empty=False) if "font" in node else None
+    mode = Erase(cursor.choice("erase", _VALID_ERASE)) if "erase" in node else None
 
     return Region(
         id=region_id,
@@ -272,6 +275,7 @@ def _parse_region(
         notes=cursor.string("notes") if "notes" in node else "",
         low_confidence=cursor.flag("low_confidence"),
         skip=cursor.flag("skip"),
+        erase=mode,
         font=font,
         font_size=font_size,
     )

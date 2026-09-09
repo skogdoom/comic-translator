@@ -70,6 +70,8 @@ def region_to_node(region: Region) -> CommentedMap:
         values["low_confidence"] = True
     if region.skip:
         values["skip"] = True
+    if region.erase is not None:
+        values["erase"] = str(region.erase)
     if region.font is not None:
         values["font"] = region.font
     if region.font_size is not None:

@@ -163,6 +163,20 @@ class PolygonFill:
         return out
 
 
+class NoFill:
+    """Paint nothing at all: the translation goes straight onto the page.
+
+    For a region whose background is the artwork and has to stay that way — a
+    sound effect, a caption lettered over a panel. There is nothing to
+    reconstruct and nothing to flatten, so ``fill_color`` goes unused.
+    """
+
+    name = "none"
+
+    def fill(self, rgb: RgbArray, mask: MaskArray, region: Region, cfg: EraseConfig) -> RgbArray:
+        return rgb.copy()
+
+
 class InpaintFill:
     """Reconstruct masked pixels from their surroundings.
 
@@ -181,8 +195,11 @@ class InpaintFill:
 
 
 STRATEGIES: dict[str, FillStrategy] = {
-    strategy.name: strategy for strategy in (FlatFill(), PolygonFill(), InpaintFill())
+    strategy.name: strategy for strategy in (FlatFill(), PolygonFill(), InpaintFill(), NoFill())
 }
+
+_NEEDS_NO_MASK = frozenset({PolygonFill.name, NoFill.name})
+"""Strategies that ignore the glyph mask, so nothing is amiss when it is empty."""
 
 
 def get_strategy(name: str) -> FillStrategy:
@@ -195,9 +212,17 @@ def get_strategy(name: str) -> FillStrategy:
 
 
 def erase(rgb: RgbArray, region: Region, cfg: EraseConfig, *, page_height: int) -> RgbArray:
-    """Remove a region's original lettering, leaving the rest of the page alone."""
-    strategy = get_strategy(cfg.strategy)
+    """Remove a region's original lettering, leaving the rest of the page alone.
+
+    The region's own ``erase`` wins over the run's ``--erase`` flag, the same
+    way its ``font`` wins over the header's: which of these is right is a fact
+    about one balloon — a flat one, a textured one, a sound effect that must
+    keep the art behind it — not about a chapter.
+    """
+    strategy = get_strategy(str(region.erase) if region.erase is not None else cfg.strategy)
+    if strategy.name == NoFill.name:
+        return rgb.copy()  # no mask to compute; nothing is painted
     mask = glyph_mask(rgb, region, cfg, page_height=page_height)
-    if int(np.count_nonzero(mask)) == 0 and strategy.name != "polygon":
+    if int(np.count_nonzero(mask)) == 0 and strategy.name not in _NEEDS_NO_MASK:
         log.debug("region %s: nothing matched the recorded text colour", region.id)
     return strategy.fill(rgb, mask, region, cfg)

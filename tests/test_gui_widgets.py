@@ -16,7 +16,16 @@ from pathlib import Path
 
 import pytest
 
-from comictrans.model import Box, Color, Geometry, PlanHeader, PlanImage, Region, TextCase
+from comictrans.model import (
+    Box,
+    Color,
+    Erase,
+    Geometry,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile import load_plan, write_plan
 from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
@@ -37,6 +46,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
 from comictrans.gui.canvas import COLOR_MANUAL, CanvasMode
+from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import MainWindow
 
 BALLOON_A = Box(60, 60, 260, 200)
@@ -1914,3 +1924,35 @@ def test_the_outline_being_drawn_follows_the_pointer(qapp: object, two_page_plan
     assert canvas._draft_item is not None
     assert canvas._draft_item.path().boundingRect().right() > reach, "no rubber band"
     assert len(canvas.draft) == 1, "and moving is not placing"
+
+
+def test_the_erase_field_writes_through_and_gates_the_fill_colour(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    erase = window._inspector._erase
+
+    assert erase.currentIndex() == 0, "a detected region follows the run's flag"
+    assert window._inspector._fill_color.isEnabled()
+
+    erase.setCurrentIndex([mode for _, mode, _ in ERASE_CHOICES].index(Erase.NONE))
+
+    assert window.document.region("page-001-001").erase is Erase.NONE  # type: ignore[union-attr]
+    assert not window._inspector._fill_color.isEnabled(), "nothing is painted with it"
+
+    erase.setCurrentIndex([mode for _, mode, _ in ERASE_CHOICES].index(Erase.POLYGON))
+
+    assert window.document.region("page-001-001").erase is Erase.POLYGON  # type: ignore[union-attr]
+    assert window._inspector._fill_color.isEnabled()
+
+
+def test_a_drawn_region_arrives_set_to_fill_itself(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    for point in AROUND_BALLOON_B:
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    assert window.document.region(window._current_region).erase is Erase.POLYGON  # type: ignore[union-attr, arg-type]
+    assert window._inspector._erase.currentText() == "the whole region"

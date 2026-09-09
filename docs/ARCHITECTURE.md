@@ -722,6 +722,24 @@ named in a report, in a note, in a commit message; reusing one makes those
 quietly wrong. The mark cannot outlive the session, because a plan file has
 no way to record the ids that are no longer in it.
 
+**How much to paint over is a fact about one balloon.** `fill_color` is the
+colour an erase paints *with*, not the colour of the region, and under the
+default `flat` strategy it reaches only the pixels that read as the original
+lettering. Measured on the synthetic fixture: recolouring a balloon's
+`fill_color` to red repaints 10.4% of it — the glyphs and their fringe — and
+leaves the rest white; a region drawn on plain artwork, where nothing matches
+its `text_color` at all, has 0% painted. Neither is a bug in the fill, and
+neither is what someone changing a colour expects to see.
+
+So a region carries an optional `erase` of its own, the way it carries
+`font`: `none`, `flat`, `polygon` or `inpaint`, with the run's `--erase` flag
+as the default for regions that say nothing. `none` is the transparent case —
+nothing is painted and the translation is lettered onto the artwork as it is
+— and exists as a run-wide flag too, since a strategy that paints nothing is
+still a strategy. A region drawn in `review` is written with `erase: polygon`,
+because a person outlining an area means all of it, and because the colours
+sampled for it would otherwise reach nothing.
+
 **Editing a polygon makes it `manual`.** The value describes how the outline
 was arrived at, and once someone has dragged it, "traced from a contour" and
 "a padded box around the OCR" are both false. It is also the useful thing to

@@ -285,7 +285,8 @@ def _add_apply(
         choices=tuple(sorted(STRATEGIES)),
         help="how to remove the original lettering: 'flat' repaints the glyphs "
         "with the region's fill colour, 'polygon' floods the whole interior, "
-        "'inpaint' reconstructs from surrounding pixels (default: %(default)s)",
+        "'inpaint' reconstructs from surrounding pixels, 'none' paints nothing "
+        "at all. A region's own 'erase' overrides this (default: %(default)s)",
     )
     apply_parser.add_argument(
         "--min-font-ratio",

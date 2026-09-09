@@ -36,6 +36,30 @@ class Geometry(StrEnum):
     that one means "check this", which a hand-drawn polygon does not."""
 
 
+class Erase(StrEnum):
+    """What ``apply`` paints over inside a region before it letters it.
+
+    Per region, because it is a decision about one balloon: the run-wide
+    ``--erase`` flag is the default for regions that do not say. ``fill_color``
+    is what the painting is done *with*, which is why changing that colour
+    does nothing under ``flat`` unless there is lettering to repaint.
+    """
+
+    NONE = "none"
+    """Paint nothing. The translation is drawn straight onto the artwork —
+    for a sound effect, or a caption over art that must not be covered."""
+
+    FLAT = "flat"
+    """The original lettering only, repainted in ``fill_color``."""
+
+    POLYGON = "polygon"
+    """The whole polygon, flooded with ``fill_color``. What a region drawn by
+    hand gets: a person outlined that area meaning all of it."""
+
+    INPAINT = "inpaint"
+    """The lettering, reconstructed from the pixels around it."""
+
+
 class TextCase(StrEnum):
     """How ``translation`` is cased at render time."""
 
@@ -193,6 +217,9 @@ class Region:
     notes: str = ""
     low_confidence: bool = False
     skip: bool = False
+    erase: Erase | None = None
+    """How this region is painted over. ``None`` follows the run's own flag."""
+
     font: str | None = None
     font_size: int | None = None
 

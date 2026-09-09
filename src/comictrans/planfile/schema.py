@@ -6,16 +6,22 @@ valid plan file looks like.
 
 from __future__ import annotations
 
-PLAN_VERSION = 2
+PLAN_VERSION = 3
 
-READABLE_VERSIONS: frozenset[int] = frozenset({1, 2})
+READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3})
 """Versions the reader accepts, as against the one it writes.
 
 Version 2 moved each page's hash out of every region and into a top-level
 ``images`` list, and added ``manual`` geometry. A version 1 file carries the
 same information — every region names its image and its hash — so it is
 upgraded on the way in rather than refused. Refusing would orphan every plan
-written before the change, translations and all."""
+written before the change, translations and all.
+
+Version 3 added the optional region key ``erase``. An older file simply does
+not have it and reads unchanged, which is why — unlike the images list, whose
+two shapes are mutually exclusive — the key is accepted whatever version a
+file claims: a hand-edited plan that gained one without its number being
+bumped is not worth refusing."""
 
 MIN_POLYGON_POINTS = 3
 """Fewest points a polygon may have.
@@ -63,6 +69,7 @@ REGION_KEY_ORDER: tuple[str, ...] = (
     "polygon",
     "fill_color",
     "text_color",
+    "erase",
     "confidence",
     "low_confidence",
     "skip",
@@ -107,6 +114,11 @@ comictrans plan file. Hand-edit this, then run: comictrans apply
                 typeset area; apply never re-runs detection.
   geometry      'approximate' means no clean balloon outline was found and
                 this is a padded box around the text. Check those.
+  erase         what gets painted over before the translation goes on:
+                none, flat (the lettering), polygon (all of it), inpaint.
+                Omitted means whatever apply's --erase says. fill_color is
+                the colour it paints with, so under flat it reaches only
+                the old lettering.
   images        every page this plan covers and the hash it had when extract
                 read it, including pages no text was found on. Apply copies
                 those through unchanged.

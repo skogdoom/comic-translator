@@ -6,7 +6,16 @@ import numpy as np
 import pytest
 
 from comictrans.errors import InputError, PlanError
-from comictrans.model import Color, Geometry, Plan, PlanHeader, PlanImage, Region, TextCase
+from comictrans.model import (
+    Color,
+    Erase,
+    Geometry,
+    Plan,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile import dumps, load_plan, loads, write_plan
 from comictrans.planfile.schema import PLAN_VERSION, REGION_KEY_ORDER
 from comictrans.util import sha256_file
@@ -67,7 +76,9 @@ def test_round_trip_preserves_every_field() -> None:
 
 
 def test_keys_are_written_in_schema_order() -> None:
-    text = dumps(_plan(_region(low_confidence=True, skip=True, font="X", font_size=9)))
+    text = dumps(
+        _plan(_region(low_confidence=True, skip=True, font="X", font_size=9, erase=Erase.FLAT))
+    )
     region_block = text.split("regions:", 1)[1]
     positions = [region_block.find(f"{key}:") for key in REGION_KEY_ORDER]
     present = [p for p in positions if p >= 0]
@@ -362,3 +373,33 @@ def test_a_page_with_no_regions_is_hash_checked_too(tmp_path: Path) -> None:
     save_page(np.zeros((20, 20, 3), dtype=np.uint8), image)
     with pytest.raises(PlanError, match=r"page-002\.png has changed since extract"):
         load_plan(plan_path)
+
+
+def test_a_region_can_record_how_it_is_erased() -> None:
+    original = _plan(_region(erase=Erase.NONE))
+
+    text = dumps(original)
+
+    assert "erase: none" in text
+    assert loads(text) == original
+
+
+def test_erase_is_omitted_when_the_region_follows_the_run() -> None:
+    assert "erase" not in dumps(_plan()).split("regions:", 1)[1]
+
+
+def test_an_unknown_erase_value_is_rejected() -> None:
+    text = dumps(_plan(_region(erase=Erase.FLAT))).replace("erase: flat", "erase: scrub")
+    with pytest.raises(PlanError, match="erase must be one of"):
+        loads(text)
+
+
+def test_a_version_2_plan_reads_without_an_erase_anywhere() -> None:
+    # The whole of what version 3 added is one optional key, so a version 2
+    # file is a version 3 file that does not use it.
+    text = dumps(_plan()).replace(f"version: {PLAN_VERSION}", "version: 2")
+
+    plan = loads(text)
+
+    assert plan.regions[0].erase is None
+    assert plan.header.version == PLAN_VERSION, "and it is a current plan in memory"

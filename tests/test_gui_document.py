@@ -12,7 +12,16 @@ from comictrans.gui.document import (
     overlapping_region_ids,
     region_flags,
 )
-from comictrans.model import Box, Color, Geometry, PlanHeader, PlanImage, Region, TextCase
+from comictrans.model import (
+    Box,
+    Color,
+    Erase,
+    Geometry,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile import load_plan, write_plan
 from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
@@ -758,3 +767,29 @@ def test_a_drawn_region_saves_and_reopens(project: Path) -> None:
     assert (reopened.fill_color, reopened.text_color) == (Color(1, 2, 3), Color(250, 251, 252))
     assert reopened.source_text == "CIAO"
     assert reopened.confidence == MANUAL_CONFIDENCE
+
+
+def test_a_drawn_region_asks_for_the_whole_of_itself_to_be_painted() -> None:
+    # Otherwise the fill colour sampled for it would reach only lettering
+    # that matches text_color, and a region drawn on artwork has none.
+    doc = _document(_apart(1))
+
+    region = _added(doc)
+
+    assert region.erase is Erase.POLYGON
+
+
+def test_how_a_region_is_erased_is_an_editable_field() -> None:
+    doc = _document(_apart(1))
+    assert doc.region("r1").erase is None, "detected regions follow the run's flag"
+
+    doc.set_erase("r1", Erase.NONE)
+    assert doc.region("r1").erase is Erase.NONE
+
+    doc.end_edit_run()
+    doc.set_erase("r1", Erase.POLYGON)
+
+    doc.undo()
+    assert doc.region("r1").erase is Erase.NONE
+    doc.undo()
+    assert doc.region("r1").erase is None
