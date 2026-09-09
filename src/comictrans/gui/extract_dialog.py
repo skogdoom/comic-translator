@@ -56,6 +56,7 @@ from ..config import (
 from ..errors import ComictransError
 from ..extract import default_plan_path
 from ..imaging import IMAGE_SUFFIXES, collect_inputs
+from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
 ENGINE_CHOICES: tuple[tuple[str, str], ...] = (
@@ -72,9 +73,16 @@ EXTRACT = "Extract"
 class ExtractDialog(QDialog):
     """Settings for one run of the extract pass."""
 
-    def __init__(self, start_in: Path | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        start_in: Path | None = None,
+        parent: QWidget | None = None,
+        *,
+        preferences: Preferences = DEFAULTS,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Extract Pages")
+        self._preferences = preferences
         self._start_in = start_in or Path.cwd()
         self._plan_edited = False
         """Whether the plan path has been typed in by hand.
@@ -151,9 +159,9 @@ class ExtractDialog(QDialog):
         choose_source.setMinimumWidth(button_width)
         plan_button.setMinimumWidth(button_width)
 
-        self._source_language = QLineEdit(DEFAULT_SOURCE_LANGUAGE)
-        self._target_language = QLineEdit(DEFAULT_TARGET_LANGUAGE)
-        self._languages = QLineEdit()
+        self._source_language = QLineEdit(preferences.source_language)
+        self._target_language = QLineEdit(preferences.target_language)
+        self._languages = QLineEdit(preferences.ocr_languages)
         self._languages.setPlaceholderText("same as the source language")
         self._languages.setToolTip(
             "Languages to hand the recogniser, comma-separated. Left empty "
@@ -164,6 +172,7 @@ class ExtractDialog(QDialog):
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:
             self._engine.addItem(label, value)
+        self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
 
         self._force = QCheckBox("Overwrite it, discarding everything in it")
         self._force.hide()  # shown only when there is something to overwrite
@@ -346,6 +355,10 @@ class ExtractDialog(QDialog):
             ),
             source_language=source_language,
             target_language=self._target_language.text().strip() or DEFAULT_TARGET_LANGUAGE,
+            # Empty stays None, which is extract walking its own fallback
+            # chain — the behaviour with no --font, and what this dialog did
+            # before there was anywhere to record an answer.
+            font=self._preferences.font or None,
             force=self._force.isChecked(),
             pages=self.pages(),
         )

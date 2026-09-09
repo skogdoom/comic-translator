@@ -23,7 +23,13 @@ from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 from .. import fonts
 
 PLAN_DEFAULT = "(plan default)"
-"""The entry meaning "no override", which the plan file records as absent."""
+"""The entry meaning "no override", which the plan file records as absent.
+
+The wording is the region inspector's, where the fallback really is the
+plan's header. Somewhere else the same absence means something else — in
+preferences it means "whatever extract finds" — so the text is a parameter
+and this is only its default.
+"""
 
 _TEXT_ROLE = QPalette.ColorRole.Text
 
@@ -42,13 +48,22 @@ class FontBox(QComboBox):
     """An editable font picker. ``allow_default`` adds the "no override" entry.
 
     A region's font override may be absent, which is what ``allow_default``
-    is for. The plan header's font may not: every region without an override
-    falls back to it, so there is nothing for it to fall back to itself.
+    is for; ``default_text`` is what that absence is called, since it means
+    different things in different places. The plan header's font may not be
+    absent: every region without an override falls back to it, so there is
+    nothing for it to fall back to itself.
     """
 
-    def __init__(self, *, allow_default: bool, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        allow_default: bool,
+        default_text: str = PLAN_DEFAULT,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._allow_default = allow_default
+        self._default_text = default_text
         self._loaded = False
         self.setEditable(True)
         self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -76,7 +91,7 @@ class FontBox(QComboBox):
         metrics = QFontMetrics(self.font())
         shown = [self.currentText()]
         if self._allow_default:
-            shown.append(PLAN_DEFAULT)
+            shown.append(self._default_text)
         widest = max(metrics.horizontalAdvance(text) for text in shown)
         average = metrics.averageCharWidth()
         return min(max(widest, average * _MIN_CHARS), average * _MAX_CHARS)
@@ -110,7 +125,7 @@ class FontBox(QComboBox):
         try:
             self.clear()
             if self._allow_default:
-                self.addItem(PLAN_DEFAULT)
+                self.addItem(self._default_text)
             self.addItems(families)
             self.setCurrentText(current)
         finally:
@@ -133,7 +148,7 @@ class FontBox(QComboBox):
     def value(self) -> str | None:
         """The chosen family, or ``None`` for "no override"."""
         text = self.currentText().strip()
-        if not text or (self._allow_default and text == PLAN_DEFAULT):
+        if not text or (self._allow_default and text == self._default_text):
             return None
         return text
 
@@ -143,7 +158,7 @@ class FontBox(QComboBox):
         self.blockSignals(True)
         try:
             self.setCurrentText(
-                PLAN_DEFAULT if family is None and self._allow_default else family or ""
+                self._default_text if family is None and self._allow_default else family or ""
             )
         finally:
             self.blockSignals(False)
