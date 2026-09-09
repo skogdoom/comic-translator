@@ -772,6 +772,34 @@ still a strategy. A region drawn in `review` is written with `erase: polygon`,
 because a person outlining an area means all of it, and because the colours
 sampled for it would otherwise reach nothing.
 
+**The hint line names the modifier the way the platform does.** Qt maps
+`ControlModifier` to Command on macOS, so a line hard-coded to "Ctrl" would
+be wrong on the machine this tool is written for. `canvas.move_modifier_name`
+asks Qt what it renders the modifier as — by pairing it with a key and taking
+that key's text back off, since a bare modifier renders as an empty string —
+and `mode_hint` fills it into the copy. Whatever a menu would print is what
+the line prints.
+
+**A tap is a pixel; a held key accelerates.** The keys exist for the
+correction no drag can land — no pointer lands on an exact pixel — so the tap
+has to stay one pixel. Holding one at that rate is a crawl, so the step grows
+every three auto-repeats up to a ceiling: measured at 26px over the first ten
+repeats and about 360px in the first second at a typical repeat rate, against
+40px and 30px before. The count resets on the next fresh press, so precision
+is always one tap away, and `Shift` is a flat stride that starts above the
+ceiling.
+
+**A gesture is an undo step; a run of keys is one too.** A drag or a
+double-click ends the edit run on both sides of itself, so it can neither
+join what came before nor collect what comes after: one gesture, one step.
+Arrow-key nudges deliberately do not, so consecutive taps coalesce on the
+`(region_id, "polygon")` run key the way typing into a field does — forty
+taps are one thing done. The run then breaks where typing runs break: a
+different region selected, a mode entered, a gesture finished. This is the
+one place where two routes to the same `set_polygon` call are meant to
+record differently, which is why the canvas reports them on two signals
+rather than one.
+
 **Editing a polygon makes it `manual`.** The value describes how the outline
 was arrived at, and once someone has dragged it, "traced from a contour" and
 "a padded box around the OCR" are both false. It is also the useful thing to
