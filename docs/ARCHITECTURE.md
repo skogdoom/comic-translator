@@ -873,19 +873,30 @@ plan it writes did not exist when it started. Nothing else is shared either —
 FreeType font per call — so a live preview on the main thread and a run on
 the worker do not meet.
 
-**Apple Vision on a worker thread.** `performRequests_error_` is synchronous
-and Apple's own guidance is to run it off the main queue, so the request side
-is what the API is for. What a Python thread does not get for free is an
-autorelease pool: PyObjC does not install one per thread, and without it every
-Objective-C object autoreleased in the adapter leaks for the life of the
-process — forty pages of CGImages and Vision observations. The adapter
-therefore opens one around each page, which is the right granularity anyway:
-the pool drains when the page is done rather than when the chapter is. **This is reasoned, not measured:** it was written on Linux, where
-pyobjc will not install, so it has never actually run. What *was* measured is
-the harness around it — a real Tesseract run through `ExtractJob` executed on
-a different thread id from the window's, which turned its event loop 272,000
-times while two pages were read. The Vision-specific half wants one run on a
-Mac to confirm.
+**Apple Vision on a worker thread — confirmed.** `performRequests_error_` is
+synchronous and Apple's own guidance is to run it off the main queue, so the
+request side is what the API is for. What a Python thread does not get for
+free is an autorelease pool: PyObjC does not install one per thread, and
+without it every Objective-C object autoreleased in the adapter leaks for the
+life of the process — forty pages of CGImages and Vision observations. The
+adapter therefore opens one around each page, which is the right granularity
+anyway: the pool drains when the page is done rather than when the chapter is.
+
+This was written on Linux, where pyobjc will not install, so it shipped as an
+argument rather than a measurement. It has since run on a Mac: `Extract
+Pages…` over `tests/fixtures/11-complex_six_panel_page.png` wrote a plan whose
+header says `ocr_engine: apple-vision`, with ten regions, all `geometry:
+exact`, tails traced and text read correctly. Vision executes on the worker
+thread and comes back with usable results — that half is settled.
+
+**The leak is not.** One page cannot show a pool that never drains; that
+would take a long chapter and a memory profile. So the pool stays because the
+argument for it is sound, not because it has been seen to work, and anyone
+with a forty-page run and Instruments to hand can close the second half.
+
+The harness around it was measured on Linux from the start: a real Tesseract
+run through `ExtractJob` executed on a different thread id from the window's,
+which turned its event loop 272,000 times while two pages were read.
 
 **Cancelling happens between pages, never inside one** — and what that leaves
 behind is each pass's own business. A page takes about a second, so waiting
