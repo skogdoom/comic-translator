@@ -489,19 +489,26 @@ def test_open_plan_dialog_opens_what_it_is_given_and_ignores_a_cancel(
     assert window.document.path == two_page_plan
 
 
-def test_review_without_a_plan_asks_for_one(qapp: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The whole point of 'review' with no argument: don't sit there empty."""
+def test_review_without_a_plan_opens_empty_and_asks_nothing(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty window is the front door to two things, not a dead end.
+
+    It used to put the Open dialog up straight away, on the grounds that
+    there was nothing else to do in an empty window. Extract moved into the
+    window, so there is.
+    """
     from PySide6.QtWidgets import QApplication
 
     from comictrans.gui import app as gui_app
 
     asked: list[bool] = []
     monkeypatch.setattr(MainWindow, "open_plan_dialog", lambda self: asked.append(True))
-    # Stand in for the event loop: run the queued zero-timer, then return.
+    # Stand in for the event loop, and run anything queued on it.
     monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
 
     assert gui_app.run() == 0
-    assert asked, "no plan file means the file dialog, not an empty window"
+    assert not asked, "nothing modal in front of a window you might want to extract from"
 
 
 def test_review_with_a_plan_does_not_ask(
@@ -517,6 +524,14 @@ def test_review_with_a_plan_does_not_ask(
 
     assert gui_app.run(two_page_plan) == 0
     assert not asked
+
+
+def test_an_empty_window_says_where_both_doors_are(qapp: object) -> None:
+    window = MainWindow()
+    message = window.statusBar().currentMessage()
+
+    assert "Open Plan" in message
+    assert "Extract Pages" in message
 
 
 def test_the_font_override_writes_through_as_it_is_typed(qapp: object, two_page_plan: Path) -> None:
@@ -2595,6 +2610,31 @@ def loose_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     lines["page-003.png"] = []  # a page with nothing on it
     monkeypatch.setattr(run_job, "get_recognizer", lambda config: FakeRecognizer(lines))
     return source
+
+
+def test_one_button_offers_both_kinds_of_input(qapp: object) -> None:
+    """Qt has no file dialog that accepts either — see the note on the button."""
+    dialog = ExtractDialog(None, None)
+
+    assert [action.text() for action in dialog._source_menu.actions()] == [
+        "Folder of pages…",
+        "A single image…",
+    ]
+
+
+def test_either_kind_of_input_is_accepted_once_it_is_in_the_field(
+    qapp: object, loose_pages: Path
+) -> None:
+    dialog = ExtractDialog(None, None)
+
+    dialog._source.setText(str(loose_pages))
+    assert dialog.refusal() == ""
+    assert len(dialog.pages()) == 3
+
+    dialog._source.setText(str(loose_pages / "page-001.png"))
+    assert dialog.refusal() == ""
+    assert dialog.pages() == (loose_pages / "page-001.png",)
+    assert dialog.plan_path() == loose_pages / "page-001-plan.yaml"
 
 
 def test_the_extract_dialog_puts_the_plan_where_the_command_line_would(

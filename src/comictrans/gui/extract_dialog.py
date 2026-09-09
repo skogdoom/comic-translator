@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QAction, QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -82,18 +83,30 @@ class ExtractDialog(QDialog):
         someone typed is not a default to overwrite.
         """
 
+        # One button, because it answers one question — which pages? — and
+        # the two kinds of answer are the same decision made at two
+        # granularities. It is a menu rather than a single panel because Qt
+        # has no file dialog that accepts either: `Directory` mode refuses a
+        # file and `ExistingFile` refuses a directory, both measured. The one
+        # way to get a panel that takes both is to override `accept()`, which
+        # forces `DontUseNativeDialog` — a Qt-drawn Open panel on macOS, and
+        # the only non-native one in an application whose every other file
+        # dialog is the system's. The extra click is the cheaper cost.
         self._source = QLineEdit()
-        folder = QPushButton("Folder…")
-        image = QPushButton("Image…")
-        for button in (folder, image):
-            button.setAutoDefault(False)
-        folder.clicked.connect(self._on_choose_folder)
-        image.clicked.connect(self._on_choose_image)
+        self._folder_action = QAction("Folder of pages…", self)
+        self._folder_action.triggered.connect(self._on_choose_folder)
+        self._image_action = QAction("A single image…", self)
+        self._image_action.triggered.connect(self._on_choose_image)
+        self._source_menu = QMenu(self)
+        self._source_menu.addAction(self._folder_action)
+        self._source_menu.addAction(self._image_action)
+        choose_source = QPushButton("Choose…")
+        choose_source.setAutoDefault(False)
+        choose_source.setMenu(self._source_menu)
         source_row = QHBoxLayout()
         source_row.setContentsMargins(0, 0, 0, 0)
         source_row.addWidget(self._source, 1)
-        source_row.addWidget(folder)
-        source_row.addWidget(image)
+        source_row.addWidget(choose_source)
         source_widget = QWidget()
         source_widget.setLayout(source_row)
 
@@ -107,6 +120,14 @@ class ExtractDialog(QDialog):
         plan_row.addWidget(plan_button)
         plan_widget = QWidget()
         plan_widget.setLayout(plan_row)
+
+        # The source button carries a menu indicator and the plan button does
+        # not, so left alone they are different widths and the two fields
+        # beside them end at different places. Matched off their own size
+        # hints rather than a number, so it holds on any platform's font.
+        button_width = max(choose_source.sizeHint().width(), plan_button.sizeHint().width())
+        choose_source.setMinimumWidth(button_width)
+        plan_button.setMinimumWidth(button_width)
 
         self._source_language = QLineEdit(DEFAULT_SOURCE_LANGUAGE)
         self._target_language = QLineEdit(DEFAULT_TARGET_LANGUAGE)
@@ -178,6 +199,7 @@ class ExtractDialog(QDialog):
     # -- choosing paths --------------------------------------------------
 
     def _on_choose_folder(self) -> None:
+        """The system's own folder panel — see the note on the button."""
         name = QFileDialog.getExistingDirectory(self, "Pages to Read", str(self._start_in))
         if name:
             self._source.setText(name)

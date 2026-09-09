@@ -916,6 +916,19 @@ regions is destructive against exactly that work, and carrying translations
 across by geometry is a second feature with its own failure mode. Extract to a
 new plan, and open it.
 
+**One button for the input, and it opens a menu.** The extract dialog asks
+one question — which pages? — and a folder and a single image are the same
+answer at two granularities, so they belong on one control. They are two
+menu items rather than one panel because Qt has no file dialog that takes
+either: measured, `FileMode.Directory` refuses a file and `ExistingFile`
+refuses a directory, both returning `result=0` from `accept()`. The only way
+to a panel that accepts both is subclassing `QFileDialog` and overriding
+`accept()`, which forces `DontUseNativeDialog` — a Qt-drawn Open panel on
+macOS, and the only non-native file dialog in an application whose Open Plan,
+Save As and Render Into are all the system's. One extra click is the cheaper
+of the two costs. The field itself takes a typed path of either kind, and
+validation does not care which.
+
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what
 the live preview does. The difference is what survives: a preview is

@@ -198,7 +198,10 @@ class MainWindow(QMainWindow):
         self._update_actions_enabled()
         self._update_title()
         self.resize(1200, 800)
-        self.statusBar().showMessage("Open a plan file to begin (File > Open Plan…)")
+        self.statusBar().showMessage(
+            "Open a plan file to review (File > Open Plan…), "
+            "or read one off a folder of pages (File > Extract Pages…)"
+        )
 
         # Captured before anything saved is restored, so Reset Layout has
         # something to go back to that no earlier session can have moved.
@@ -576,13 +579,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"{path.name}: no regions in this plan")
 
     def open_plan_dialog(self) -> None:
-        """Ask for a plan file and open it. Does nothing if the user cancels.
-
-        Public because ``gui.app`` calls it too: ``review`` with no plan
-        argument opens this rather than an empty window. It cannot be done
-        from the constructor — a modal dialog opened there would block every
-        test that builds a bare window, with nothing to dismiss it.
-        """
+        """Ask for a plan file and open it. Does nothing if the user cancels."""
         name, _filter = QFileDialog.getOpenFileName(
             self, "Open Plan", "", "Plan files (*.yaml *.yml);;All files (*)"
         )

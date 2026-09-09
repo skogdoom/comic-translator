@@ -220,10 +220,10 @@ uv run comictrans review pages/comic-plan.yaml
 
 Opens a plan file in a window: pages on the left, the current page in the
 middle with its region polygons overlaid, one region's fields on the right.
-Run it without a path and it asks for a plan file to open. Needs PySide6, a
-separate extra like tesseract — most work on this repository never opens a
-window. Without it, `review` fails with a clear message rather than an
-import error.
+Run it without a path and it opens empty, ready to open a plan or extract
+one. Needs PySide6, a separate extra like tesseract — most work on this
+repository never opens a window. Without it, `review` fails with a clear
+message rather than an import error.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
 contour, orange for approximate, violet for a shape drawn or edited here by
@@ -320,10 +320,11 @@ the position, and the region you had selected.
 
 **File > Extract Pages…** (`Ctrl+Shift+E`) runs the `extract` pass without
 leaving the window, and opens the plan it wrote. It is the only thing here
-that works with no plan open, because it is how you get one. Point it at a
-folder of pages or a single image, say where the plan goes — prefilled with
-the same path `extract` picks with no `--plan` — and give it the language
-pair and the recogniser.
+that works with no plan open, because it is how you get one — which is why
+`review` with no argument now opens an empty window rather than an Open
+dialog. **Choose…** takes either a folder of pages or a single image; say
+where the plan goes — prefilled with the same path `extract` picks with no
+`--plan` — and give it the language pair and the recogniser.
 
 Those four are the whole dialog. `extract` has around fifteen
 detection-tuning flags, and they stay on the command line: they exist for the
