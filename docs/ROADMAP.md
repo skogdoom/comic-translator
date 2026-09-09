@@ -24,6 +24,7 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
+| 4.17 | Error handling, and somewhere for a crash to go | M |
 | 4.7 | Help instructions | S–M |
 | 4.8 | macOS look and feel | M |
 | 4.9 | Localisation | M |
@@ -53,6 +54,15 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
+**4.17 goes first because it is under the other four.** A packaged
+application (4.10) has no stderr at all, so the only diagnostic channel the
+window has today disappears exactly when it is most needed. Localisation
+(4.9) touches every user-visible string, and error messages are strings, so
+doing them afterwards means a second `lupdate` pass over all of them. Help
+(4.7) has to say where the log is. And it is the one item on this list
+answering something that is happening now rather than something that would be
+nice.
+
 One ordering was a judgement call rather than a dependency, and it paid out:
 **rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
 the window and both needed the same worker thread, progress and cancel.
@@ -61,6 +71,109 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
+
+## 4.17 Error handling, and somewhere for a crash to go
+
+Go over what the window does when something goes wrong, and give it a log
+file, because right now a failure has nowhere to be seen.
+
+**First, find out what "crash" means here.** It is three different things and
+they need telling apart before anything is fixed. Measured on PySide6 6.11.2:
+
+- **A swallowed exception.** An exception raised in a slot — a menu action, a
+  signal handler, a mouse event — is printed to stderr and the event loop
+  carries on. The application does *not* abort. So the window survives with
+  its state half-updated, and what you see is a button that did nothing.
+  Probably the most common of the three, and the least like a crash.
+- **A real segfault.** The C++ side, which no Python handler catches. One is
+  already recorded in `ARCHITECTURE.md`: a synthetic drag reaching
+  `QGraphicsView`'s `ScrollHandDrag` under the offscreen platform. Others
+  would come from a Qt object used after deletion.
+- **An exception outside a slot.** Everything `gui.app.run` does before
+  `app.exec()` — building the window, opening a plan named on the command
+  line. That propagates to `cli.main`, which catches only `ComictransError`,
+  so anything else exits with a raw traceback.
+
+The first task is a session with the reproductions, sorting the ones seen
+into those three. They want different fixes and only one of them is a bug in
+the usual sense.
+
+**The log file.** `review` configures logging exactly as the CLI does —
+`basicConfig` onto stderr — and a window launched from Finder, or from a
+bundle once 4.10 lands, has no stderr anyone will ever read. Every
+`log.warning` about a skipped page, every `log.exception` from a worker
+thread, is already being written and thrown away.
+
+Add a file handler alongside the stream one. On macOS the place a user and
+Console.app both look is `~/Library/Logs/comictrans/`, which
+`QStandardPaths` has no enum for; `AppDataLocation` is the portable answer
+and the wrong one on the target platform. Recommend the macOS convention
+with `AppDataLocation/logs/` as the fallback elsewhere, and rotate it —
+`RotatingFileHandler`, a megabyte or so, a couple of backups — so it cannot
+grow without bound on a machine nobody tidies.
+
+**A log record survives a segfault.** `logging.FileHandler` flushes on every
+record, measured: a process that logs a line and then dereferences null exits
+139 with the line on disk. That makes the only workable trace for the second
+kind of crash cheap — log the risky thing *before* doing it, at debug level,
+so a log that ends mid-page names the page.
+
+**Nothing is ever sent anywhere.** "Crash report" normally means telemetry;
+here it means a file on your own disk that you may choose to attach to
+something. No network calls anywhere in the pipeline is an invariant, and it
+does not stop being one because the payload is a stack trace.
+
+**The log must not contain the comic.** `source_text` and `translation` are
+the user's material, and a log that dumps region text is both a privacy
+problem and enormous. Region ids, image names, counts, exception types and
+tracebacks — not content. Worth a test, because the easy way to write a log
+line is to interpolate the object that has the text in it.
+
+**Three hooks, once, at startup.** `sys.excepthook` for the main thread,
+`threading.excepthook` for anything the worker threads do not catch
+themselves (`RunJob` already catches, but its own handler could raise), and
+`qInstallMessageHandler` so Qt's warnings land in the same file instead of
+the terminal. The last one is likely to be the most informative of the three:
+Qt says a good deal about layouts and dangling objects that nobody currently
+sees.
+
+**A swallowed exception is not a success.** Once the hooks exist, decide what
+the window does after one. Carrying on silently is what happens today and is
+the worst option, since the document may be half-edited. The cheap answer is
+a status-bar line and a log entry — "something went wrong; see the log" —
+which at least matches what the user experienced. The expensive answer is to
+work out per site whether the state is recoverable. Start cheap.
+
+**Then the audit.** The window's own call sites are patchy rather than
+missing: `_on_region_drawn` guards `sample_region_colors`, and
+`_merged_colors` calls the same function unguarded; `_on_rescan_fonts` calls
+`fonts.available_families()` with nothing around it; `_on_image_selected` and
+`_on_render_preview` both catch `ComictransError` and are the model to follow.
+That is a starting list, not the list — the pass is to walk every slot and ask
+what it does when the thing under it raises.
+
+Two rules for the pass. A `ComictransError` is an expected failure and gets a
+message the user can act on; anything else is a bug and gets logged with its
+traceback. And a failure must leave the document either unchanged or
+consistent — never half-edited, since undo is a stack of whole plans and a
+partial edit poisons it.
+
+**Somewhere to find it.** A **Help > Open Log Folder** item, so attaching a
+log to a bug report is one click rather than a paragraph of instructions.
+Cheap, and it is what makes the rest of this milestone useful to anyone but
+the person who wrote it.
+
+**What this is not.** Not a crash-reporting service, not telemetry, not
+automatic issue filing, and not a general refactor of the pipeline's error
+handling — `extract` and `apply` already report through `ExtractReport` and
+`ApplyReport`, and the CLI's exit codes and stderr behaviour must not move.
+This is about the window.
+
+**Testing.** The hooks are testable: point the file handler at a `tmp_path`,
+raise from a slot, and assert the traceback landed in the file and the comic
+text did not. The audit is testable one guarded site at a time, by making the
+thing under it raise. What is not testable is the segfault, which is why the
+log matters.
 
 ## 4.7 Help instructions
 
