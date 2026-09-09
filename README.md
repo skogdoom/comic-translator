@@ -322,9 +322,11 @@ the position, and the region you had selected.
 leaving the window, and opens the plan it wrote. It is the only thing here
 that works with no plan open, because it is how you get one — which is why
 `review` with no argument now opens an empty window rather than an Open
-dialog. **Choose…** takes either a folder of pages or a single image; say
-where the plan goes — prefilled with the same path `extract` picks with no
-`--plan` — and give it the language pair and the recogniser.
+dialog. Point **Open…** at a folder of pages or, with the radio button
+beside it, at a single image; say where the plan goes — prefilled with the
+same path `extract` picks with no `--plan` — and give it the language pair
+and the recogniser. The radio steers that button and nothing else: a path of
+either kind typed into the field is accepted whichever one is checked.
 
 Those four are the whole dialog. `extract` has around fifteen
 detection-tuning flags, and they stay on the command line: they exist for the

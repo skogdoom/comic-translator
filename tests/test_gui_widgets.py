@@ -11,6 +11,8 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -55,7 +57,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from comictrans.gui import run_job
+from comictrans.gui import extract_dialog, run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -2581,6 +2583,27 @@ def test_a_run_that_cannot_start_says_so_in_the_panel(
 # -- extracting pages from the window ------------------------------------
 
 
+@contextmanager
+def monkeypatched_panels(opened: list[str]) -> Iterator[None]:
+    """Record which system panel a click asked for, without opening one.
+
+    A real ``QFileDialog`` static call opens a native modal loop that nothing
+    in an offscreen test will ever dismiss.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            extract_dialog.QFileDialog,
+            "getExistingDirectory",
+            lambda *args, **kwargs: opened.append("directory") or "",
+        )
+        patch.setattr(
+            extract_dialog.QFileDialog,
+            "getOpenFileName",
+            lambda *args, **kwargs: (opened.append("file"), "", "")[1:],
+        )
+        yield
+
+
 @pytest.fixture
 def loose_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Three images and one file that is not one, with OCR stubbed out.
@@ -2612,20 +2635,30 @@ def loose_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return source
 
 
-def test_one_button_offers_both_kinds_of_input(qapp: object) -> None:
+def test_one_button_opens_whichever_kind_the_radios_say(qapp: object) -> None:
     """Qt has no file dialog that accepts either — see the note on the button."""
     dialog = ExtractDialog(None, None)
 
-    assert [action.text() for action in dialog._source_menu.actions()] == [
-        "Folder of pages…",
-        "A single image…",
-    ]
+    assert dialog._folder_choice.isChecked(), "the usual case, by a long way"
+    assert not dialog._image_choice.isChecked()
+
+    opened: list[str] = []
+    dialog._folder_choice.setChecked(True)
+    with monkeypatched_panels(opened):
+        dialog._on_choose_source()
+    dialog._image_choice.setChecked(True)
+    with monkeypatched_panels(opened):
+        dialog._on_choose_source()
+
+    assert opened == ["directory", "file"]
 
 
-def test_either_kind_of_input_is_accepted_once_it_is_in_the_field(
+def test_either_kind_of_input_is_accepted_whatever_the_radios_say(
     qapp: object, loose_pages: Path
 ) -> None:
+    """The radios steer the button; the path itself decides what is accepted."""
     dialog = ExtractDialog(None, None)
+    dialog._image_choice.setChecked(True)
 
     dialog._source.setText(str(loose_pages))
     assert dialog.refusal() == ""

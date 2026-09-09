@@ -27,8 +27,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QPalette
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -38,8 +39,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMenu,
     QPushButton,
+    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -92,23 +93,45 @@ class ExtractDialog(QDialog):
         # forces `DontUseNativeDialog` — a Qt-drawn Open panel on macOS, and
         # the only non-native one in an application whose every other file
         # dialog is the system's. The extra click is the cheaper cost.
+        # One question — which pages? — so one button. Which of the two kinds
+        # of answer it will ask for is a pair of radio buttons beside it,
+        # rather than a menu on the button: the mode is then visible without
+        # clicking anything, and browsing stays one click. Qt has no file
+        # dialog that accepts either kind (measured: `FileMode.Directory`
+        # refuses a file, `ExistingFile` refuses a directory), and the one
+        # route to a panel that does forces `DontUseNativeDialog` — a
+        # Qt-drawn Open panel on macOS, and the only non-native one in an
+        # application whose every other file dialog is the system's.
+        self._count = QLabel()
+        self._quieten(self._count)
+
         self._source = QLineEdit()
-        self._folder_action = QAction("Folder of pages…", self)
-        self._folder_action.triggered.connect(self._on_choose_folder)
-        self._image_action = QAction("A single image…", self)
-        self._image_action.triggered.connect(self._on_choose_image)
-        self._source_menu = QMenu(self)
-        self._source_menu.addAction(self._folder_action)
-        self._source_menu.addAction(self._image_action)
-        choose_source = QPushButton("Choose…")
+        self._folder_choice = QRadioButton("a folder of pages")
+        self._image_choice = QRadioButton("a single image")
+        self._folder_choice.setChecked(True)  # the usual case, by a long way
+        self._source_kind = QButtonGroup(self)
+        self._source_kind.addButton(self._folder_choice)
+        self._source_kind.addButton(self._image_choice)
+        choose_source = QPushButton("Open…")
         choose_source.setAutoDefault(False)
-        choose_source.setMenu(self._source_menu)
+        choose_source.clicked.connect(self._on_choose_source)
+
         source_row = QHBoxLayout()
         source_row.setContentsMargins(0, 0, 0, 0)
         source_row.addWidget(self._source, 1)
         source_row.addWidget(choose_source)
         source_widget = QWidget()
         source_widget.setLayout(source_row)
+
+        kind_row = QHBoxLayout()
+        kind_row.setContentsMargins(0, 0, 0, 0)
+        kind_row.addWidget(self._folder_choice)
+        kind_row.addWidget(self._image_choice)
+        kind_row.addSpacing(12)
+        kind_row.addWidget(self._count)
+        kind_row.addStretch(1)
+        kind_widget = QWidget()
+        kind_widget.setLayout(kind_row)
 
         self._plan = QLineEdit()
         plan_button = QPushButton("Choose…")
@@ -121,10 +144,9 @@ class ExtractDialog(QDialog):
         plan_widget = QWidget()
         plan_widget.setLayout(plan_row)
 
-        # The source button carries a menu indicator and the plan button does
-        # not, so left alone they are different widths and the two fields
-        # beside them end at different places. Matched off their own size
-        # hints rather than a number, so it holds on any platform's font.
+        # "Open…" and "Choose…" are different widths, so left alone the two
+        # fields beside them end at different places. Matched off their own
+        # size hints rather than a number, so it holds on any platform's font.
         button_width = max(choose_source.sizeHint().width(), plan_button.sizeHint().width())
         choose_source.setMinimumWidth(button_width)
         plan_button.setMinimumWidth(button_width)
@@ -147,8 +169,6 @@ class ExtractDialog(QDialog):
         self._force.hide()  # shown only when there is something to overwrite
         self._force.toggled.connect(self._validate)
 
-        self._count = QLabel()
-        self._quieten(self._count)
         self._problem = QLabel()
         self._problem.setWordWrap(True)
         palette = self._problem.palette()
@@ -157,7 +177,7 @@ class ExtractDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("read pages from", source_widget)
-        form.addRow("", self._count)
+        form.addRow("", kind_widget)
         form.addRow("write the plan to", plan_widget)
         form.addRow("", self._force)
         form.addRow("pages are lettered in", self._source_language)
@@ -198,17 +218,21 @@ class ExtractDialog(QDialog):
 
     # -- choosing paths --------------------------------------------------
 
-    def _on_choose_folder(self) -> None:
-        """The system's own folder panel — see the note on the button."""
-        name = QFileDialog.getExistingDirectory(self, "Pages to Read", str(self._start_in))
-        if name:
-            self._source.setText(name)
+    def _on_choose_source(self) -> None:
+        """Open the system panel the radio buttons asked for.
 
-    def _on_choose_image(self) -> None:
-        suffixes = " ".join(f"*{suffix}" for suffix in sorted(IMAGE_SUFFIXES))
-        name, _filter = QFileDialog.getOpenFileName(
-            self, "Page to Read", str(self._start_in), f"Images ({suffixes});;All files (*)"
-        )
+        The radios steer this button and nothing else. What the field will
+        accept is decided by looking at the path, not by which of them is
+        checked, so a folder typed in under "a single image" still works.
+        """
+        start = str(self._start_in)
+        if self._folder_choice.isChecked():
+            name = QFileDialog.getExistingDirectory(self, "Pages to Read", start)
+        else:
+            suffixes = " ".join(f"*{suffix}" for suffix in sorted(IMAGE_SUFFIXES))
+            name, _filter = QFileDialog.getOpenFileName(
+                self, "Page to Read", start, f"Images ({suffixes});;All files (*)"
+            )
         if name:
             self._source.setText(name)
 

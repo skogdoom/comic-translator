@@ -916,18 +916,23 @@ regions is destructive against exactly that work, and carrying translations
 across by geometry is a second feature with its own failure mode. Extract to a
 new plan, and open it.
 
-**One button for the input, and it opens a menu.** The extract dialog asks
-one question — which pages? — and a folder and a single image are the same
-answer at two granularities, so they belong on one control. They are two
-menu items rather than one panel because Qt has no file dialog that takes
-either: measured, `FileMode.Directory` refuses a file and `ExistingFile`
-refuses a directory, both returning `result=0` from `accept()`. The only way
-to a panel that accepts both is subclassing `QFileDialog` and overriding
-`accept()`, which forces `DontUseNativeDialog` — a Qt-drawn Open panel on
-macOS, and the only non-native file dialog in an application whose Open Plan,
-Save As and Render Into are all the system's. One extra click is the cheaper
-of the two costs. The field itself takes a typed path of either kind, and
-validation does not care which.
+**One button for the input, and a radio pair saying what it will open.** The
+extract dialog asks one question — which pages? — and a folder and a single
+image are the same answer at two granularities, so they belong on one
+control. There are two panels behind it rather than one because Qt has no
+file dialog that takes either: measured, `FileMode.Directory` refuses a file
+and `ExistingFile` refuses a directory, both returning `result=0` from
+`accept()`. The only route to a panel that accepts both is subclassing
+`QFileDialog` and overriding `accept()`, which forces `DontUseNativeDialog` —
+a Qt-drawn Open panel on macOS, and the only non-native file dialog in an
+application whose Open Plan, Save As and Render Into are all the system's.
+
+The choice is radio buttons rather than a menu on the button so that the mode
+is visible without clicking anything and browsing stays one click. They steer
+that button and nothing else: what the field accepts is decided by looking at
+the path, so a folder typed in under "a single image" still works. Folder is
+preselected because it is the usual case by a long way — a single image is
+what `default_plan_path` has its own special case for.
 
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what
