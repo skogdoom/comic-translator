@@ -25,8 +25,8 @@ one section can refer to another without ambiguity.
 | # | Milestone | Size |
 |---|-----------|------|
 | 4.17 | Error handling, and somewhere for a crash to go | M |
-| 4.7 | Help instructions | S–M |
 | 4.8 | macOS look and feel | M |
+| 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
 | 3 | CBZ and PDF input | L |
@@ -45,7 +45,8 @@ review, and waiting on nothing, as was moving a region after them.
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Help text describes the UI, so it goes
-after the UI stops moving.
+after the UI stops moving — which means after 4.8, since replacing a text
+toolbar with icons changes what there is to describe.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -55,8 +56,9 @@ instead, and dragging a polygon vertex accurately means being able to see
 it.
 
 **4.17 goes first because it is under the other four.** A packaged
-application (4.10) has no stderr at all, so the only diagnostic channel the
-window has today disappears exactly when it is most needed. Localisation
+application (4.10) has no stderr at all, and stderr is where everything the
+window says about a failure still goes — the crash file catches the process
+dying and nothing else. Localisation
 (4.9) touches every user-visible string, and error messages are strings, so
 doing them afterwards means a second `lupdate` pass over all of them. Help
 (4.7) has to say where the log is. And it is the one item on this list
@@ -75,7 +77,8 @@ the time it landed, the harness was a base class and one `work()` method.
 ## 4.17 Error handling, and somewhere for a crash to go
 
 Go over what the window does when something goes wrong, and give it a log
-file, because right now a failure has nowhere to be seen.
+file. A crash that kills the process now leaves a trace; a failure that does
+not kill it still leaves nothing at all.
 
 **"Crash" is three different things, and the one being hit is the hard one.**
 Measured on PySide6 6.11.2:
@@ -158,13 +161,13 @@ bundle once 4.10 lands, has no stderr anyone will ever read. Every
 `log.warning` about a skipped page, every `log.exception` from a worker
 thread, is already being written and thrown away.
 
-Add a file handler alongside the stream one. On macOS the place a user and
-Console.app both look is `~/Library/Logs/comictrans/`, which
-`QStandardPaths` has no enum for; `AppDataLocation` is the portable answer
-and the wrong one on the target platform. Recommend the macOS convention
-with `AppDataLocation/logs/` as the fallback elsewhere, and rotate it —
-`RotatingFileHandler`, a megabyte or so, a couple of backups — so it cannot
-grow without bound on a machine nobody tidies.
+Add a file handler alongside the stream one, in the directory
+`gui.crash.crash_directory` already picks — `~/Library/Logs/comictrans/` on
+macOS, the XDG state directory elsewhere, `COMICTRANS_LOG_DIR` over both.
+That decision is made and tested; reuse it rather than making it twice, and
+the two files then sit side by side where anyone looking for one finds the
+other. Rotate this one properly — `RotatingFileHandler`, a megabyte or so, a
+couple of backups — since unlike the crash file it takes a line per page.
 
 **A log record survives a segfault.** `logging.FileHandler` flushes on every
 record, measured: a process that logs a line and then dereferences null exits
@@ -174,10 +177,9 @@ a log that ends mid-page names the page even when `faulthandler` cannot say
 why. The two answer different halves: `faulthandler` says where the process
 was, the log says what it was trying to do.
 
-`faulthandler` already has its own file and keeps it: it writes from a signal
-handler and must not contend with the logging module's locks. The application
-log is the second, wider half — every `log.warning` about a skipped page, and
-the tracebacks of exceptions that did *not* kill the process.
+They stay two files for the same reason they answer different halves.
+`faulthandler` writes from a signal handler and must not contend with the
+logging module's locks.
 
 **Nothing is ever sent anywhere.** "Crash report" normally means telemetry;
 here it means a file on your own disk that you may choose to attach to
@@ -233,19 +235,10 @@ This is about the window.
 **Testing.** The hooks are testable: point the file handler at a `tmp_path`,
 raise from a slot, and assert the traceback landed in the file and the comic
 text did not. The audit is testable one guarded site at a time, by making the
-thing under it raise. What is not testable is the segfault, which is why the
-log matters.
-
-## 4.7 Help instructions
-
-A short in-application guide to reviewing a plan: what the badge colours
-mean, what each flag means, what preview does and does not tell you.
-
-After the milestones that change the UI, because it documents them. A
-dialog with a `QTextBrowser` over a bundled document, rather than strings
-in the source, keeps 4.9 to one file per language.
-
-`README.md` is not a substitute; it is written for the command line.
+thing under it raise. Even the segfault turned out testable — `gui.crash`'s
+suite kills a subprocess and reads the function name back out of the file —
+so the pattern exists to copy. What is not testable is the crash actually
+being hunted here, since it has never been reproduced off a Mac.
 
 ## 4.8 macOS look and feel
 
@@ -275,6 +268,29 @@ under the offscreen platform on whatever machine is to hand; menu bar
 placement, the About role and dark mode only exist on a real Mac. This is
 the one milestone the four checks cannot defend, and it has to be looked at
 by hand on the target machine.
+
+## 4.7 Help instructions
+
+A short in-application guide to reviewing a plan: what the badge colours
+mean, what each flag means, what preview does and does not tell you.
+
+After the milestones that change the UI, because it documents them, and
+after 4.8 in particular. That one collides with this one directly rather
+than vaguely: toolbar icons replace the text labels help would otherwise
+name, About moves into the application menu so "Help > About" stops being
+where it is, and dark mode is explicitly about whether the canvas overlay
+colours still read — which is the first thing on the list above.
+
+A dialog with a `QTextBrowser` over a bundled document, rather than strings
+in the source, keeps 4.9 to one file per language.
+
+**One caveat on the order.** 4.8 is the milestone the test suite cannot
+defend and the only one that needs hands on a Mac, so it is the one most
+able to sit. If it does, do not hold help behind it — the numbers are names,
+not positions, and most of what help has to say is about the plan and the
+canvas rather than the chrome.
+
+`README.md` is not a substitute; it is written for the command line.
 
 ## 4.9 Localisation
 
@@ -308,9 +324,11 @@ paid Developer ID and notarisation. Given the disclaimer in `README.md`,
 the honest target is an unsigned local build, documented as such, not a
 release artifact.
 
-The bundle already needs Pillow, numpy and OpenCV whatever else happens:
-the review window renders previews through `render_page`, which erases and
-typesets like any other page. Only pyobjc-Vision is contingent, on 4.6.
+The bundle needs Pillow, numpy and OpenCV whatever else happens: the review
+window renders previews through `render_page`, which erases and typesets
+like any other page. Since 4.6 it needs pyobjc-Vision too — extract runs from
+the window now, so the recogniser is part of the application rather than
+something only the command line reaches.
 
 ## 3 CBZ and PDF input
 
