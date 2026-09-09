@@ -47,7 +47,7 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
 from comictrans.gui.canvas import COLOR_MANUAL, CanvasMode
 from comictrans.gui.inspector import ERASE_CHOICES
-from comictrans.gui.main_window import MainWindow
+from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
 
 BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
@@ -566,7 +566,6 @@ def test_the_toolbar_reuses_the_menu_actions(qapp: object) -> None:
         window._next_region_action,
         window._next_flagged_action,
         window._preview_action,
-        window._overlay_action,
     ):
         assert action in on_toolbar
 
@@ -1956,3 +1955,42 @@ def test_a_drawn_region_arrives_set_to_fill_itself(qapp: object, two_page_plan: 
 
     assert window.document.region(window._current_region).erase is Erase.POLYGON  # type: ignore[union-attr, arg-type]
     assert window._inspector._erase.currentText() == "the whole region"
+
+
+# -- the preview toggle -------------------------------------------------------
+
+
+def test_the_selected_region_survives_the_preview_round_trip(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    # Checking how one balloon came out and coming back to the top of the
+    # page is a place lost every time.
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+
+    window._on_render_preview()
+    window._on_back_to_overlay()
+
+    assert window._current_region == "page-001-002"
+    assert window._canvas._selected_id == "page-001-002"
+    assert window._inspector._id_label.text().startswith("page-001-002")
+
+
+def test_one_action_swaps_between_the_overlay_and_the_rendered_page(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+
+    assert window._preview_action.text() == PREVIEW_TEXT
+    assert [a.text() for a in window._toolbar.actions()].count(OVERLAY_TEXT) == 0
+
+    window._preview_action.trigger()
+
+    assert window._showing_preview
+    assert window._preview_action.text() == OVERLAY_TEXT, "it now says what it will do"
+    assert window._preview_action.isEnabled()
+
+    window._preview_action.trigger()
+
+    assert not window._showing_preview
+    assert window._preview_action.text() == PREVIEW_TEXT

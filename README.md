@@ -286,8 +286,10 @@ lasts, the same as every other edit here.
 itself uses, on the plan as it currently stands, unsaved edits included. What
 it shows is what `apply` would write for that page — not a mock-up — so a
 region that will not fit, needs condensing, or overlaps another one shows up
-here before you run `apply` for real. **Back to Overlay** returns to the
-polygon view.
+here before you run `apply` for real. The same command becomes **Back to
+Overlay** while the rendered page is up: one button, and its label says which
+way it goes. Your place is kept across the swap in both directions — the zoom,
+the position, and the region you had selected.
 
 The page starts fitted to the window. `Ctrl+=` and `Ctrl+-` zoom, `Ctrl+0`
 fits again and `Ctrl+1` is actual size; Ctrl and the wheel zooms about the

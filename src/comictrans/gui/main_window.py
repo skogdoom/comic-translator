@@ -51,6 +51,11 @@ from .sampling import color_at, sample_region_colors
 
 log = logging.getLogger(__name__)
 
+PREVIEW_TEXT = "&Render Preview"
+OVERLAY_TEXT = "Back to &Overlay"
+"""The two halves of one action: what it does depends on what is on screen,
+and the label says which."""
+
 _GEOMETRY_KEY = "window/geometry"
 _STATE_KEY = "window/state"
 """Where the dock and toolbar layout is remembered between sessions.
@@ -238,14 +243,14 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self._rescan_fonts_action)
 
         view_menu = self.menuBar().addMenu("&View")
-        self._preview_action = QAction("&Render Preview", self)
+        # One action rather than two, because they are two halves of one
+        # thing: you are looking at either the overlay or the rendered page,
+        # and this says which one the other is. Its text follows the state,
+        # so the button always names what pressing it will do.
+        self._preview_action = QAction(PREVIEW_TEXT, self)
         self._preview_action.setShortcut(QKeySequence("Ctrl+R"))
-        self._preview_action.triggered.connect(self._on_render_preview)
+        self._preview_action.triggered.connect(self._on_toggle_preview)
         view_menu.addAction(self._preview_action)
-
-        self._overlay_action = QAction("Back to &Overlay", self)
-        self._overlay_action.triggered.connect(self._on_back_to_overlay)
-        view_menu.addAction(self._overlay_action)
 
         view_menu.addSeparator()
 
@@ -330,7 +335,6 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._next_flagged_action)
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._preview_action)
-        self._toolbar.addAction(self._overlay_action)
 
     # -- layout ----------------------------------------------------------
 
@@ -375,7 +379,7 @@ class MainWindow(QMainWindow):
         self._redo_action.setEnabled(has_document and self.document.can_redo)  # type: ignore[union-attr]
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
-        self._overlay_action.setEnabled(has_image and self._showing_preview)
+        self._preview_action.setText(OVERLAY_TEXT if self._showing_preview else PREVIEW_TEXT)
         for action in (
             self._zoom_in_action,
             self._zoom_out_action,
@@ -817,6 +821,13 @@ class MainWindow(QMainWindow):
         self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
 
+    def _on_toggle_preview(self) -> None:
+        """Swap between the overlay and the rendered page, whichever is up."""
+        if self._showing_preview:
+            self._on_back_to_overlay()
+        else:
+            self._on_render_preview()
+
     def _on_render_preview(self) -> None:
         if self.document is None or self._current_image is None:
             return
@@ -874,8 +885,19 @@ class MainWindow(QMainWindow):
         AboutDialog(self).exec()
 
     def _on_back_to_overlay(self) -> None:
-        if self._current_image is not None:
-            self._on_image_selected(self._current_image)
+        """Put the outlines back, on the region that was being looked at.
+
+        Rebuilding the page selects its first region, which is right when you
+        arrive at a page and wrong on the way back from its rendered form:
+        checking how one balloon came out and returning to the top of the
+        page is a place lost every time.
+        """
+        if self._current_image is None:
+            return
+        keep = self._current_region
+        self._on_image_selected(self._current_image)
+        if keep is not None and self.document is not None and keep in self.document.ordered_ids():
+            self._go_to_region(keep)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
         if self._confirm_discard_if_dirty():
