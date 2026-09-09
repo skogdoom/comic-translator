@@ -5,16 +5,15 @@ import pytest
 
 from comictrans.config import EraseConfig
 from comictrans.erase import STRATEGIES, erase, get_strategy, glyph_mask, polygon_mask
-from comictrans.model import Box, Color, Geometry, Region
+from comictrans.model import Box, Color, Erase, Geometry, Region
 
 PAGE = 400
 
 
-def _region(fill: Color, text: Color, polygon: object = None) -> Region:
+def _region(fill: Color, text: Color, polygon: object = None, mode: Erase | None = None) -> Region:
     return Region(
         id="page-001",
         image="page.png",
-        image_sha256="0" * 64,
         order=1,
         geometry=Geometry.EXACT,
         polygon=polygon or Box(100, 100, 300, 300).as_polygon(),  # type: ignore[arg-type]
@@ -23,6 +22,7 @@ def _region(fill: Color, text: Color, polygon: object = None) -> Region:
         confidence=0.9,
         source_text="CIAO",
         translation="HELLO",
+        erase=mode,
     )
 
 
@@ -159,7 +159,7 @@ def test_identical_fill_and_text_colors_mask_nothing() -> None:
 
 
 def test_every_strategy_is_reachable_by_name() -> None:
-    assert set(STRATEGIES) == {"flat", "polygon", "inpaint"}
+    assert set(STRATEGIES) == {"none", "flat", "polygon", "inpaint"}
     for name in STRATEGIES:
         assert get_strategy(name).name == name
 
@@ -167,3 +167,58 @@ def test_every_strategy_is_reachable_by_name() -> None:
 def test_unknown_strategy_is_rejected() -> None:
     with pytest.raises(ValueError, match="unknown erase strategy"):
         get_strategy("magic")
+
+
+# -- what a region says about itself ------------------------------------------
+
+BALLOON = (slice(100, 300), slice(100, 300))
+LETTERING = (slice(190, 210), slice(130, 270))
+RED = Color(208, 32, 32)
+
+
+def _erased(mode: Erase | None, strategy: str = "flat") -> np.ndarray:
+    """The page after erasing one recoloured balloon, however it asks to be."""
+    page = _page((60, 160, 60), (250, 250, 250), (20, 20, 20))
+    region = _region(RED, Color(20, 20, 20), mode=mode)
+    return erase(page, region, EraseConfig(strategy=strategy), page_height=PAGE)
+
+
+def _share_painted(out: np.ndarray, color: Color, where: tuple[slice, slice]) -> float:
+    patch = out[where]
+    return float((patch == np.array(color.as_tuple(), dtype=np.uint8)).all(axis=2).mean())
+
+
+def test_a_region_can_ask_for_the_whole_of_itself_to_be_painted() -> None:
+    # The flat default repaints only what it reads as lettering, so a colour
+    # change alone leaves the balloon as it was. This is the difference.
+    flat = _erased(None)
+    whole = _erased(Erase.POLYGON)
+
+    assert _share_painted(flat, RED, BALLOON) < 0.2, "flat touches the lettering, not the balloon"
+    assert _share_painted(flat, RED, LETTERING) > 0.9, "and it does repaint that"
+    assert _share_painted(whole, RED, BALLOON) == 1.0, "the region asked for all of it"
+
+
+def test_a_region_can_ask_for_nothing_to_be_painted() -> None:
+    page = _page((60, 160, 60), (250, 250, 250), (20, 20, 20))
+    region = _region(RED, Color(20, 20, 20), mode=Erase.NONE)
+
+    out = erase(page, region, EraseConfig(), page_height=PAGE)
+
+    assert np.array_equal(out, page), "transparent: the page comes back untouched"
+    assert out is not page, "and not the caller's array"
+
+
+def test_a_regions_own_choice_beats_the_runs_flag() -> None:
+    # Both directions: the region overrides whatever --erase said.
+    assert _share_painted(_erased(Erase.NONE, strategy="polygon"), RED, BALLOON) == 0.0
+    assert _share_painted(_erased(Erase.POLYGON, strategy="none"), RED, BALLOON) == 1.0
+
+
+def test_the_run_wide_flag_can_also_paint_nothing() -> None:
+    page = _page((60, 160, 60), (250, 250, 250), (20, 20, 20))
+    region = _region(Color(250, 250, 250), Color(20, 20, 20))
+
+    out = erase(page, region, EraseConfig(strategy="none"), page_height=PAGE)
+
+    assert np.array_equal(out, page)

@@ -108,16 +108,14 @@ def test_case_flag_reaches_the_plan_header(page_dir: Path, font_dir: Path) -> No
 
 def _extract_then_translate(page_dir: Path, translation: str) -> Path:
     """Run extract, fill in the translation by hand, return the plan path."""
-    from comictrans.model import Plan
+    from dataclasses import replace
+
     from comictrans.planfile import dumps, load_plan, write_plan
 
     assert main(["extract", str(page_dir), "--force"]) == EXIT_OK
     plan_path = page_dir / "comic-plan.yaml"
     plan = load_plan(plan_path)
-    translated = Plan(
-        header=plan.header,
-        regions=tuple(r.with_translation(translation) for r in plan.regions),
-    )
+    translated = replace(plan, regions=tuple(r.with_translation(translation) for r in plan.regions))
     write_plan(translated, plan_path, force=True)
     assert "translation:" in dumps(translated)
     return plan_path
@@ -357,16 +355,14 @@ def test_hyphenation_language_comes_from_the_plan_header(
 
 
 def _translate_plan(page_dir: Path, translation: str) -> Path:
-    from comictrans.model import Plan
+    from dataclasses import replace
+
     from comictrans.planfile import load_plan, write_plan
 
     plan_path = page_dir / "comic-plan.yaml"
     plan = load_plan(plan_path)
     write_plan(
-        Plan(
-            header=plan.header,
-            regions=tuple(r.with_translation(translation) for r in plan.regions),
-        ),
+        replace(plan, regions=tuple(r.with_translation(translation) for r in plan.regions)),
         plan_path,
         force=True,
     )
@@ -407,7 +403,6 @@ def test_merge_without_an_existing_plan_writes_a_fresh_one(page_dir: Path, font_
 def test_lost_hand_work_fails_the_run(page_dir: Path, font_dir: Path) -> None:
     from dataclasses import replace
 
-    from comictrans.model import Plan
     from comictrans.planfile import load_plan, write_plan
 
     plan_path = _extract_then_translate(page_dir, "I CANNOT BELIEVE IT")
@@ -420,6 +415,6 @@ def test_lost_hand_work_fails_the_run(page_dir: Path, font_dir: Path) -> None:
         translation="TRANSLATION WITH NOWHERE TO GO",
         source_text="X",
     )
-    write_plan(Plan(header=plan.header, regions=(*plan.regions, ghost)), plan_path, force=True)
+    write_plan(replace(plan, regions=(*plan.regions, ghost)), plan_path, force=True)
 
     assert main(["extract", str(page_dir), "--merge"]) == EXIT_PROBLEMS

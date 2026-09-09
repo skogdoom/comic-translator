@@ -14,6 +14,28 @@ decision it needs is already in the plan file, which is what makes it
 deterministic and re-runnable: editing a translation and running it again
 changes the text and nothing else.
 
+## What the plan covers
+
+A plan holds two lists: the pages it was extracted from (`images`, each with
+the hash it had at the time) and the regions found on them. A page with no
+text on it is in the first and absent from the second, which is a page of the
+comic all the same — `apply` copies it through so the output is the whole
+chapter, and `review` can show it.
+
+The pages are their own list rather than something derived from the regions
+because the two answer different questions. Which files this plan describes is
+measured once, by `extract`, and does not change when regions are edited;
+which regions exist is what a person spends their time changing. Deleting the
+last region on a page, or drawing the first one on a blank one, then means
+what it says instead of quietly adding or removing a page.
+
+That also gives the hash exactly one home. In version 1 of the schema every
+region carried an `image_sha256`, so a page with three balloons stored it
+three times and a page with none stored it nowhere; the reader had to check
+that the copies agreed, and a page could only be verified if something had
+been found on it. Version 1 files still load — the list is derived from the
+regions they do have, and the plan is a version 2 one from then on.
+
 ## Module dependency rules
 
 `model` sits at the bottom and imports nothing of ours. Above it:
@@ -369,6 +391,10 @@ same balloon. Matching is greedy by descending overlap and strictly one to
 one, so two old regions cannot both claim one new one — the better overlap
 wins and the loser is reported rather than silently folded in.
 
+The pages come from the fresh run, not the old plan. Which files exist and
+what they hash to is measured, like the polygons and the colours, so a page
+added to the directory appears and one deleted from it goes.
+
 Only what a person put there is carried: the translation where it was
 actually edited, plus notes, skip and the font overrides. A translation still
 equal to its `source_text` is the seed extract wrote, not hand work, so it is
@@ -487,7 +513,9 @@ preview.py     render_page called on the current document — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 qimage.py      the one function that turns a Pillow image into a QPixmap
 canvas.py      the page: a pixmap, and clickable region outlines over it
+sampling.py    colours read off the page for a region drawn by hand
 inspector.py   one region's fields, writing straight through to the document
+color_box.py    a colour field: a swatch, the standard values, the eyedropper
 page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
 header_dialog.py the settings every region is drawn under
@@ -497,7 +525,8 @@ main_window.py wires the four widgets together; the only module that
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py` and `about.py` need no display and import no Qt;
+`document.py`, `preview.py`, `sampling.py` and `about.py` need no display and
+import no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that imports more than one of the others,
 which is what keeps an edit's ripple effects (the window title's dirty
@@ -631,11 +660,110 @@ fit" answer is `apply`'s answer, not a separate opinion.
 **The colour convention matches `--debug-dir`.** Green for a region traced
 from a contour, orange for one approximated from a padded box around its
 text — the same two colours `extract --debug-dir` has used since milestone
-1. A region with something to check goes dashed red instead, regardless of
-which of those two it would otherwise be, because the geometry colour and
+1. A polygon shaped by hand in the window is a third colour (violet),
+because it is a third thing: `manual` geometry, neither traced nor guessed.
+A region with something to check goes dashed red instead, regardless of
+which of those it would otherwise be, because the geometry colour and
 "look at this" are two different facts and only one dashed style was needed
 to say the second one. Selection is a separate colour again (blue), since it
-can coincide with either.
+can coincide with any of them.
+
+**Reshaping: the canvas drags, the window decides, the document validates.**
+Dragging a corner changes only what is drawn; the polygon reaches the
+document once, when the mouse comes up, which is what makes one drag one
+undo step. The canvas cannot judge the result — it draws shapes and knows
+nothing about what a plan file will hold — so it reports the new outline and
+`main_window` puts it to `PlanDocument.set_polygon`, which validates by the
+reader's own rules and raises rather than accept a shape that could not be
+read back. A refused edit is put back on the canvas from the document, so
+what is on screen is never something the document does not have.
+
+That validation is the one place this could have gone wrong quietly.
+`write_plan` performs no schema checking — the reader does — which was
+harmless while the GUI could only edit text, and stops being harmless the
+moment a polygon can move: a self-intersecting outline would save fine and
+fail to load, taking the rest of the file's translations with it. The rules
+live in `planfile.schema` where both the reader and `gui.document` can reach
+them, rather than being written out twice and drifting.
+
+**One canvas mode at a time.** A click on the page means different things —
+select a region, take hold of a corner, place a corner, take a colour — and
+they contradict each other, so the canvas holds a single `CanvasMode` rather
+than a set of switches that could be on together. The window's two checkable
+actions follow the canvas through `mode_changed` rather than driving it,
+because the canvas leaves a mode on its own: an outline that closes and a
+pixel that is picked both end the mode that produced them.
+
+**`review` may measure the page; `apply` may not.** The invariant is about
+the second pass: everything `apply` needs is in the plan file, which is what
+makes it deterministic. A region drawn by hand needs a `fill_color` and a
+`text_color` before it can be in that file at all, and measuring them beats
+guessing — a white-on-black caption is a page turn away. `gui/sampling.py`
+is where that dependency lives, kept out of `gui/document.py` so the
+view-model stays free of numpy and OpenCV.
+
+It calls the same `detect.color.sample_colors` extract calls. Detection hands
+it the OCR line boxes to find ink in; a hand-drawn region has none, so the
+middle 60% of the outline's bounding box stands in for them — lettering sits
+in the middle of a balloon, and the edges of a hand-drawn outline are where
+it strays onto the artwork. Measured: offering the *whole* bounding box of a
+rectangle drawn around the synthetic ellipse fixture returns the dark art in
+its corners (90, 90, 90) as the text colour instead of the lettering's
+(20, 20, 20). With the middle box, re-sampling all 21 detected regions across
+four real fixture pages reproduces exactly what extract recorded in 20 of
+them; the twenty-first differs by a near-white tint on a whisper balloon
+(#ebf8f4 against #ffffff).
+
+**A merge is refused unless the outlines share area.** The bounding-box
+ratio `overlapping_region_ids` warns with is deliberately loose — it exists to
+say "these two will draw over each other", where a false positive costs a
+glance. Merging cannot use it: the merged polygon is the convex hull of both
+outlines, and a hull across two balloons on opposite sides of a panel covers
+the artwork between them, which erase then paints over. So `model` grew a real
+test — `polygons_overlap`, built from the edge-crossing check that was already
+there plus a ray-cast `point_in_polygon` for the case where one outline is
+wholly inside the other. Both are kept free of OpenCV, which has
+`pointPolygonTest` and is already a dependency of `detect`, because
+`gui.document` needs them and is deliberately free of numpy and OpenCV.
+
+The hull, rather than a union: a `Region` holds one simple polygon, and the
+union of two overlapping outlines is not always one. A hull is, it covers
+everything both covered, and with the overlap gate in front of it the extra
+area it claims is the notch between two tracings of the same balloon.
+
+**Region ids go forward, never back.** A new region is numbered past the
+highest its page has used, and the document keeps that high-water mark for
+the session so that deleting the last region on a page and drawing another
+does not hand the old one's name to the new one. An id is how a region is
+named in a report, in a note, in a commit message; reusing one makes those
+quietly wrong. The mark cannot outlive the session, because a plan file has
+no way to record the ids that are no longer in it.
+
+**How much to paint over is a fact about one balloon.** `fill_color` is the
+colour an erase paints *with*, not the colour of the region, and under the
+default `flat` strategy it reaches only the pixels that read as the original
+lettering. Measured on the synthetic fixture: recolouring a balloon's
+`fill_color` to red repaints 10.4% of it — the glyphs and their fringe — and
+leaves the rest white; a region drawn on plain artwork, where nothing matches
+its `text_color` at all, has 0% painted. Neither is a bug in the fill, and
+neither is what someone changing a colour expects to see.
+
+So a region carries an optional `erase` of its own, the way it carries
+`font`: `none`, `flat`, `polygon` or `inpaint`, with the run's `--erase` flag
+as the default for regions that say nothing. `none` is the transparent case —
+nothing is painted and the translation is lettered onto the artwork as it is
+— and exists as a run-wide flag too, since a strategy that paints nothing is
+still a strategy. A region drawn in `review` is written with `erase: polygon`,
+because a person outlining an area means all of it, and because the colours
+sampled for it would otherwise reach nothing.
+
+**Editing a polygon makes it `manual`.** The value describes how the outline
+was arrived at, and once someone has dragged it, "traced from a contour" and
+"a padded box around the OCR" are both false. It is also the useful thing to
+know on a second pass — which regions have already been fixed by hand — and
+it clears the `approximate` flag, which means "check this" and has by then
+been done. Moving a shape without reshaping it counts the same: a polygon
+that has been put somewhere by hand is a polygon someone decided on.
 
 **What counts as "something to check" is computed once, in
 `gui.document.RegionFlags`, and nowhere else.** Overlap uses the exact

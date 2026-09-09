@@ -135,6 +135,9 @@ def merge_plans(
             region_id,
         )
 
-    return Plan(header=fresh.header, regions=tuple(regions)), MergeReport(
+    # The fresh run's pages, not the old plan's: which files exist and what
+    # they hash to is measured, like the polygons and the colours, and the
+    # point of re-extracting is to measure it again.
+    return Plan(header=fresh.header, images=fresh.images, regions=tuple(regions)), MergeReport(
         carried=tuple(carried), dropped=dropped, added=tuple(added)
     )

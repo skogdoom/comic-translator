@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtCore import QByteArray, QSettings, QSignalBlocker, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -29,18 +29,32 @@ from PySide6.QtWidgets import (
 
 from .. import fonts
 from ..errors import ComictransError
-from ..imaging import load_page
-from ..model import Geometry, Region
+from ..imaging import PageImage, load_page
+from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
 from .about_dialog import AboutDialog
-from .canvas import COLOR_APPROXIMATE, COLOR_EXACT, PageCanvas, RegionAppearance, ViewState
+from .canvas import (
+    COLOR_APPROXIMATE,
+    COLOR_EXACT,
+    COLOR_MANUAL,
+    CanvasMode,
+    PageCanvas,
+    RegionAppearance,
+    ViewState,
+)
 from .document import PlanDocument
 from .header_dialog import HeaderDialog
 from .inspector import RegionInspector
 from .page_list import PageList
 from .preview import render_preview
 from .qimage import to_pixmap
+from .sampling import color_at, sample_region_colors
 
 log = logging.getLogger(__name__)
+
+PREVIEW_TEXT = "&Render Preview"
+OVERLAY_TEXT = "Back to &Overlay"
+"""The two halves of one action: what it does depends on what is on screen,
+and the label says which."""
 
 _GEOMETRY_KEY = "window/geometry"
 _STATE_KEY = "window/state"
@@ -52,8 +66,15 @@ that the state saves as unrestorable and Qt warns about it at runtime.
 """
 
 
+_GEOMETRY_COLORS = {
+    Geometry.EXACT: COLOR_EXACT,
+    Geometry.APPROXIMATE: COLOR_APPROXIMATE,
+    Geometry.MANUAL: COLOR_MANUAL,
+}
+
+
 def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
-    color = COLOR_EXACT if region.geometry is Geometry.EXACT else COLOR_APPROXIMATE
+    color = _GEOMETRY_COLORS[region.geometry]
     return RegionAppearance(
         region_id=region.id,
         polygon=region.polygon,
@@ -78,6 +99,14 @@ class MainWindow(QMainWindow):
         self._current_image: str | None = None
         self._current_region: str | None = None
         self._showing_preview = False
+        self._page: PageImage | None = None
+        """The current page's pixels, kept for the two things that need them:
+        sampling a new region's colours, and picking one off the page. Always
+        the source image, never the rendered preview — a colour is a fact
+        about the page, not about what has been drawn over it."""
+
+        self._sampling: str | None = None
+        """Which colour field asked for a pixel, while the canvas takes one."""
         self._settings = settings
         self._views: dict[str, ViewState] = {}
         """How each page was last being read, keyed by image.
@@ -104,7 +133,13 @@ class MainWindow(QMainWindow):
         self._pages.image_selected.connect(self._on_image_selected)
         self._canvas.region_selected.connect(self._on_region_selected)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
+        self._canvas.polygon_edited.connect(self._on_polygon_edited)
+        self._canvas.region_drawn.connect(self._on_region_drawn)
+        self._canvas.point_picked.connect(self._on_point_picked)
+        self._canvas.region_picked.connect(self._on_region_picked)
+        self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
         self._inspector.edited.connect(self._on_edited)
+        self._inspector.sample_requested.connect(self._on_sample_requested)
 
         # A permanent widget, so the zoom stays readable behind the transient
         # messages the status bar shows for saves and preview results.
@@ -173,6 +208,36 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self._redo_action)
 
         edit_menu.addSeparator()
+        # Checkable rather than always-on: dragging inside a region is also
+        # how the page is panned, so without a mode to be in, reaching for
+        # the page would sometimes move a balloon instead.
+        self._edit_shape_action = QAction("Edit Region &Shape", self)
+        self._edit_shape_action.setCheckable(True)
+        self._edit_shape_action.setShortcut(QKeySequence("Ctrl+E"))
+        self._edit_shape_action.toggled.connect(self._on_edit_shape_toggled)
+        edit_menu.addAction(self._edit_shape_action)
+
+        self._add_region_action = QAction("&Add Region", self)
+        self._add_region_action.setCheckable(True)
+        self._add_region_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self._add_region_action.toggled.connect(self._on_add_region_toggled)
+        edit_menu.addAction(self._add_region_action)
+
+        self._merge_action = QAction("&Merge Region…", self)
+        self._merge_action.setCheckable(True)
+        self._merge_action.setShortcut(QKeySequence("Ctrl+M"))
+        self._merge_action.toggled.connect(self._on_merge_toggled)
+        edit_menu.addAction(self._merge_action)
+
+        # No confirmation: undo is the safety net every other edit here gets,
+        # and a dialog on every delete would be one to click through rather
+        # than read. The status bar says what went and how to get it back.
+        self._delete_region_action = QAction("&Delete Region", self)
+        self._delete_region_action.setShortcut(QKeySequence("Ctrl+Backspace"))
+        self._delete_region_action.triggered.connect(self._on_delete_region)
+        edit_menu.addAction(self._delete_region_action)
+
+        edit_menu.addSeparator()
         self._header_action = QAction("Plan &Header…", self)
         self._header_action.triggered.connect(self._on_edit_header)
         edit_menu.addAction(self._header_action)
@@ -185,14 +250,14 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self._rescan_fonts_action)
 
         view_menu = self.menuBar().addMenu("&View")
-        self._preview_action = QAction("&Render Preview", self)
+        # One action rather than two, because they are two halves of one
+        # thing: you are looking at either the overlay or the rendered page,
+        # and this says which one the other is. Its text follows the state,
+        # so the button always names what pressing it will do.
+        self._preview_action = QAction(PREVIEW_TEXT, self)
         self._preview_action.setShortcut(QKeySequence("Ctrl+R"))
-        self._preview_action.triggered.connect(self._on_render_preview)
+        self._preview_action.triggered.connect(self._on_toggle_preview)
         view_menu.addAction(self._preview_action)
-
-        self._overlay_action = QAction("Back to &Overlay", self)
-        self._overlay_action.triggered.connect(self._on_back_to_overlay)
-        view_menu.addAction(self._overlay_action)
 
         view_menu.addSeparator()
 
@@ -268,12 +333,16 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._undo_action)
         self._toolbar.addAction(self._redo_action)
         self._toolbar.addSeparator()
+        self._toolbar.addAction(self._edit_shape_action)
+        self._toolbar.addAction(self._add_region_action)
+        self._toolbar.addAction(self._merge_action)
+        self._toolbar.addAction(self._delete_region_action)
+        self._toolbar.addSeparator()
         self._toolbar.addAction(self._previous_region_action)
         self._toolbar.addAction(self._next_region_action)
         self._toolbar.addAction(self._next_flagged_action)
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._preview_action)
-        self._toolbar.addAction(self._overlay_action)
 
     # -- layout ----------------------------------------------------------
 
@@ -318,7 +387,7 @@ class MainWindow(QMainWindow):
         self._redo_action.setEnabled(has_document and self.document.can_redo)  # type: ignore[union-attr]
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
-        self._overlay_action.setEnabled(has_image and self._showing_preview)
+        self._preview_action.setText(OVERLAY_TEXT if self._showing_preview else PREVIEW_TEXT)
         for action in (
             self._zoom_in_action,
             self._zoom_out_action,
@@ -326,6 +395,28 @@ class MainWindow(QMainWindow):
             self._zoom_actual_action,
         ):
             action.setEnabled(has_image)
+
+        # Nothing to reshape while a rendered preview is on the canvas in
+        # place of the outlines. Unchecked rather than left checked and
+        # inert, so the mode on screen is the mode the canvas is in. Not
+        # conditioned on a region being selected: the mode belongs to the
+        # canvas, and dropping out of it on every page change would make it
+        # something to keep switching back on.
+        can_edit_shapes = has_image and not self._showing_preview
+        self._edit_shape_action.setEnabled(can_edit_shapes)
+        self._add_region_action.setEnabled(can_edit_shapes)
+        self._delete_region_action.setEnabled(can_edit_shapes and self._current_region is not None)
+        # Something to merge with: another region on this page.
+        on_page = (
+            len(self.document.regions_for(self._current_image))
+            if self.document is not None and self._current_image is not None
+            else 0
+        )
+        self._merge_action.setEnabled(
+            can_edit_shapes and self._current_region is not None and on_page > 1
+        )
+        if not can_edit_shapes:
+            self._canvas.set_mode(CanvasMode.SELECT)
 
         # Disabled at the ends of the plan rather than silently doing
         # nothing, so the toolbar says where you are.
@@ -384,6 +475,7 @@ class MainWindow(QMainWindow):
         self._current_image = None
         self._current_region = None
         self._showing_preview = False
+        self._page = None
         self._views.clear()  # a different plan, a different set of pages
         self._pages.set_document(document)
         self._inspector.set_region(None, None)
@@ -475,8 +567,10 @@ class MainWindow(QMainWindow):
         try:
             page = load_page(self.document.source_path(image))
         except ComictransError as exc:
+            self._page = None
             QMessageBox.critical(self, "Could not read image", str(exc))
             return
+        self._page = page
 
         regions = self.document.regions_for(image)
         appearances = [_appearance_for(region, self.document) for region in regions]
@@ -542,18 +636,218 @@ class MainWindow(QMainWindow):
         if self.document is None or self._current_image is None:
             return
         self._pages.refresh_row(self.document, self._current_image)
+        if self._showing_preview:
+            return
+        regions = self.document.regions_for(self._current_image)
+        appearances = [_appearance_for(region, self.document) for region in regions]
+        if {region.id for region in regions} != self._canvas.region_ids():
+            # A region was added, deleted, or brought back by an undo: the
+            # overlay is a different set of outlines, not the same ones in a
+            # different state. Swapped rather than reloading the page, which
+            # would also throw away where the reader was looking.
+            self._canvas.set_regions(appearances)
+            return
         # An edit to one region (skip, translation) can change whether it, or
         # another region on the same page, still counts as overlapping —
         # restyle every region rather than track exactly which ones moved.
-        if not self._showing_preview:
-            for region in self.document.regions_for(self._current_image):
-                self._canvas.set_appearance(_appearance_for(region, self.document))
+        for appearance in appearances:
+            self._canvas.set_appearance(appearance)
 
     def _on_edited(self) -> None:
         self._refresh_page_visuals()
         # Filling in a translation can clear a flag, which is the difference
         # between there being another flagged region ahead and there not. It
         # also makes undo available where a moment ago it was not.
+        self._update_actions_enabled()
+
+    def _on_edit_shape_toggled(self, on: bool) -> None:
+        self._canvas.set_mode(CanvasMode.RESHAPE if on else CanvasMode.SELECT)
+        if on:
+            self.statusBar().showMessage(
+                "drag a corner to reshape, inside to move; double-click an edge to "
+                "add a corner or a corner to remove it; Esc cancels"
+            )
+
+    def _on_add_region_toggled(self, on: bool) -> None:
+        self._canvas.set_mode(CanvasMode.DRAW if on else CanvasMode.SELECT)
+        if on:
+            self.statusBar().showMessage(
+                "click to place each corner; click the first one again, double-click "
+                "or press Enter to close it; Backspace takes one back, Esc cancels"
+            )
+
+    def _on_canvas_mode_changed(self, mode: str) -> None:
+        """Keep the checked action and the canvas saying the same thing.
+
+        The canvas leaves a mode on its own — an outline that closed, a pixel
+        that was picked — so the toolbar follows it rather than the other way
+        round. Signals are blocked because setting a check mark here must not
+        look like someone clicking it.
+        """
+        for action, value in (
+            (self._edit_shape_action, CanvasMode.RESHAPE),
+            (self._add_region_action, CanvasMode.DRAW),
+            (self._merge_action, CanvasMode.MERGE),
+        ):
+            with QSignalBlocker(action):
+                action.setChecked(mode == value)
+        if mode != CanvasMode.PICK:
+            self._sampling = None
+
+    def _on_region_drawn(self, polygon: Polygon) -> None:
+        """Turn a hand-drawn outline into a region, with colours off the page.
+
+        No OCR: nothing in review reads a page for text. The region arrives
+        with its text fields empty, which is what leaves it flagged as held
+        back until they are filled in — so the cursor goes to the field they
+        are filled in from.
+        """
+        if self.document is None or self._current_image is None or self._page is None:
+            return
+        try:
+            fill, text = sample_region_colors(self._page, polygon)
+            region = self.document.add_region(
+                self._current_image, polygon, fill_color=fill, text_color=text
+            )
+        except (ValueError, ComictransError) as exc:
+            self.statusBar().showMessage(f"region not added: {exc}", 5000)
+            return
+        self._refresh_page_visuals()  # the new outline, the row's counts, the title
+        self._go_to_region(region.id)
+        self._inspector.focus_source_text()
+        self.statusBar().showMessage(
+            f"added {region.id} — type the text on the page, then its translation"
+        )
+
+    def _on_merge_toggled(self, on: bool) -> None:
+        self._canvas.set_mode(CanvasMode.MERGE if on else CanvasMode.SELECT)
+        if on and self._current_region is not None:
+            self.statusBar().showMessage(
+                f"click the region to merge {self._current_region} with; Esc cancels"
+            )
+
+    def _on_region_picked(self, region_id: str) -> None:
+        """The other half of a merge, clicked on the page."""
+        if self.document is None or self._current_region is None:
+            return
+        first = self._current_region
+        try:
+            colors = self._merged_colors(first, region_id)
+            merged = self.document.merge_regions(first, region_id, **colors)
+        except (ValueError, KeyError, ComictransError) as exc:
+            self.statusBar().showMessage(f"not merged: {exc}", 5000)
+            return
+        self._current_region = None  # one of the two is gone
+        self._refresh_page_visuals()
+        self._go_to_region(merged.id)
+        self._update_actions_enabled()
+        self.statusBar().showMessage(f"merged {first} and {region_id} into {merged.id}", 5000)
+
+    def _merged_colors(self, first_id: str, second_id: str) -> dict[str, Color]:
+        """Colours read off the page inside what the merged outline will be.
+
+        The two halves each sampled part of the balloon; the merged shape
+        covers all of it, so it is worth asking the page again. An empty
+        answer leaves ``merge_regions`` to keep the earlier region's.
+        """
+        if self.document is None or self._page is None:
+            return {}
+        first, second = self.document.region(first_id), self.document.region(second_id)
+        if first.image != second.image:
+            return {}
+        hull = convex_hull((*first.polygon, *second.polygon))
+        fill, text = sample_region_colors(self._page, hull)
+        return {"fill_color": fill, "text_color": text}
+
+    def _on_delete_region(self) -> None:
+        if self.document is None or self._current_region is None:
+            return
+        going = self._current_region
+        neighbour = self._neighbour_of(going)
+        self.document.delete_region(going)
+        self._current_region = None
+        self._refresh_page_visuals()
+        if neighbour is not None:
+            self._go_to_region(neighbour)
+        else:
+            self._inspector.set_region(self.document, None)
+        self._update_actions_enabled()
+        self.statusBar().showMessage(f"deleted {going} — Ctrl+Z puts it back", 5000)
+
+    def _neighbour_of(self, region_id: str) -> str | None:
+        """Somewhere to stand once this region is gone, chosen before it goes.
+
+        The next region on the same page, or the previous one, before the
+        plan's own order: deleting a balloon should leave you looking at the
+        page you were reading, not at the top of the next one.
+        """
+        if self.document is None:
+            return None
+        page = [
+            region.id for region in self.document.regions_for(self.document.region(region_id).image)
+        ]
+        index = page.index(region_id)
+        if index + 1 < len(page):
+            return page[index + 1]
+        if index > 0:
+            return page[index - 1]
+        return self.document.adjacent_region(
+            region_id, forward=True
+        ) or self.document.adjacent_region(region_id, forward=False)
+
+    def _on_sample_requested(self, field: str) -> None:
+        """A colour field asked for a pixel off the page."""
+        if self.document is None or self._page is None:
+            return
+        if self._showing_preview:
+            self.statusBar().showMessage(
+                "colours come from the page, not the preview — Back to Overlay first", 5000
+            )
+            return
+        self._sampling = field
+        self._canvas.set_mode(CanvasMode.PICK)
+        self.statusBar().showMessage(f"click the page to take the {field} colour")
+
+    def _on_point_picked(self, point: Point) -> None:
+        field, self._sampling = self._sampling, None
+        if self.document is None or self._page is None or self._current_region is None:
+            return
+        color = color_at(self._page, point)
+        if field == "fill":
+            self.document.set_fill_color(self._current_region, color)
+        elif field == "text":
+            self.document.set_text_color(self._current_region, color)
+        else:
+            return
+        self.document.end_edit_run()
+        self._refresh_page_visuals()
+        self._inspector.set_region(self.document, self._current_region)
+        self._update_actions_enabled()
+        self.statusBar().showMessage(f"{field} colour taken from the page: {color.to_hex()}", 5000)
+
+    def _on_polygon_edited(self, region_id: str, polygon: Polygon) -> None:
+        """A dragged outline, on its way to the document if the reader will take it.
+
+        The canvas has already drawn it. This is the one place that decides
+        whether it is a shape a plan file can hold — and puts the old one
+        back on screen when it is not, so what is drawn is never something
+        the document does not have.
+        """
+        if self.document is None:
+            return
+        try:
+            self.document.set_polygon(region_id, polygon)
+        except ValueError as exc:
+            self.statusBar().showMessage(f"shape unchanged: {exc}", 5000)
+            self._canvas.set_appearance(
+                _appearance_for(self.document.region(region_id), self.document)
+            )
+            return
+        # One drag, one undo step: without this the next drag on the same
+        # region would coalesce into this one, the way typing does.
+        self.document.end_edit_run()
+        self._refresh_page_visuals()
+        self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
 
     def _on_undo(self) -> None:
@@ -572,9 +866,25 @@ class MainWindow(QMainWindow):
         while it repopulates, so restoring a translation does not write
         itself straight back out as a fresh edit.
         """
+        # Undoing a region into or out of existence can leave the selection
+        # naming one the plan no longer has.
+        if (
+            self.document is not None
+            and self._current_region is not None
+            and self._current_region not in self.document.ordered_ids()
+        ):
+            self._current_region = None
         self._refresh_page_visuals()
+        self._canvas.set_selected(self._current_region)
         self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
+
+    def _on_toggle_preview(self) -> None:
+        """Swap between the overlay and the rendered page, whichever is up."""
+        if self._showing_preview:
+            self._on_back_to_overlay()
+        else:
+            self._on_render_preview()
 
     def _on_render_preview(self) -> None:
         if self.document is None or self._current_image is None:
@@ -633,8 +943,19 @@ class MainWindow(QMainWindow):
         AboutDialog(self).exec()
 
     def _on_back_to_overlay(self) -> None:
-        if self._current_image is not None:
-            self._on_image_selected(self._current_image)
+        """Put the outlines back, on the region that was being looked at.
+
+        Rebuilding the page selects its first region, which is right when you
+        arrive at a page and wrong on the way back from its rendered form:
+        checking how one balloon came out and returning to the top of the
+        page is a place lost every time.
+        """
+        if self._current_image is None:
+            return
+        keep = self._current_region
+        self._on_image_selected(self._current_image)
+        if keep is not None and self.document is not None and keep in self.document.ordered_ids():
+            self._go_to_region(keep)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
         if self._confirm_discard_if_dirty():

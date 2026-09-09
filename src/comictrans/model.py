@@ -10,6 +10,7 @@ pixels, origin top-left, integers.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Self
@@ -26,6 +27,38 @@ class Geometry(StrEnum):
 
     APPROXIMATE = "approximate"
     """Union of OCR boxes plus a margin; no clean contour was found."""
+
+    MANUAL = "manual"
+    """Drawn by hand in the review GUI.
+
+    Neither of the other two: nothing traced it and no OCR box bounded it.
+    Kept apart from ``exact`` because "someone drew this deliberately" is
+    worth knowing on a second pass, and apart from ``approximate`` because
+    that one means "check this", which a hand-drawn polygon does not."""
+
+
+class Erase(StrEnum):
+    """What ``apply`` paints over inside a region before it letters it.
+
+    Per region, because it is a decision about one balloon: the run-wide
+    ``--erase`` flag is the default for regions that do not say. ``fill_color``
+    is what the painting is done *with*, which is why changing that colour
+    does nothing under ``flat`` unless there is lettering to repaint.
+    """
+
+    NONE = "none"
+    """Paint nothing. The translation is drawn straight onto the artwork —
+    for a sound effect, or a caption over art that must not be covered."""
+
+    FLAT = "flat"
+    """The original lettering only, repainted in ``fill_color``."""
+
+    POLYGON = "polygon"
+    """The whole polygon, flooded with ``fill_color``. What a region drawn by
+    hand gets: a person outlined that area meaning all of it."""
+
+    INPAINT = "inpaint"
+    """The lettering, reconstructed from the pixels around it."""
 
 
 class TextCase(StrEnum):
@@ -168,9 +201,12 @@ class Region:
 
     id: str
     image: str
-    """Source image path, relative to the plan file, POSIX separators."""
+    """Source image path, relative to the plan file, POSIX separators.
 
-    image_sha256: str
+    Names an entry in the plan's ``images``, which is where that file's hash
+    is recorded. The hash is per image, not per region, so it lives once
+    rather than once for every balloon on the page."""
+
     order: int
     geometry: Geometry
     polygon: Polygon
@@ -182,6 +218,9 @@ class Region:
     notes: str = ""
     low_confidence: bool = False
     skip: bool = False
+    erase: Erase | None = None
+    """How this region is painted over. ``None`` follows the run's own flag."""
+
     font: str | None = None
     font_size: int | None = None
 
@@ -221,6 +260,11 @@ class PlanHeader:
     """Document-level settings, hand-editable."""
 
     version: int
+    """Schema version of the file this came from.
+
+    Always the current one in memory: the reader upgrades an older file as it
+    reads it, and the writer only knows how to write today's shape."""
+
     generator: str
     created: str
     source_language: str
@@ -233,18 +277,38 @@ class PlanHeader:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanImage:
+    """One source page the plan covers, and the file it was read from."""
+
+    name: str
+    """Path relative to the plan file, POSIX separators."""
+
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class Plan:
     """A parsed plan file."""
 
     header: PlanHeader
+    images: tuple[PlanImage, ...]
+    """Every page extract read, in the order it read them.
+
+    Including the ones it found no text on. A page with no regions is still
+    part of the comic: apply copies it to the output so a chapter comes out
+    whole, and the review GUI can show it so a missed balloon can be drawn on
+    it by hand."""
+
     regions: tuple[Region, ...]
 
-    def images(self) -> tuple[str, ...]:
-        """Distinct source images, in first-seen order."""
-        seen: dict[str, None] = {}
-        for region in self.regions:
-            seen.setdefault(region.image, None)
-        return tuple(seen)
+    def image_names(self) -> tuple[str, ...]:
+        return tuple(image.name for image in self.images)
+
+    def sha256_for(self, image: str) -> str | None:
+        for entry in self.images:
+            if entry.name == image:
+                return entry.sha256
+        return None
 
     def regions_for(self, image: str) -> tuple[Region, ...]:
         return tuple(r for r in self.regions if r.image == image)
@@ -275,6 +339,75 @@ def segments_intersect(p1: Point, p2: Point, p3: Point, p4: Point) -> bool:
         or (d3 == 0 and _on_segment(p1, p2, p3))
         or (d4 == 0 and _on_segment(p1, p2, p4))
     )
+
+
+def point_in_polygon(point: Point, polygon: Polygon) -> bool:
+    """True when a point is inside a polygon or on its edge.
+
+    Ray casting: count how many edges a ray to the right crosses, and an odd
+    count means inside. Kept here rather than taken from OpenCV — which has
+    ``pointPolygonTest`` and is already a dependency of ``detect`` — because
+    the review GUI's document layer needs this and is deliberately free of
+    numpy and OpenCV both.
+    """
+    x, y = point
+    count = len(polygon)
+    inside = False
+    for index in range(count):
+        first, second = polygon[index], polygon[(index + 1) % count]
+        if _orientation(first, second, point) == 0 and _on_segment(first, second, point):
+            return True  # on the boundary, which counts as in
+        if (first[1] > y) != (second[1] > y):
+            crossing = first[0] + (y - first[1]) * (second[0] - first[0]) / (second[1] - first[1])
+            if crossing > x:
+                inside = not inside
+    return inside
+
+
+def polygons_overlap(first: Polygon, second: Polygon) -> bool:
+    """True when two polygons share any area, or touch.
+
+    The real test, not the bounding-box ratio the review GUI uses to warn
+    about regions drawing over each other: that one is deliberately loose,
+    and this decides whether two regions may be merged into one shape.
+
+    Two cases, because an outline can share area without crossing: edges that
+    meet, and one polygon wholly inside the other.
+    """
+    if polygon_bounds(first).intersection(polygon_bounds(second)) is None:
+        return False
+    for index, start in enumerate(first):
+        end = first[(index + 1) % len(first)]
+        for other_index, other_start in enumerate(second):
+            other_end = second[(other_index + 1) % len(second)]
+            if segments_intersect(start, end, other_start, other_end):
+                return True
+    return point_in_polygon(first[0], second) or point_in_polygon(second[0], first)
+
+
+def convex_hull(points: Sequence[Point]) -> Polygon:
+    """The smallest convex ring containing every point, in whole pixels.
+
+    Andrew's monotone chain, dropping collinear points so the ring has no
+    redundant corners. What merging two regions produces: the hull of both
+    outlines is the smallest convex shape that covers what either of them
+    covered.
+    """
+    unique = sorted(set(points))
+    if len(unique) < 3:
+        return tuple(unique)
+
+    def chain(sequence: Sequence[Point]) -> list[Point]:
+        built: list[Point] = []
+        for point in sequence:
+            while len(built) >= 2 and _orientation(built[-2], built[-1], point) <= 0:
+                built.pop()
+            built.append(point)
+        return built
+
+    lower = chain(unique)
+    upper = chain(list(reversed(unique)))
+    return tuple(lower[:-1] + upper[:-1])
 
 
 def polygon_is_simple(polygon: Polygon) -> bool:

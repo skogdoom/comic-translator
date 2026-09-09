@@ -6,13 +6,25 @@ from dataclasses import replace
 
 import pytest
 
-from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import (
+    Box,
+    Color,
+    Geometry,
+    Plan,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile.merge import has_hand_work, merge_plans
+from comictrans.planfile.schema import PLAN_VERSION
+
+from .conftest import make_plan
 
 
 def _header() -> PlanHeader:
     return PlanHeader(
-        version=1,
+        version=PLAN_VERSION,
         generator="test",
         created="now",
         source_language="it",
@@ -29,7 +41,6 @@ def _region(region_id: str, box: Box, source: str = "CIAO", image: str = "p.png"
     return Region(
         id=region_id,
         image=image,
-        image_sha256="0" * 64,
         order=1,
         geometry=Geometry.EXACT,
         polygon=box.as_polygon(),
@@ -42,7 +53,7 @@ def _region(region_id: str, box: Box, source: str = "CIAO", image: str = "p.png"
 
 
 def _plan(*regions: Region) -> Plan:
-    return Plan(header=_header(), regions=regions)
+    return make_plan(_header(), regions)
 
 
 BOX = Box(100, 100, 300, 200)
@@ -168,9 +179,9 @@ def test_the_overlap_threshold_is_configurable() -> None:
 
 def test_the_fresh_header_is_kept() -> None:
     old = _plan(_region("a", BOX))
-    fresh = Plan(
-        header=replace(_header(), font="Marker Felt", target_language="sv"),
-        regions=(_region("a", NUDGED),),
+    fresh = make_plan(
+        replace(_header(), font="Marker Felt", target_language="sv"),
+        (_region("a", NUDGED),),
     )
     merged, _ = merge_plans(old, fresh)
     assert merged.header.font == "Marker Felt"
@@ -185,3 +196,16 @@ def test_has_hand_work_covers_every_editable_field(field: str, value: object) ->
     plain = _region("a", BOX)
     assert not has_hand_work(plain)
     assert has_hand_work(replace(plain, **{field: value}))  # type: ignore[arg-type]
+
+
+def test_the_pages_come_from_the_fresh_run() -> None:
+    # Which files exist and what they hash to is measured, not hand work, so
+    # a re-extraction's answer replaces the old plan's.
+    gone = PlanImage(name="removed.png", sha256="a" * 64)
+    blank = PlanImage(name="blank.png", sha256="b" * 64)
+    old = make_plan(_header(), (_region("a", BOX),), extra_images=(gone,))
+    fresh = make_plan(_header(), (_region("a", NUDGED),), extra_images=(blank,))
+
+    merged, _ = merge_plans(old, fresh)
+
+    assert merged.image_names() == ("p.png", "blank.png")

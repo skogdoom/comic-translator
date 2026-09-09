@@ -11,23 +11,43 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from comictrans.model import Box, Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import (
+    Box,
+    Color,
+    Erase,
+    Geometry,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile import load_plan, write_plan
+from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
 
-from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, make_page_array, save_page
+from .conftest import (
+    ART_DARK,
+    BALLOON_WHITE,
+    INK_BLACK,
+    make_page_array,
+    make_plan,
+    save_page,
+)
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
-from comictrans.gui.main_window import MainWindow
+from comictrans.gui.canvas import COLOR_MANUAL, CanvasMode
+from comictrans.gui.inspector import ERASE_CHOICES
+from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
 
 BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
@@ -37,7 +57,7 @@ TEXT_B = Box(330, 110, 470, 140)
 
 def _header(**overrides: object) -> PlanHeader:
     base: dict[str, object] = {
-        "version": 1,
+        "version": PLAN_VERSION,
         "generator": "comictrans test",
         "created": "2026-09-07T12:00:00Z",
         "source_language": "it",
@@ -52,11 +72,10 @@ def _header(**overrides: object) -> PlanHeader:
     return PlanHeader(**base)  # type: ignore[arg-type]
 
 
-def _region(image: str, digest: str, **overrides: object) -> Region:
+def _region(image: str, **overrides: object) -> Region:
     base: dict[str, object] = {
         "id": "page-001",
         "image": image,
-        "image_sha256": digest,
         "order": 1,
         "geometry": Geometry.EXACT,
         "polygon": BALLOON_A.as_polygon(),
@@ -92,29 +111,26 @@ def two_page_plan(tmp_path: Path) -> Path:
         ),
         source / "page-002.png",
     )
-    digest1, digest2 = sha256_file(page1), sha256_file(page2)
-    plan = Plan(
-        header=_header(),
-        regions=(
+    digests = {"page-001.png": sha256_file(page1), "page-002.png": sha256_file(page2)}
+    plan = make_plan(
+        _header(),
+        (
             _region(
                 "page-001.png",
-                digest1,
                 id="page-001-001",
                 order=1,
                 polygon=BALLOON_A.as_polygon(),
             ),
             _region(
                 "page-001.png",
-                digest1,
                 id="page-001-002",
                 order=2,
                 polygon=BALLOON_B.as_polygon(),
                 translation="",  # held back
             ),
-            _region(
-                "page-002.png", digest2, id="page-002-001", order=1, polygon=BALLOON_A.as_polygon()
-            ),
+            _region("page-002.png", id="page-002-001", order=1, polygon=BALLOON_A.as_polygon()),
         ),
+        digests,
     )
     plan_path = source / "comic-plan.yaml"
     write_plan(plan, plan_path)
@@ -136,6 +152,37 @@ def test_opening_a_plan_populates_the_page_list_and_lands_on_the_first_region(
     assert window._current_image == "page-001.png"
     assert window._inspector._id_label.text().startswith("page-001-001")
     assert window._inspector._translation.toPlainText() == "HELLO"
+
+
+@pytest.fixture
+def plan_with_a_blank_page(tmp_path: Path, two_page_plan: Path) -> Path:
+    """The two-page plan with a third page nothing was found on."""
+    source = two_page_plan.parent
+    blank = save_page(make_page_array((600, 260), ART_DARK, []), source / "page-003.png")
+    plan = load_plan(two_page_plan, check_images=False)
+    write_plan(
+        replace(plan, images=(*plan.images, PlanImage("page-003.png", sha256_file(blank)))),
+        two_page_plan,
+        force=True,
+    )
+    return two_page_plan
+
+
+def test_a_page_with_no_regions_is_listed_and_can_be_opened(
+    qapp: object, plan_with_a_blank_page: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(plan_with_a_blank_page)
+
+    assert window._pages.count() == 3
+    assert "page-003.png" in window._pages.item(2).text()
+    assert "0 region" in window._pages.item(2).text()
+
+    window._pages.select_image("page-003.png")
+
+    assert window._current_image == "page-003.png"
+    assert window._canvas._items == {}
+    assert window._inspector._id_label.text() == "\u2014", "nothing to inspect"
 
 
 def test_selecting_a_page_switches_the_canvas_and_inspector(
@@ -321,9 +368,10 @@ def test_render_preview_reports_a_font_error_instead_of_crashing(
     )
     plan_path = source / "comic-plan.yaml"
     write_plan(
-        Plan(
-            header=_header(font="Definitely Not A Real Font XYZ"),
-            regions=(_region("page-001.png", sha256_file(image)),),
+        make_plan(
+            _header(font="Definitely Not A Real Font XYZ"),
+            (_region("page-001.png"),),
+            {"page-001.png": sha256_file(image)},
         ),
         plan_path,
     )
@@ -518,7 +566,6 @@ def test_the_toolbar_reuses_the_menu_actions(qapp: object) -> None:
         window._next_region_action,
         window._next_flagged_action,
         window._preview_action,
-        window._overlay_action,
     ):
         assert action in on_toolbar
 
@@ -1414,3 +1461,613 @@ def test_the_font_size_box_has_room_to_spare_around_auto(qapp: object) -> None:
     )
     assert box.minimumWidth() > bare, "no more air around 'auto' than before"
     assert box.lineEdit().width() > metrics.horizontalAdvance("auto")
+
+
+# -- reshaping ---------------------------------------------------------------
+
+
+def _drag(canvas: object, start: QPoint, end: QPoint) -> None:
+    """Press, move and release on the canvas viewport, in view coordinates."""
+    viewport = canvas.viewport()  # type: ignore[attr-defined]
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(viewport, end)
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end)
+
+
+def test_edit_mode_puts_a_handle_on_every_corner(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    corners = len(window.document.region("page-001-001").polygon)  # type: ignore[union-attr]
+
+    assert canvas._handles == [], "no handles until the mode is on"
+
+    window._edit_shape_action.setChecked(True)
+
+    assert canvas.mode is CanvasMode.RESHAPE
+    assert len(canvas._handles) == corners
+
+    window._edit_shape_action.setChecked(False)
+
+    assert canvas._handles == []
+
+
+def test_dragging_a_corner_reshapes_the_region(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    start = canvas.mapFromScene(canvas._handles[0].pos())
+    _drag(canvas, start, start + QPoint(20, 20))
+
+    after = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+    assert after != before
+    assert after[1:] == before[1:], "only the corner that was dragged moved"
+    assert window.document.region("page-001-001").geometry is Geometry.MANUAL  # type: ignore[union-attr]
+    assert window.isWindowModified()
+    assert canvas.dragMode() == canvas.DragMode.ScrollHandDrag, "the page pans again"
+
+
+def test_dragging_inside_the_region_moves_the_whole_shape(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    centre = canvas.mapFromScene(canvas._items["page-001-001"].polygon().boundingRect().center())
+    _drag(canvas, centre, centre + QPoint(15, 10))
+
+    after = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+    offsets = {(x2 - x1, y2 - y1) for (x1, y1), (x2, y2) in zip(before, after, strict=True)}
+    assert len(offsets) == 1, f"the shape was deformed, not moved: {offsets}"
+    assert offsets != {(0, 0)}, "nothing moved at all"
+
+
+def test_escape_abandons_a_drag_and_leaves_the_region_alone(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    start = canvas.mapFromScene(canvas._handles[0].pos())
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(canvas.viewport(), start + QPoint(30, 30))
+    assert canvas.polygon_of("page-001-001") != before, "the drag never started"
+
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=start + QPoint(30, 30))
+
+    assert canvas.polygon_of("page-001-001") == before, "the outline went back"
+    assert window.document.region("page-001-001").polygon == before  # type: ignore[union-attr]
+    assert not window.isWindowModified()
+
+
+def test_a_shape_the_reader_would_refuse_is_put_back(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    # Straight through the signal's handler: this is the case the canvas
+    # cannot judge for itself, and the drag that produces it is a bow tie.
+    window._on_polygon_edited("page-001-001", ((10, 10), (110, 110), (110, 10), (10, 110)))
+
+    assert window.document.region("page-001-001").polygon == before  # type: ignore[union-attr]
+    assert window._canvas.polygon_of("page-001-001") == before, "the canvas was put back too"
+    assert "crosses or folds" in window.statusBar().currentMessage()
+
+
+def test_undo_puts_a_reshaped_outline_back_on_the_canvas(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    window._on_polygon_edited("page-001-001", ((10, 10), (200, 10), (200, 150), (10, 150)))
+    assert window._canvas.polygon_of("page-001-001") != before
+
+    window._on_undo()
+
+    assert window._canvas.polygon_of("page-001-001") == before
+    assert not window.isWindowModified()
+
+
+def test_double_clicking_an_edge_adds_a_corner_and_a_corner_removes_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    corners = len(window.document.region("page-001-001").polygon)  # type: ignore[union-attr]
+
+    points = canvas._items["page-001-001"].points()
+    first, second = QPointF(*points[0]), QPointF(*points[1])
+    middle = canvas.mapFromScene(QPointF((first + second) / 2))
+    QTest.mouseDClick(canvas.viewport(), Qt.MouseButton.LeftButton, pos=middle)
+
+    assert len(window.document.region("page-001-001").polygon) == corners + 1  # type: ignore[union-attr]
+
+    QTest.mouseDClick(
+        canvas.viewport(),
+        Qt.MouseButton.LeftButton,
+        pos=canvas.mapFromScene(canvas._handles[1].pos()),
+    )
+
+    assert len(window.document.region("page-001-001").polygon) == corners  # type: ignore[union-attr]
+
+
+def test_a_triangle_keeps_its_last_three_corners(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._on_polygon_edited("page-001-001", ((60, 60), (260, 60), (160, 200)))
+    window._edit_shape_action.setChecked(True)
+
+    for _ in range(2):
+        corner = canvas.mapFromScene(canvas._handles[0].pos())
+        assert canvas.handle_at(QPointF(corner)) == 0, "the double-click missed the corner"
+        QTest.mouseDClick(canvas.viewport(), Qt.MouseButton.LeftButton, pos=corner)
+
+    assert len(window.document.region("page-001-001").polygon) == 3  # type: ignore[union-attr]
+
+
+def test_another_region_can_still_be_selected_while_reshaping(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+
+    other = canvas._items["page-001-002"]
+    QTest.mouseClick(
+        canvas.viewport(),
+        Qt.MouseButton.LeftButton,
+        pos=canvas.mapFromScene(other.polygon().boundingRect().center()),
+    )
+
+    assert window._current_region == "page-001-002"
+    assert canvas._handles, "the handles followed the selection"
+    assert canvas.mapFromScene(canvas._handles[0].pos()) == canvas.mapFromScene(
+        QPointF(*other.points()[0])
+    )
+
+
+def test_a_rendered_preview_leaves_edit_mode(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    # There are no outlines on a rendered page, so there is nothing to drag;
+    # leaving the mode checked would say otherwise.
+    window = _shown_window(two_page_plan)
+    window._edit_shape_action.setChecked(True)
+
+    window._on_render_preview()
+
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._edit_shape_action.isChecked()
+    assert not window._edit_shape_action.isEnabled()
+
+    window._on_back_to_overlay()
+
+    assert window._edit_shape_action.isEnabled(), "and it can be turned back on"
+
+
+def test_a_corner_is_grabbable_at_any_zoom(qapp: object, two_page_plan: Path) -> None:
+    # Handles ignore the view transform, so the grab distance is measured on
+    # screen: a corner is the same target at 25% as at 400%.
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+
+    for zoom in (0.25, 4.0):
+        canvas.set_zoom(zoom)
+        corner = canvas.mapFromScene(canvas._handles[2].pos())
+        assert canvas.handle_at(QPointF(corner)) == 2, f"missed the corner at {zoom}x"
+        assert canvas.handle_at(QPointF(corner + QPoint(40, 40))) is None
+
+
+def test_a_reshaped_region_is_redrawn_as_hand_drawn_geometry(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._pages.select_image("page-002.png")
+    region_id = "page-002-001"
+
+    window._on_polygon_edited(region_id, ((10, 10), (200, 10), (200, 150), (10, 150)))
+
+    assert "manual" in window._inspector._id_label.text()
+    assert window._canvas._appearances[region_id].color == COLOR_MANUAL
+    assert window._canvas.polygon_of(region_id) == ((10, 10), (200, 10), (200, 150), (10, 150))
+
+
+def test_edit_mode_survives_a_page_change(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._edit_shape_action.setChecked(True)
+
+    window._pages.select_image("page-002.png")
+
+    assert window._edit_shape_action.isChecked()
+    assert window._canvas.mode is CanvasMode.RESHAPE
+    assert len(window._canvas._handles) == len(
+        window.document.region("page-002-001").polygon  # type: ignore[union-attr]
+    )
+
+
+# -- adding and deleting ------------------------------------------------------
+
+
+AROUND_BALLOON_B = ((310, 70), (490, 70), (490, 190), (310, 190))
+"""A hand-drawn outline that hugs the second balloon rather than the art."""
+
+
+def _near(polygon: object, expected: tuple[tuple[int, int], ...], slack: int = 2) -> bool:
+    """Whether a polygon is where the clicks that drew it meant to put it."""
+    points = tuple(polygon)  # type: ignore[call-overload]
+    return len(points) == len(expected) and all(
+        abs(ax - bx) <= slack and abs(ay - by) <= slack
+        for (ax, ay), (bx, by) in zip(points, expected, strict=True)
+    )
+
+
+def _click_scene(canvas: object, x: float, y: float) -> None:
+    """Click a page coordinate, wherever the view currently puts it."""
+    QTest.mouseClick(
+        canvas.viewport(),  # type: ignore[attr-defined]
+        Qt.MouseButton.LeftButton,
+        pos=canvas.mapFromScene(QPointF(x, y)),  # type: ignore[attr-defined]
+    )
+
+
+def test_drawing_an_outline_adds_a_region_with_colours_off_the_page(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    assert window._canvas.mode is CanvasMode.DRAW
+
+    # Around the second balloon, which the fixture draws white with black
+    # lettering on dark art — so the colours have somewhere to come from.
+    for point in AROUND_BALLOON_B:
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    assert added.geometry is Geometry.MANUAL
+    # Within a pixel of where the clicks landed: a click is a view coordinate
+    # and the page is fitted to the window, so the round trip through the
+    # view transform is not exact at every zoom.
+    assert _near(added.polygon, AROUND_BALLOON_B)
+    assert added.source_text == "", "review never reads a page for text"
+    assert added.fill_color.as_tuple() == BALLOON_WHITE, "measured, not assumed"
+    assert added.text_color.as_tuple() == INK_BLACK
+    assert window._current_region == added.id, "and it is what you are now editing"
+    assert window._canvas.mode is CanvasMode.SELECT, "drawing is over"
+    assert not window._add_region_action.isChecked()
+    assert window.isWindowModified()
+
+
+def test_an_outline_closes_by_clicking_its_first_corner(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+
+    for point in ((320, 60), (560, 60), (560, 200)):
+        _click_scene(window._canvas, *point)
+    assert _near(window._canvas.draft, ((320, 60), (560, 60), (560, 200)))
+
+    _click_scene(window._canvas, 320, 60)
+
+    assert window._canvas.draft == (), "the outline closed rather than gaining a corner"
+    assert len(window.document.regions_for("page-001.png")) == 3  # type: ignore[union-attr]
+
+
+def test_a_half_drawn_outline_can_be_taken_back_a_corner_at_a_time(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._add_region_action.setChecked(True)
+
+    for point in ((320, 60), (560, 60), (560, 200)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Backspace)
+
+    assert _near(window._canvas.draft, ((320, 60), (560, 60)))
+
+    QTest.keyClick(window._canvas, Qt.Key.Key_Escape)
+
+    assert window._canvas.draft == ()
+    assert len(window.document.plan.regions) == before, "nothing reached the plan"  # type: ignore[union-attr]
+    assert not window.isWindowModified()
+
+
+def test_two_corners_are_not_a_region(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._add_region_action.setChecked(True)
+
+    for point in ((320, 60), (560, 60)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    assert len(window.document.plan.regions) == before  # type: ignore[union-attr]
+    assert len(window._canvas.draft) == 2, "still drawing"
+
+
+def test_the_two_shape_modes_are_not_both_on_at_once(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._edit_shape_action.setChecked(True)
+
+    window._add_region_action.setChecked(True)
+
+    assert not window._edit_shape_action.isChecked(), "the toolbar follows the canvas"
+    assert window._canvas.mode is CanvasMode.DRAW
+    assert window._canvas._handles == [], "and the corner handles went with it"
+
+
+def test_deleting_a_region_takes_it_off_the_page_and_out_of_the_plan(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+
+    window._on_delete_region()
+
+    assert [r.id for r in window.document.regions_for("page-001.png")] == ["page-001-001"]  # type: ignore[union-attr]
+    assert "page-001-002" not in window._canvas._items
+    assert window._current_region == "page-001-001", "somewhere to stand afterwards"
+    assert "1 region" in window._pages.item(0).text()
+    assert "Ctrl+Z" in window.statusBar().currentMessage()
+
+    window._on_undo()
+
+    assert len(window.document.regions_for("page-001.png")) == 2  # type: ignore[union-attr]
+    assert "page-001-002" in window._canvas._items, "back on the page, not just in the plan"
+
+
+def test_a_colour_can_be_taken_off_the_page_by_clicking_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    window._inspector._fill_color.sample_requested.emit()
+
+    assert window._canvas.mode is CanvasMode.PICK
+
+    _click_scene(window._canvas, 20, 20)  # artwork, well outside any balloon
+
+    assert window.document.region("page-001-001").fill_color.as_tuple() == ART_DARK  # type: ignore[union-attr]
+    assert window._inspector._fill_color.value().as_tuple() == ART_DARK
+    assert window._canvas.mode is CanvasMode.SELECT
+
+
+def test_a_standard_colour_can_be_chosen_from_the_field(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    action = next(a for a in window._inspector._text_color.menu().actions() if a.text() == "Red")
+    action.trigger()
+
+    assert window.document.region("page-001-001").text_color == Color(208, 32, 32)  # type: ignore[union-attr]
+
+
+def test_the_source_text_of_a_drawn_region_is_typed_in(qapp: object, two_page_plan: Path) -> None:
+    # A hand-drawn region has no OCR reading and no way to get one: nothing
+    # in review reads a page for text.
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    for point in ((320, 60), (560, 60), (560, 200)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+    drawn = window._current_region
+    assert drawn is not None
+
+    assert window._inspector._source_text.toPlainText() == ""
+    assert not window._inspector._source_text.isReadOnly()
+
+    window._inspector._source_text.setPlainText("CIAO")
+    window._inspector._translation.setPlainText("HELLO")
+
+    assert window.document.region(drawn).source_text == "CIAO"  # type: ignore[union-attr]
+    assert window.document.region(drawn).translation == "HELLO"  # type: ignore[union-attr]
+    assert not window.document.flags(drawn).held_back  # type: ignore[union-attr]
+
+
+def test_undoing_a_drawn_region_takes_its_outline_off_the_page(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    for point in AROUND_BALLOON_B:
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+    drawn = window._current_region
+    assert drawn in window._canvas.region_ids()
+
+    window._on_undo()
+
+    assert drawn not in window._canvas.region_ids()
+    assert not window.isWindowModified()
+    assert "2 regions" in window._pages.item(0).text()
+
+
+def test_a_region_can_be_drawn_on_a_page_with_nothing_on_it(
+    qapp: object, plan_with_a_blank_page: Path
+) -> None:
+    # What the plan's images list is for: the page detection found nothing on
+    # is in the file, so it can be opened and drawn on.
+    window = _shown_window(plan_with_a_blank_page)
+    window._pages.select_image("page-003.png")
+    assert window._current_region is None
+
+    window._add_region_action.setChecked(True)
+    for point in ((60, 60), (260, 60), (260, 200)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    drawn = window.document.regions_for("page-003.png")  # type: ignore[union-attr]
+    assert [region.id for region in drawn] == ["page-003-001"]
+    assert window._current_region == "page-003-001"
+    assert "1 region" in window._pages.item(2).text()
+
+
+def test_the_outline_being_drawn_follows_the_pointer(qapp: object, two_page_plan: Path) -> None:
+    # The rubber band needs move events with no button held, which the view's
+    # viewport tracks by default — this is the test that says so.
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._add_region_action.setChecked(True)
+    _click_scene(canvas, 310, 70)
+    reach = canvas._draft_item.path().boundingRect().right()  # type: ignore[union-attr]
+
+    QTest.mouseMove(canvas.viewport(), canvas.mapFromScene(QPointF(490, 70)))
+
+    assert canvas._draft_item is not None
+    assert canvas._draft_item.path().boundingRect().right() > reach, "no rubber band"
+    assert len(canvas.draft) == 1, "and moving is not placing"
+
+
+def test_the_erase_field_writes_through_and_gates_the_fill_colour(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    erase = window._inspector._erase
+
+    assert erase.currentIndex() == 0, "a detected region follows the run's flag"
+    assert window._inspector._fill_color.isEnabled()
+
+    erase.setCurrentIndex([mode for _, mode, _ in ERASE_CHOICES].index(Erase.NONE))
+
+    assert window.document.region("page-001-001").erase is Erase.NONE  # type: ignore[union-attr]
+    assert not window._inspector._fill_color.isEnabled(), "nothing is painted with it"
+
+    erase.setCurrentIndex([mode for _, mode, _ in ERASE_CHOICES].index(Erase.POLYGON))
+
+    assert window.document.region("page-001-001").erase is Erase.POLYGON  # type: ignore[union-attr]
+    assert window._inspector._fill_color.isEnabled()
+
+
+def test_a_drawn_region_arrives_set_to_fill_itself(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    for point in AROUND_BALLOON_B:
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    assert window.document.region(window._current_region).erase is Erase.POLYGON  # type: ignore[union-attr, arg-type]
+    assert window._inspector._erase.currentText() == "the whole region"
+
+
+# -- the preview toggle -------------------------------------------------------
+
+
+def test_the_selected_region_survives_the_preview_round_trip(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    # Checking how one balloon came out and coming back to the top of the
+    # page is a place lost every time.
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+
+    window._on_render_preview()
+    window._on_back_to_overlay()
+
+    assert window._current_region == "page-001-002"
+    assert window._canvas._selected_id == "page-001-002"
+    assert window._inspector._id_label.text().startswith("page-001-002")
+
+
+def test_one_action_swaps_between_the_overlay_and_the_rendered_page(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+
+    assert window._preview_action.text() == PREVIEW_TEXT
+    assert [a.text() for a in window._toolbar.actions()].count(OVERLAY_TEXT) == 0
+
+    window._preview_action.trigger()
+
+    assert window._showing_preview
+    assert window._preview_action.text() == OVERLAY_TEXT, "it now says what it will do"
+    assert window._preview_action.isEnabled()
+
+    window._preview_action.trigger()
+
+    assert not window._showing_preview
+    assert window._preview_action.text() == PREVIEW_TEXT
+
+
+# -- merging ------------------------------------------------------------------
+
+OVER_BALLOON_A = ((200, 60), (400, 60), (400, 200), (200, 200))
+"""A second outline dragged across the first, as a double-traced balloon is."""
+
+
+def test_merging_two_regions_from_the_canvas(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._on_polygon_edited("page-001-002", OVER_BALLOON_A)
+    window._go_to_region("page-001-001")
+
+    window._merge_action.setChecked(True)
+    assert window._canvas.mode is CanvasMode.MERGE
+
+    _click_scene(window._canvas, 350, 130)  # inside the second outline only
+
+    assert [r.id for r in window.document.regions_for("page-001.png")] == ["page-001-001"]  # type: ignore[union-attr]
+    assert window._current_region == "page-001-001"
+    assert window._canvas.region_ids() == {"page-001-001"}
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._merge_action.isChecked()
+    assert "merged" in window.statusBar().currentMessage()
+
+    merged = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert merged.geometry is Geometry.MANUAL
+    assert (400, 60) in merged.polygon, "the hull reaches the far side"
+
+
+def test_merging_refuses_outlines_that_do_not_overlap(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._merge_action.setChecked(True)
+
+    _click_scene(window._canvas, 400, 130)  # the balloon across the page
+
+    assert len(window.document.regions_for("page-001.png")) == 2  # type: ignore[union-attr]
+    assert not window.isWindowModified()
+    assert "do not overlap" in window.statusBar().currentMessage()
+
+
+def test_a_merged_region_takes_its_colours_from_the_merged_shape(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._on_polygon_edited("page-001-002", OVER_BALLOON_A)
+    window._go_to_region("page-001-001")
+    # A colour the page cannot produce, so inheriting it would show.
+    window.document.set_fill_color("page-001-001", Color(1, 2, 3))  # type: ignore[union-attr]
+    window._merge_action.setChecked(True)
+
+    _click_scene(window._canvas, 350, 130)
+
+    merged = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert merged.fill_color.as_tuple() == BALLOON_WHITE, "read off the page, not inherited"
+
+
+def test_escape_leaves_merge_mode(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._merge_action.setChecked(True)
+
+    QTest.keyClick(window._canvas, Qt.Key.Key_Escape)
+
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._merge_action.isChecked()
+
+
+def test_merging_needs_something_to_merge_with(qapp: object, plan_with_a_blank_page: Path) -> None:
+    window = _shown_window(plan_with_a_blank_page)
+    window._go_to_region("page-001-001")
+    assert window._merge_action.isEnabled(), "two regions on this page"
+
+    window._pages.select_image("page-002.png")
+
+    assert not window._merge_action.isEnabled(), "the only region on its page"

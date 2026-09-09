@@ -152,7 +152,7 @@ warning.
 | --- | --- |
 | `--font NAME` | override the font for every region; logged, because the plan file is the record |
 | `--format {png,jpeg,tiff}` | override the output format |
-| `--erase {flat,polygon,inpaint}` | how to remove the old lettering (see below) |
+| `--erase {flat,polygon,inpaint,none}` | how to remove the old lettering (see below) |
 | `--min-font-ratio` / `--condense-min` | override the plan header's fit limits |
 | `--font-size-floor` | absolute floor below which a region fails instead of shrinking further |
 | `--no-hyphenation` | never hyphenate to make a line fit |
@@ -168,6 +168,17 @@ warning.
 - `inpaint` reconstructs the masked pixels from their surroundings, for
   textured balloons and borderless captions where a flat patch would read as a
   hole.
+- `none` paints nothing: the translation is lettered straight onto the page as
+  it is. For a sound effect, or a caption over art that must not be covered.
+
+**Any region can say for itself**, with an `erase` of its own in the plan
+file, the way it can override `font`. The flag is the default for regions
+that do not. This matters because `fill_color` is the colour the erase paints
+*with*, not the colour of the region: under `flat` it reaches only the pixels
+that read as lettering, so changing it repaints the old letters and leaves the
+balloon as it was. `erase: polygon` on that region is what fills the shape.
+Regions drawn by hand in `review` are written with `erase: polygon` for that
+reason — a person outlining an area means all of it.
 
 ### Fitting
 
@@ -215,19 +226,82 @@ window. Without it, `review` fails with a clear message rather than an
 import error.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
-contour, orange for approximate. A region with something worth checking —
-approximate geometry, low confidence, held back with no translation, still
-identical to its source text, or overlapping another region — is outlined
-dashed red instead, regardless of its geometry colour, and the reason is
-named in the inspector. Click a region to select it; its fields are on the
-right, editable in place, written straight into the plan as you type.
+contour, orange for approximate, violet for a shape drawn or edited here by
+hand. A region with something worth checking — approximate geometry, low
+confidence, held back with no translation, still identical to its source
+text, or overlapping another region — is outlined dashed red instead,
+regardless of its geometry colour, and the reason is named in the inspector.
+Click a region to select it; its fields are on the right, editable in place,
+written straight into the plan as you type — the source text among them,
+since a region you drew by hand has no OCR reading, and the plan file has
+always been hand-editable anyway.
+
+**Edit > Edit Region Shape** (`Ctrl+E`) puts a handle on every corner of the
+selected region. Drag a corner to move it, drag anywhere inside the outline
+to move the whole shape, and double-click an edge to add a corner or a corner
+to remove it — four corners is what detection produces for a caption box and
+never enough to trace a balloon. `Esc` abandons a drag in progress. Each drag
+is one undo step, and a shape a plan file could not hold — fewer than three
+corners, off the top or left of the page, an outline that crosses itself — is
+refused with a message and the region left as it was, rather than saved and
+discovered the next time the file is opened.
+
+It is a mode rather than always on, because dragging inside a region is also
+how the page is panned. A region you reshape is recorded as `geometry:
+manual`: what it says about itself is no longer that detection traced or
+guessed it, and the "check this" flag an approximate region carries clears,
+because checking it is exactly what you have just done.
+
+**Edit > Add Region** (`Ctrl+Shift+A`) draws one by hand, for a balloon
+detection missed entirely. Click to place each corner; click the first corner
+again, double-click, or press Enter to close the outline; Backspace takes a
+corner back and `Esc` abandons it. Nothing in `review` reads a page for text,
+so a region drawn here has no OCR reading: its **source text** is typed in
+along with the translation, and until it is, the region is flagged as held
+back. It records `geometry: manual` and `confidence: 1.0` — there is no
+recogniser's score to report, and the reading is your own.
+
+Its **fill colour** and **text colour** are measured from the page inside the
+outline you drew, the same way `extract` measures a detected region's, and it
+is written with `erase: polygon` so that colour fills the shape. Both
+are editable on any region: the swatch opens a menu with the standard
+lettering colours, a full colour dialog, and **Sample from the page…**, which
+takes the next click on the page as the colour. That last one is the answer
+when an outline strays onto artwork and drags a colour with it.
+
+The **erase** field says how much of a region `apply` paints over before it
+letters it: the plan default, the lettering only, the whole region, a
+reconstruction of the background, or nothing at all. *Nothing* is the
+transparent case — the translation goes straight onto the artwork — and the
+fill colour is disabled while it is chosen, because nothing is painted with
+it. This is the field to reach for when a fill colour appears to do nothing:
+under the default `flat`, it only ever repaints pixels that read as lettering.
+
+**Edit > Merge Region…** (`Ctrl+M`) folds two regions into one, for the
+balloon detection traced as two: select one, then click the other. The merged
+outline is the convex hull of both, its colours are read from the page inside
+that shape, and the texts are joined in reading order. The earlier region
+keeps its id and order — a name in a report should stay the name it was — and
+the geometry becomes `manual`, because you decided the shape.
+
+It is refused unless the two outlines genuinely overlap, and shared area is
+what counts, not shared bounding boxes: two balloons on opposite sides of a
+panel have no simple polygon covering both and only both, and a hull across
+them would swallow the artwork between, which erase would then paint over.
+
+**Edit > Delete Region** (`Ctrl+Backspace`) removes the selected region. A
+delete is a delete, not a `skip: true` in disguise — the region is gone from
+the file the next time you save. `Ctrl+Z` puts it back while the session
+lasts, the same as every other edit here.
 
 **Render Preview** (`Ctrl+R`) calls the exact `render_page` function `apply`
 itself uses, on the plan as it currently stands, unsaved edits included. What
 it shows is what `apply` would write for that page — not a mock-up — so a
 region that will not fit, needs condensing, or overlaps another one shows up
-here before you run `apply` for real. **Back to Overlay** returns to the
-polygon view.
+here before you run `apply` for real. The same command becomes **Back to
+Overlay** while the rendered page is up: one button, and its label says which
+way it goes. Your place is kept across the swap in both directions — the zoom,
+the position, and the region you had selected.
 
 The page starts fitted to the window. `Ctrl+=` and `Ctrl+-` zoom, `Ctrl+0`
 fits again and `Ctrl+1` is actual size; Ctrl and the wheel zooms about the
@@ -298,7 +372,7 @@ YAML, UTF-8, stable key order, hand-editable. One entry per detected region.
 Comments you add are preserved.
 
 ```yaml
-version: 1
+version: 3
 generator: comictrans 0.1.0
 created: 2026-09-06T19:22:04Z
 source_language: it
@@ -308,10 +382,14 @@ font: Comic Sans MS
 case: upper
 font_size_min_ratio: 0.012
 condense_min: 0.9
+images:
+  - name: page-001.png
+    sha256: 3ac70d…
+  - name: page-002.png
+    sha256: 9f2b1c…
 regions:
   - id: page-002-003
     image: page-002.png
-    image_sha256: 9f2b1c…
     order: 3
     geometry: exact
     polygon: [[120, 88], [186, 71], [244, 96], [230, 168], [131, 160]]
@@ -327,6 +405,10 @@ regions:
     notes: ""
 ```
 
+- `images` lists every page the plan covers, in the order they were read,
+  with the hash each one had at extract time. A page with no text on it is
+  listed too: `apply` copies it through so the output is the whole chapter,
+  and `review` can show it. `regions` may name only some of them.
 - `translation` is seeded with the extracted source text so you can edit it
   in place rather than retyping into a blank field — unless the reading does
   not look like text at all, in which case it is left empty (see below).
@@ -344,7 +426,11 @@ regions:
   bottom-left coordinates are converted inside the OCR adapter and never leak
   past it.
 - `geometry: approximate` means no clean balloon contour was found and the
-  polygon is a padded box around the text. Check those regions.
+  polygon is a padded box around the text. Check those regions. `geometry:
+  manual` is a polygon shaped or drawn by hand in `review`, which is neither
+  of the other two: nothing traced it and no OCR box bounded it. A region
+  drawn by hand carries `confidence: 1.0` beside it — not a measurement, but
+  the absence of one: nothing read it, so there is no score to doubt.
 - Regions are found by tracing a contour on a luminance threshold. When that
   finds nothing — a caption box the same brightness as the art behind it, a
   white balloon over near-white art — a second pass seeds a region from the
@@ -357,11 +443,18 @@ regions:
   art alone instead of erasing it to letter nonsense on top. They are counted
   under **not text-like** at the end of an extract run. Delete them, or set
   `skip: true`.
-- Per-region `font` and `font_size` override the header.
+- Per-region `font` and `font_size` override the header, and a per-region
+  `erase` (`none`, `flat`, `polygon`, `inpaint`) overrides the `--erase` flag.
+  All four are omitted unless set.
 
 Loading validates: unknown keys, malformed or self-intersecting polygons, bad
-colours, duplicate ids, and image-hash mismatches are all errors that name the
-offending line.
+colours, duplicate ids, a region naming an image the `images` list does not
+have, and image-hash mismatches are all errors that name the offending line.
+
+Older plans still load. Version 1 carried an `image_sha256` on every region
+and had no `images` list; the list is derived from the regions it does have.
+Version 2 is version 3 without the optional `erase` key. Either way the plan
+is a current one from then on, and saving it writes the current shape.
 
 ## Fonts
 

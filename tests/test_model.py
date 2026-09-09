@@ -6,14 +6,18 @@ from comictrans.model import (
     Box,
     Color,
     Geometry,
-    Plan,
     PlanHeader,
     Region,
     TextCase,
+    convex_hull,
+    point_in_polygon,
     polygon_area,
     polygon_bounds,
     polygon_is_simple,
+    polygons_overlap,
 )
+
+from .conftest import make_plan
 
 
 def test_box_geometry() -> None:
@@ -65,7 +69,6 @@ def _region(image: str, region_id: str) -> Region:
     return Region(
         id=region_id,
         image=image,
-        image_sha256="0" * 64,
         order=1,
         geometry=Geometry.EXACT,
         polygon=((0, 0), (5, 0), (5, 5)),
@@ -77,11 +80,11 @@ def _region(image: str, region_id: str) -> Region:
 
 
 def test_plan_groups_regions_by_image_in_first_seen_order() -> None:
-    plan = Plan(
-        header=PlanHeader(1, "g", "now", "it", "en", "fake", "F", TextCase.UPPER, 0.012, 0.9),
-        regions=(_region("b.png", "b-1"), _region("a.png", "a-1"), _region("b.png", "b-2")),
+    plan = make_plan(
+        PlanHeader(2, "g", "now", "it", "en", "fake", "F", TextCase.UPPER, 0.012, 0.9),
+        (_region("b.png", "b-1"), _region("a.png", "a-1"), _region("b.png", "b-2")),
     )
-    assert plan.images() == ("b.png", "a.png")
+    assert plan.image_names() == ("b.png", "a.png")
     assert [r.id for r in plan.regions_for("b.png")] == ["b-1", "b-2"]
 
 
@@ -106,3 +109,69 @@ def test_a_translation_that_legitimately_matches_its_source_still_renders() -> N
     region = _region("a.png", "a-1").with_translation("CIAO")
     assert region.is_untranslated
     assert region.is_actionable
+
+
+# -- merging geometry ---------------------------------------------------------
+
+SQUARE = ((0, 0), (100, 0), (100, 100), (0, 100))
+
+
+def test_point_in_polygon_counts_the_boundary_as_inside() -> None:
+    assert point_in_polygon((50, 50), SQUARE)
+    assert point_in_polygon((0, 0), SQUARE), "a corner is on it"
+    assert point_in_polygon((100, 50), SQUARE), "so is an edge"
+    assert not point_in_polygon((101, 50), SQUARE)
+    assert not point_in_polygon((-1, 50), SQUARE), "the ray goes right; this is still out"
+
+
+def test_point_in_polygon_handles_a_concave_shape() -> None:
+    # A C, so that a point in its mouth is outside the shape but inside its
+    # bounding box — the case a box test gets wrong.
+    letter = ((0, 0), (100, 0), (100, 20), (20, 20), (20, 80), (100, 80), (100, 100), (0, 100))
+    assert point_in_polygon((10, 50), letter)
+    assert not point_in_polygon((60, 50), letter), "in the mouth of the C"
+
+
+@pytest.mark.parametrize(
+    ("other", "expected", "why"),
+    [
+        (((50, 50), (150, 50), (150, 150), (50, 150)), True, "corners overlap"),
+        (((25, 25), (75, 25), (75, 75), (25, 75)), True, "wholly inside"),
+        (((-50, -50), (150, -50), (150, 150), (-50, 150)), True, "wholly around"),
+        (((100, 0), (200, 0), (200, 100), (100, 100)), True, "sharing an edge"),
+        (((101, 0), (200, 0), (200, 100), (101, 100)), False, "a pixel apart"),
+        (((40, -200), (60, -200), (60, -100), (40, -100)), False, "far above"),
+    ],
+)
+def test_polygons_overlap_is_about_area_not_bounding_boxes(
+    other: tuple[tuple[int, int], ...], expected: bool, why: str
+) -> None:
+    assert polygons_overlap(SQUARE, other) is expected, why
+    assert polygons_overlap(other, SQUARE) is expected, f"{why}, the other way round"
+
+
+def test_two_diagonal_boxes_do_not_overlap_though_their_boxes_do() -> None:
+    # The case the bounding-box test the GUI warns with gets wrong, and the
+    # reason merging cannot use it: a hull across these would swallow the
+    # artwork between them.
+    first = ((0, 0), (40, 0), (40, 40), (0, 40))
+    second = ((60, 60), (100, 60), (100, 100), (60, 100))
+    assert not polygons_overlap(first, second)
+
+
+def test_the_hull_of_two_overlapping_boxes_covers_both() -> None:
+    other = ((50, 50), (150, 50), (150, 150), (50, 150))
+
+    hull = convex_hull(SQUARE + other)
+
+    assert set(hull) == {(0, 0), (100, 0), (150, 50), (150, 150), (50, 150), (0, 100)}
+    assert polygon_is_simple(hull)
+    for point in (*SQUARE, *other):
+        assert point_in_polygon(point, hull), f"{point} is not covered"
+
+
+def test_the_hull_drops_points_that_add_no_corner() -> None:
+    with_extras = (*SQUARE, (50, 0), (50, 50), (100, 50))
+
+    assert set(convex_hull(with_extras)) == set(SQUARE), "collinear and interior points go"
+    assert len(convex_hull(with_extras)) == 4

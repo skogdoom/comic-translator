@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw
 
 from comictrans.config import OcrConfig
 from comictrans.imaging import PageImage
-from comictrans.model import Box
+from comictrans.model import Box, Plan, PlanHeader, PlanImage, Region
 from comictrans.ocr.base import OcrLine
 
 ART_LIGHT = (200, 200, 200)
@@ -64,6 +64,32 @@ def make_page_array(
 def save_page(array: np.ndarray, path: Path, **info: object) -> Path:
     Image.fromarray(array).save(path, **info)
     return path
+
+
+PLACEHOLDER_DIGEST = "0" * 64
+"""Stands in where a test loads with ``check_images=False`` and never hashes."""
+
+
+def make_plan(
+    header: PlanHeader,
+    regions: Sequence[Region],
+    digests: dict[str, str] | None = None,
+    extra_images: Sequence[PlanImage] = (),
+) -> Plan:
+    """A plan covering exactly the images its regions name, plus any extra.
+
+    The images list is derived rather than spelled out because most tests are
+    about regions and want it to follow along. ``extra_images`` is for the
+    tests that are about a page with no regions on it at all.
+    """
+    named: dict[str, None] = {}
+    for region in regions:
+        named.setdefault(region.image, None)
+    lookup = digests or {}
+    images = tuple(
+        PlanImage(name=name, sha256=lookup.get(name, PLACEHOLDER_DIGEST)) for name in named
+    )
+    return Plan(header=header, images=images + tuple(extra_images), regions=tuple(regions))
 
 
 def lines_for(boxes: Sequence[Box], text: Sequence[str], confidence: float = 0.9) -> list[OcrLine]:

@@ -6,17 +6,26 @@ import numpy as np
 import pytest
 
 from comictrans.errors import InputError, PlanError
-from comictrans.model import Color, Geometry, Plan, PlanHeader, Region, TextCase
+from comictrans.model import (
+    Color,
+    Erase,
+    Geometry,
+    Plan,
+    PlanHeader,
+    PlanImage,
+    Region,
+    TextCase,
+)
 from comictrans.planfile import dumps, load_plan, loads, write_plan
-from comictrans.planfile.schema import REGION_KEY_ORDER
+from comictrans.planfile.schema import PLAN_VERSION, REGION_KEY_ORDER
 from comictrans.util import sha256_file
 
-from .conftest import save_page
+from .conftest import make_plan, save_page
 
 
 def _header() -> PlanHeader:
     return PlanHeader(
-        version=1,
+        version=PLAN_VERSION,
         generator="comictrans 0.1.0",
         created="2026-09-06T19:00:00Z",
         source_language="it",
@@ -33,7 +42,6 @@ def _region(**overrides: object) -> Region:
     base: dict[str, object] = {
         "id": "page-001-001",
         "image": "page-001.png",
-        "image_sha256": "a" * 64,
         "order": 1,
         "geometry": Geometry.EXACT,
         "polygon": ((10, 10), (110, 10), (110, 60), (10, 60)),
@@ -48,8 +56,8 @@ def _region(**overrides: object) -> Region:
     return Region(**base)  # type: ignore[arg-type]
 
 
-def _plan(*regions: Region) -> Plan:
-    return Plan(header=_header(), regions=regions or (_region(),))
+def _plan(*regions: Region, digests: dict[str, str] | None = None) -> Plan:
+    return make_plan(_header(), regions or (_region(),), digests)
 
 
 def test_round_trip_preserves_every_field() -> None:
@@ -68,7 +76,9 @@ def test_round_trip_preserves_every_field() -> None:
 
 
 def test_keys_are_written_in_schema_order() -> None:
-    text = dumps(_plan(_region(low_confidence=True, skip=True, font="X", font_size=9)))
+    text = dumps(
+        _plan(_region(low_confidence=True, skip=True, font="X", font_size=9, erase=Erase.FLAT))
+    )
     region_block = text.split("regions:", 1)[1]
     positions = [region_block.find(f"{key}:") for key in REGION_KEY_ORDER]
     present = [p for p in positions if p >= 0]
@@ -183,7 +193,7 @@ def test_duplicate_region_ids_are_rejected() -> None:
 
 
 def test_unsupported_version_is_rejected() -> None:
-    text = dumps(_plan()).replace("version: 1", "version: 99")
+    text = dumps(_plan()).replace(f"version: {PLAN_VERSION}", "version: 99")
     with pytest.raises(PlanError, match="unsupported plan version 99"):
         loads(text)
 
@@ -205,7 +215,7 @@ def test_empty_and_non_mapping_documents_are_rejected() -> None:
 def test_image_hash_mismatch_is_an_error(tmp_path: Path) -> None:
     image = save_page(np.full((20, 20, 3), 255, dtype=np.uint8), tmp_path / "page-001.png")
     plan_path = tmp_path / "plan.yaml"
-    write_plan(_plan(_region(image_sha256=sha256_file(image))), plan_path)
+    write_plan(_plan(digests={"page-001.png": sha256_file(image)}), plan_path)
     load_plan(plan_path)  # matches, so this is fine
 
     save_page(np.zeros((20, 20, 3), dtype=np.uint8), image)
@@ -223,3 +233,173 @@ def test_missing_source_image_is_an_error(tmp_path: Path) -> None:
 def test_plan_error_message_includes_path_and_line() -> None:
     error = PlanError("bad thing", path=Path("/tmp/plan.yaml"), line=7)
     assert str(error) == "/tmp/plan.yaml:7: bad thing"
+
+
+# Written out in full rather than derived from dumps(), because this is the
+# one shape the writer can no longer produce: a hash on every region and no
+# images list. It is what a plan written before the schema change looks like.
+VERSION_1_PLAN = """\
+version: 1
+generator: comictrans 0.1.0
+created: '2026-09-06T19:00:00Z'
+source_language: it
+target_language: en
+ocr_engine: apple-vision
+font: Comic Sans MS
+case: upper
+font_size_min_ratio: 0.012
+condense_min: 0.9
+regions:
+  - id: page-001-001
+    image: page-001.png
+    image_sha256: aaaa
+    order: 1
+    geometry: exact
+    polygon: [[10, 10], [110, 10], [110, 60], [10, 60]]
+    fill_color: '#fdfdfa'
+    text_color: '#1b1b1b'
+    confidence: 0.9
+    source_text: CIAO
+    translation: HELLO
+  - id: page-002-001
+    image: page-002.png
+    image_sha256: bbbb
+    order: 1
+    geometry: exact
+    polygon: [[10, 10], [110, 10], [110, 60], [10, 60]]
+    fill_color: '#fdfdfa'
+    text_color: '#1b1b1b'
+    confidence: 0.9
+    source_text: CIAO
+    translation: HELLO
+"""
+
+
+def test_a_version_1_plan_is_upgraded_as_it_is_read() -> None:
+    plan = loads(VERSION_1_PLAN)
+
+    assert plan.header.version == PLAN_VERSION, "in memory it is a current plan"
+    assert [(i.name, i.sha256) for i in plan.images] == [
+        ("page-001.png", "aaaa"),
+        ("page-002.png", "bbbb"),
+    ]
+    assert plan.sha256_for("page-002.png") == "bbbb"
+
+
+def test_saving_a_version_1_plan_writes_the_current_shape() -> None:
+    text = dumps(loads(VERSION_1_PLAN))
+
+    assert f"version: {PLAN_VERSION}" in text
+    assert "image_sha256" not in text, "the hash lives in the images list now"
+    assert loads(text) == loads(VERSION_1_PLAN), "and reads back as the same plan"
+
+
+def test_a_version_1_region_must_still_carry_its_hash() -> None:
+    text = VERSION_1_PLAN.replace("    image_sha256: aaaa\n", "")
+    with pytest.raises(PlanError, match="needs image and image_sha256"):
+        loads(text)
+
+
+def test_a_version_1_plan_may_not_carry_an_images_list() -> None:
+    text = VERSION_1_PLAN.replace(
+        "regions:", "images:\n  - name: page-001.png\n    sha256: aaaa\nregions:"
+    )
+    with pytest.raises(PlanError, match="version 1 plan does not have an 'images' list"):
+        loads(text)
+
+
+def test_a_current_plan_may_not_carry_a_region_hash() -> None:
+    text = dumps(_plan()).replace(
+        "    image: page-001.png\n", "    image: page-001.png\n    image_sha256: aaaa\n"
+    )
+    with pytest.raises(PlanError, match="unknown key 'image_sha256'"):
+        loads(text)
+
+
+def test_a_page_with_no_regions_survives_the_round_trip() -> None:
+    blank = PlanImage(name="page-002.png", sha256="bbbb")
+    original = make_plan(_header(), (_region(),), extra_images=(blank,))
+
+    plan = loads(dumps(original))
+
+    assert plan == original
+    assert plan.image_names() == ("page-001.png", "page-002.png")
+    assert plan.regions_for("page-002.png") == ()
+
+
+def test_a_region_naming_an_image_the_plan_does_not_list_is_rejected() -> None:
+    text = dumps(_plan()).replace("    image: page-001.png", "    image: page-009.png")
+    with pytest.raises(PlanError, match="is not in the plan's images"):
+        loads(text)
+
+
+def test_a_duplicate_image_is_rejected() -> None:
+    text = dumps(_plan()).replace("regions:", "  - name: page-001.png\n    sha256: aaaa\nregions:")
+    with pytest.raises(PlanError, match="duplicate image"):
+        loads(text)
+
+
+def test_a_current_plan_needs_an_images_list() -> None:
+    text = dumps(_plan())
+    without = text[: text.index("images:")] + text[text.index("regions:") :]
+    with pytest.raises(PlanError, match="missing required key 'images'"):
+        loads(without)
+
+
+def test_manual_geometry_round_trips() -> None:
+    plan = _plan(_region(geometry=Geometry.MANUAL))
+    assert "geometry: manual" in dumps(plan)
+    assert loads(dumps(plan)).regions[0].geometry is Geometry.MANUAL
+
+
+def test_a_page_with_no_regions_is_hash_checked_too(tmp_path: Path) -> None:
+    # The point of the images list: in version 1 a page nothing was found on
+    # had nowhere to record its hash, so a change to it went unnoticed.
+    image = save_page(np.full((20, 20, 3), 255, dtype=np.uint8), tmp_path / "page-002.png")
+    blank = PlanImage(name="page-002.png", sha256=sha256_file(image))
+    plan_path = tmp_path / "plan.yaml"
+    save_page(np.full((20, 20, 3), 255, dtype=np.uint8), tmp_path / "page-001.png")
+    write_plan(
+        make_plan(
+            _header(),
+            (_region(),),
+            {"page-001.png": sha256_file(tmp_path / "page-001.png")},
+            extra_images=(blank,),
+        ),
+        plan_path,
+    )
+    load_plan(plan_path)  # both match
+
+    save_page(np.zeros((20, 20, 3), dtype=np.uint8), image)
+    with pytest.raises(PlanError, match=r"page-002\.png has changed since extract"):
+        load_plan(plan_path)
+
+
+def test_a_region_can_record_how_it_is_erased() -> None:
+    original = _plan(_region(erase=Erase.NONE))
+
+    text = dumps(original)
+
+    assert "erase: none" in text
+    assert loads(text) == original
+
+
+def test_erase_is_omitted_when_the_region_follows_the_run() -> None:
+    assert "erase" not in dumps(_plan()).split("regions:", 1)[1]
+
+
+def test_an_unknown_erase_value_is_rejected() -> None:
+    text = dumps(_plan(_region(erase=Erase.FLAT))).replace("erase: flat", "erase: scrub")
+    with pytest.raises(PlanError, match="erase must be one of"):
+        loads(text)
+
+
+def test_a_version_2_plan_reads_without_an_erase_anywhere() -> None:
+    # The whole of what version 3 added is one optional key, so a version 2
+    # file is a version 3 file that does not use it.
+    text = dumps(_plan()).replace(f"version: {PLAN_VERSION}", "version: 2")
+
+    plan = loads(text)
+
+    assert plan.regions[0].erase is None
+    assert plan.header.version == PLAN_VERSION, "and it is a current plan in memory"

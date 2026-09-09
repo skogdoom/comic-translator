@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.5 | Region editing | XL |
 | 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
 | 4.13 | Preferences | M |
@@ -50,19 +49,14 @@ string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Help text describes the UI, so it goes
 after the UI stops moving.
 
-**Foundations come before what stands on them.** 4.4 went first for that
-reason: undo built for five text fields would have needed rewriting the
-moment a polygon could move, so it snapshots whole plans instead and 4.5
-inherits it. Zoom went before 4.5 for a plainer reason: dragging a polygon
-vertex accurately means being able to see it.
+**Foundations come before what stands on them.** 4.4 and zoom went early for
+that reason, and region editing — the largest of the minor milestones, now
+shipped — stood on both: undo built for five text fields would have needed
+rewriting the moment a polygon could move, so it snapshots whole plans
+instead, and dragging a polygon vertex accurately means being able to see
+it.
 
-Two orderings are judgement calls rather than dependencies.
-
-**Region editing (4.5) before the two pipeline milestones.** Extract and
-apply both already work from a terminal. A bad polygon cannot be fixed
-anywhere at all — not in the GUI, and not without hand-editing pixel
-coordinates in YAML. Given what `known-bugs.md` already records about
-detection, editing earns its place first despite being the larger job.
+One ordering is a judgement call rather than a dependency.
 
 **Rendering (4.14) before extract (4.6).** Both run a pipeline pass from
 the window, and both need the same worker thread, progress and cancel.
@@ -71,78 +65,6 @@ safe to call off the main thread — and the more valuable, because reviewing
 a plan and then leaving for a terminal to render it is the obvious hole in
 the window as it stands. Build the threading on the easy case; extract
 reuses it with the harder question on top.
-
-## 4.5 Region editing
-
-Edit a region's polygon, add a region, delete a region, merge two.
-
-The largest milestone on the list and the one that changes what the GUI is.
-Worth doing in four passes: model and schema decisions, then move and
-reshape, then add and delete, then merge.
-
-### Settled
-
-**Merging is refused unless the polygons genuinely overlap.** With that
-gate, the merged polygon is the convex hull of both. This covers the case
-merge exists for — one balloon traced as two regions, the class of bug
-`known-bugs.md` and the fixtures already show — and refuses the case the
-single-polygon model cannot represent honestly. Two balloons on opposite
-sides of a panel have no simple polygon covering both and only both; a hull
-across them would swallow the artwork between, which erase would then wipe.
-
-The gate must test real polygon intersection, not the bounding-box ratio
-`overlapping_region_ids` uses — that one exists to warn about regions
-drawing over each other at apply time and is deliberately loose.
-`model.segments_intersect` already gives the edge-crossing half; a
-ray-cast point-in-polygon test for the containment half belongs beside it,
-where it stays free of OpenCV. `detect._contains_centers` is the same test
-but built on `cv2.pointPolygonTest`, so it cannot be reused from the
-document layer.
-
-**`Geometry` gains a `manual` value**, unless the first pass finds a reason
-not to. `exact` means traced from a balloon contour and `approximate` means
-OCR boxes plus a margin, which is what drives the orange "check this"
-badge. A hand-drawn polygon is neither: it is the most trustworthy geometry
-in the file, so `approximate` flags it wrongly and forever, while `exact`
-quietly makes the docstring untrue and loses the one thing worth knowing on
-a second pass — which regions were already fixed by hand.
-
-The cost is a plan file schema change: the reader's enum, the writer, and a
-decision on `header.version`, currently `1`. Note the compatibility
-direction — an older comictrans meeting `geometry: manual` fails with a
-`PlanError`. At `0.1.0` with one user that is cheap, and it will not stay
-cheap.
-
-### Open
-
-- **A page with no regions is invisible.** `Plan.images()` derives from the
-  region list, so a page where detection found nothing is not in the plan at
-  all, and a region cannot be added to it. It is also where the
-  `image_sha256` for a new region would have come from. Either the header
-  gains a list of images, or the GUI lets the file be picked and hashes it.
-  Decide before the add-and-delete pass, not during it.
-- **Where new colours come from.** A new region needs `fill_color` and
-  `text_color`, which means sampling through `detect.color`. That is fine
-  for `review` — the invariant is that *`apply`* runs no detection — but it
-  pulls numpy and OpenCV in, so it belongs in a new module and **never** in
-  `gui/document.py`, which is deliberately free of both. Sampling inside
-  the new polygon, with a colour picker as an override, is the obvious
-  shape.
-- **Ids and order.** The reader enforces unique ids. Do not reuse the
-  suffix of a deleted region; take `max + 1` per page. Merging two regions
-  has to pick an order. Reordering by hand is out of scope here.
-- **Deleting loses the only record that OCR found text there.** Undo covers
-  it in the session; after a save it is gone. `skip: true` may be the
-  better default action, with delete kept explicit.
-
-### One correctness trap
-
-`write_plan` performs no schema validation — the reader does. Today that is
-harmless, because the GUI cannot produce a plan the reader would reject.
-Once polygons are editable it can: `polygon_is_simple` rejects
-self-intersecting and degenerate polygons at load, so the GUI could write a
-file it then refuses to reopen. Validate every geometry edit before it
-reaches the document.
 
 ## 4.14 Render pages from the GUI
 
@@ -200,8 +122,8 @@ Leave `--merge` out. Re-extracting over an open plan is exactly the merge
 case, including its lost-hand-work reporting and its exit status, and that
 is a second feature. Extract to a new plan, then open it.
 
-Once 4.5 exists, re-extracting a page is destructive against hand-edited
-regions. Keep the two apart.
+Now that regions can be drawn, reshaped and merged by hand, re-extracting a
+page is destructive against exactly that work. Keep the two apart.
 
 ## 4.13 Preferences
 
@@ -251,7 +173,7 @@ appears. What is actually left, roughly by value:
   below and 4.10's build config already need — `QIcon.fromTheme` returns
   nothing on macOS, so there is no route that avoids shipping files. Doing
   it here rather than earlier also means drawing icons once for a toolbar
-  4.5 has finished adding buttons to. Icon sets carry licences; whichever
+  region editing has finished adding buttons to. Icon sets carry licences; whichever
   is chosen needs recording in `LICENSE` and in the About dialog.
 - An `.icns` icon and bundle identity, which mostly overlaps with 4.10
 - `AboutRole` on the About action, so macOS moves it into the application
@@ -313,7 +235,7 @@ exception that is worth settling before any of it is written.
 `PlanDocument.source_path` resolves an image as the plan's directory plus
 the image name, and `apply.source_for` does the same. Reading pages from
 inside an archive on demand breaks that assumption in `apply` and in
-`review` at once, and takes the `image_sha256` check with it.
+`review` at once, and takes the plan's per-page hash check with it.
 
 **Unpack to a sidecar directory** and everything downstream keeps working
 unchanged, including the invariant that source images are never written to
