@@ -225,6 +225,13 @@ one. Needs PySide6, a separate extra like tesseract — most work on this
 repository never opens a window. Without it, `review` fails with a clear
 message rather than an import error.
 
+The toolbar carries the commands you reach for while reading a chapter —
+open and save, undo and redo, the four region tools, the three ways to step
+between regions, the preview toggle, and both whole-chapter runs — as icons
+rather than words, because as words they came to more than the window is
+wide. Hover any of them for its name; the menus keep the words permanently,
+with the shortcuts beside them.
+
 The overlay uses the same colours as `--debug-dir`: green for a traced
 contour, orange for approximate, violet for a shape drawn or edited here by
 hand. A region with something worth checking — approximate geometry, low

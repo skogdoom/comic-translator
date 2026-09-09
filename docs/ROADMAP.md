@@ -24,7 +24,7 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.8 | macOS look and feel | M |
+| 4.8 | macOS look and feel | S — mostly shipped |
 | 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
@@ -44,8 +44,9 @@ review, and waiting on nothing, as was moving a region after them.
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Help text describes the UI, so it goes
-after the UI stops moving — which means after 4.8, since replacing a text
-toolbar with icons changes what there is to describe.
+after the UI stops moving — which meant after 4.8, since replacing a text
+toolbar with icons changed what there was to describe. That change has now
+landed, so nothing in 4.8's remainder holds help back.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -65,32 +66,33 @@ the time it landed, the harness was a base class and one `work()` method.
 
 ## 4.8 macOS look and feel
 
-Qt already supplies the native style, the native menu bar, and Cmd for Ctrl
-through `QKeySequence.StandardKey`, so less of this is missing than it
-appears. What is actually left, roughly by value:
+Qt supplies the native style, the native menu bar, and Cmd for Ctrl through
+`QKeySequence.StandardKey`, so less of this was missing than it appeared.
+Most of the rest has now shipped: the toolbar is icons, drawn for this tool
+and tinted to the palette; `AboutRole` puts About in the application menu
+and Preferences already carried `PreferencesRole` from 4.13; the unified
+title-and-toolbar look is asked for; and the one thing dark mode was
+actually breaking — the mark on a font name this machine cannot resolve,
+measured at 1.5:1 against a dark base — now picks its red from the palette
+and clears 4.5:1 both ways round.
 
-- **Toolbar icons.** 4.2 shipped the toolbar text-only, because half of
-  these commands have no standard pixmap in any Qt style. Bundled SVGs
-  answer that, and bundling assets is the same plumbing the `.icns` icon
-  below and 4.10's build config already need — `QIcon.fromTheme` returns
-  nothing on macOS, so there is no route that avoids shipping files. Doing
-  it here rather than earlier also means drawing icons once for a toolbar
-  region editing has finished adding buttons to. Icon sets carry licences;
-  whichever is chosen needs recording in `LICENSE` and in the About dialog.
-- An `.icns` icon and bundle identity, which mostly overlaps with 4.10
-- `AboutRole` on the About action, so macOS moves it into the application
-  menu where it belongs. Preferences already carries `PreferencesRole` and
-  `QKeySequence.StandardKey.Preferences`, set when 4.13 shipped; like the
-  rest of this milestone, neither has been seen working on a Mac
-- Dark mode: check the canvas overlay colours stay legible against dark
-  chrome
-- Full screen, and the unified toolbar look
+Two things are left.
 
-**None of this is verifiable by the test suite.** The widget tests run
-under the offscreen platform on whatever machine is to hand; menu bar
-placement, the About role and dark mode only exist on a real Mac. This is
-the one milestone the four checks cannot defend, and it has to be looked at
-by hand on the target machine.
+- **An `.icns` icon and bundle identity.** Not started, and it overlaps
+  4.10 almost entirely: an icon file is worth having once there is a bundle
+  to put it in.
+- **Confirmation on a real Mac.** Everything above is set from code and
+  none of it has been seen working: the menu bar placement and `AboutRole`,
+  the unified toolbar, full screen, and the icons against real dark-mode
+  chrome rather than a palette a test set for itself.
+
+**The suite still cannot defend the second one.** What the tests added here
+check is that every drawing an action asks for ships, that each renders at
+every baked size, that it comes out in the colour it was asked for, and
+that a palette change repaints the set — all under the offscreen platform,
+on whatever machine is to hand. None of that is evidence about where macOS
+puts a menu item. That step needs hands on the target machine, and it is
+the only part of this milestone the four checks were never going to cover.
 
 ## 4.7 Help instructions
 
@@ -98,19 +100,21 @@ A short in-application guide to reviewing a plan: what the badge colours
 mean, what each flag means, what preview does and does not tell you.
 
 After the milestones that change the UI, because it documents them, and
-after 4.8 in particular. That one collides with this one directly rather
-than vaguely: toolbar icons replace the text labels help would otherwise
-name, About moves into the application menu so "Help > About" stops being
-where it is, and dark mode is explicitly about whether the canvas overlay
-colours still read — which is the first thing on the list above.
+after 4.8 in particular. That one collided with this one directly rather
+than vaguely: toolbar icons replaced the text labels help would otherwise
+have named, About moved into the application menu so "Help > About" stopped
+being where it is, and dark mode was explicitly about whether the overlay
+colours still read. All three have now landed, so the collision is spent —
+what is left of 4.8 is a bundle icon and a pass on a Mac, neither of which
+changes what help has to say.
 
 A dialog with a `QTextBrowser` over a bundled document, rather than strings
 in the source, keeps 4.9 to one file per language.
 
-**One caveat on the order.** 4.8 is the milestone the test suite cannot
-defend and the only one that needs hands on a Mac, so it is the one most
-able to sit. If it does, do not hold help behind it — the numbers are names,
-not positions, and most of what help has to say is about the plan and the
+**One caveat on the order.** What remains of 4.8 is the part the test
+suite cannot defend, and it needs hands on a Mac, so it is the item most
+able to sit. Do not hold help behind it — the numbers are names, not
+positions, and most of what help has to say is about the plan and the
 canvas rather than the chrome.
 
 `README.md` is not a substitute; it is written for the command line.

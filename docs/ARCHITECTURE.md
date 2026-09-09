@@ -538,6 +538,7 @@ document.py   the loaded plan, its edits, and where they save — no Qt
 preview.py     render_page called on the current document — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 qimage.py      the one function that turns a Pillow image into a QPixmap
+icons.py       the toolbar's drawings, tinted to the palette in use
 canvas.py      the page: a pixmap, and clickable region outlines over it
 hint_line.py    the line under it: what a click does, elided to fit
 sampling.py    colours read off the page for a region drawn by hand
@@ -704,6 +705,33 @@ which of those it would otherwise be, because the geometry colour and
 "look at this" are two different facts and only one dashed style was needed
 to say the second one. Selection is a separate colour again (blue), since it
 can coincide with any of them.
+
+**Why the toolbar's icons are drawn here and tinted at load time.** Three
+choices, each forced by the one above it. The bar is icons because words
+did not fit: measured, fourteen commands cost 1344px of a 1200px window as
+text and 513px as icons, which is why Extract and Render Pages could go on
+it at all — as text the twelve already there came to 1138px. The icons are
+files because there is nothing to ask for: `QIcon.fromTheme` returns
+nothing on macOS, and half of these commands — reshape a region, merge two,
+walk to the next flagged one — have no standard pixmap in any Qt style. And
+they are drawn for this tool rather than taken from a set because a set
+carries a licence, which would have to be recorded in `LICENSE`, honoured
+in the About dialog, and carried by anyone redistributing this; fifteen line
+drawings are a smaller thing to make than a licence is to keep. They are
+this project's own work under its own licence, so there is nothing extra to
+record.
+
+`icons.py` paints the tint through the drawing's alpha
+(`CompositionMode_SourceIn`), so the files are shape only and the colour
+comes from the palette when the icon is built. That is what lets one set
+follow a light window and a dark one: `main_window.changeEvent` drops the
+cache and rebuilds on `PaletteChange`, rather than a second set of files
+being kept in step by hand. A name with no file behind it costs the picture
+and nothing else — a warning in the log, an empty `QIcon`, and an action
+that keeps its text, its shortcut and its tooltip — because a window that
+refused to open over a missing asset would be the worse failure. Every
+icon-only button carries its menu label as a tooltip, since a picture on
+its own is not a word.
 
 **Reshaping: the canvas drags, the window decides, the document validates.**
 Dragging a corner changes only what is drawn; the polygon reaches the

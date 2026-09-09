@@ -1356,6 +1356,51 @@ def test_a_font_the_machine_does_not_have_is_kept_and_marked(qapp: object, font_
     assert box.toolTip() == ""
 
 
+def _relative_luminance(color: object) -> float:
+    """WCAG 2.1 relative luminance, so the contrast below is the real ratio."""
+    channels = []
+    for value in (color.redF(), color.greenF(), color.blueF()):  # type: ignore[attr-defined]
+        channels.append(value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4)
+    red, green, blue = channels
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def _contrast(one: object, other: object) -> float:
+    darker, lighter = sorted((_relative_luminance(one), _relative_luminance(other)))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+@pytest.mark.parametrize("base", [(255, 255, 255), (30, 30, 30)])
+def test_the_unresolvable_mark_reads_on_a_dark_window_too(
+    qapp: object, font_dir: Path, base: tuple[int, int, int]
+) -> None:
+    """A warning nobody can see is not a warning.
+
+    Qt's ``darkRed``, which this used to be, measures 1.5:1 against a dark
+    base — invisible on a Mac in dark mode, which is where this tool is
+    meant to run. Both ways round the mark has to clear the 4.5:1 that
+    ordinary text is held to, and still be a red rather than just a colour.
+    """
+    from PySide6.QtGui import QColor, QPalette
+
+    from comictrans.gui.font_box import FontBox
+
+    box = FontBox(allow_default=True)
+    line_edit = box.lineEdit()
+    assert line_edit is not None
+    palette = line_edit.palette()
+    palette.setColor(QPalette.ColorRole.Base, QColor(*base))
+    line_edit.setPalette(palette)
+
+    box.set_value("A Font From Another Mac")
+    assert not box.resolvable(), "the test needs the mark to be showing"
+
+    mark = line_edit.palette().color(QPalette.ColorRole.Text)
+    ratio = _contrast(mark, QColor(*base))
+    assert ratio >= 4.5, f"{ratio:.2f}:1 against {base} is not readable"
+    assert mark.red() > mark.green() and mark.red() > mark.blue(), "a warning is red"
+
+
 def test_the_font_box_stays_editable_so_a_name_can_be_typed(qapp: object, font_dir: Path) -> None:
     from comictrans.gui.font_box import FontBox
 
