@@ -451,18 +451,34 @@ for OCR, the source image's own format, whatever font `extract` finds for
 itself. The window also remembers which directory you last opened a plan or
 read pages from, and starts the file dialogs there.
 
-**If the window vanishes**, look in `~/Library/Logs/comictrans/review-crash.log`
-(`~/.local/state/comictrans/` off macOS, or wherever `COMICTRANS_LOG_DIR`
-points). A segfault, or the abort Qt raises when it gives up, kills the
-process outright — no dialog, no message, and no stderr at all when the window
-was not started from a terminal. That file gets a line every time `review`
-starts and a Python traceback naming the exact line if the process dies, on
-every thread. It is written to your own disk and sent nowhere; this tool makes
-no network calls, and a stack trace is not an exception to that.
+**When something goes wrong**, **Help > Open Log Folder** shows you where it
+was written down. Two files live there —
+`~/Library/Logs/comictrans/` on macOS, `~/.local/state/comictrans/`
+elsewhere, or wherever `COMICTRANS_LOG_DIR` points:
 
-A wider look at the window's error handling, and a proper application log, is
-milestone 4.17 in `docs/ROADMAP.md`. This much exists now because a crash you
-cannot see is a crash you cannot fix.
+- `review.log` is everything a running window has to say: every page skipped,
+  every region that would not fit, and the full traceback of anything that
+  went wrong without stopping the window. It keeps more detail than the
+  terminal shows, and rotates at a megabyte.
+- `review-crash.log` is for the case where there is no window left to say
+  anything. A segfault, or the abort Qt raises when it gives up, kills the
+  process outright — no dialog, no message, and no stderr at all when it was
+  not started from a terminal. That file gets a line every time `review`
+  starts and a Python traceback naming the exact line if the process dies, on
+  every thread.
+
+Both are written to your own disk and sent nowhere. This tool makes no
+network calls, and a stack trace is not an exception to that. Neither file
+ever contains the comic: `source_text`, `translation` and `notes` are kept
+out of a region's own repr, so no log line and no traceback can carry them by
+accident.
+
+**An error that does not stop the window still says so.** An exception in a
+menu action or a mouse handler used to be printed to a terminal nobody had
+open, leaving a button that appeared to do nothing; now the status bar names
+it and points at the log. Failures you can act on — an unwritable directory,
+a font that will not resolve — say what happened instead; the traceback goes
+to the file, where a bug report can pick it up.
 
 **Help > About** reports the version, the author, the licence, and every
 declared dependency that is actually installed, with its version — read from

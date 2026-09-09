@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.17 | Error handling, and somewhere for a crash to go | M |
 | 4.8 | macOS look and feel | M |
 | 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
@@ -55,16 +54,6 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-**4.17 goes first because it is under the other four.** A packaged
-application (4.10) has no stderr at all, and stderr is where everything the
-window says about a failure still goes — the crash file catches the process
-dying and nothing else. Localisation
-(4.9) touches every user-visible string, and error messages are strings, so
-doing them afterwards means a second `lupdate` pass over all of them. Help
-(4.7) has to say where the log is. And it is the one item on this list
-answering something that is happening now rather than something that would be
-nice.
-
 One ordering was a judgement call rather than a dependency, and it paid out:
 **rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
 the window and both needed the same worker thread, progress and cancel.
@@ -73,172 +62,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.17 Error handling, and somewhere for a crash to go
-
-Go over what the window does when something goes wrong, and give it a log
-file. A crash that kills the process now leaves a trace; a failure that does
-not kill it still leaves nothing at all.
-
-**"Crash" is three different things, and the one being hit is the hard one.**
-Measured on PySide6 6.11.2:
-
-- **The process dies.** A segfault or an abort: the window vanishes outright
-  with nothing on screen and, launched without a terminal, nothing anywhere
-  else either. This is the reported symptom, so it is what this milestone
-  leads with. `qFatal` — Qt's own way of giving up, on a `QThread` destroyed
-  while running among other things — takes this route too, so "segfault" and
-  "Qt refused to continue" look identical from outside.
-- **A swallowed exception.** An exception raised in a slot — a menu action, a
-  signal handler, a mouse event — is printed to stderr and the event loop
-  carries on. The application does *not* abort. The window survives with its
-  state half-updated, and what you see is a button that did nothing. Not the
-  reported symptom, but almost certainly also present and unnoticed.
-- **An exception outside a slot.** Everything `gui.app.run` does before
-  `app.exec()` — building the window, opening a plan named on the command
-  line. That propagates to `cli.main`, which catches only `ComictransError`,
-  so anything else exits with a raw traceback. The window vanishes here too,
-  but stderr says why.
-
-**`faulthandler` came first, and has already shipped.** It was pulled out of
-this milestone and done on its own, because nothing else here could start
-without it: `gui.crash` turns it on before the `QApplication` exists and
-writes a Python traceback — the exact line, on every thread — to
-`~/Library/Logs/comictrans/review-crash.log`. `SIGSEGV` and `SIGABRT` are both
-caught, measured at exit 139 and exit 134. So the next crash names itself, and
-what is left below is the work that trace makes possible.
-
-**What is known so far.** It was seen during **preview**, which eliminates
-more than it implicates: `render_preview` is synchronous on the main thread
-and touches no OCR, no recogniser and no worker thread at all. If the crash
-is only ever in preview, the whole thread-related branch of the search is
-out — Apple Vision on a `QThread`, a `QThread` destroyed while running, the
-job read after `deleteLater`. Those stay worth a look only if it turns out to
-happen elsewhere too.
-
-**A reproduction was attempted and did not crash.** The reported plan and its
-page — `tests/fixtures/11-complex_six_panel_page.png`, byte-identical — were
-run through `render_preview`, `to_pixmap` and a real paint into a
-`QGraphicsScene`, on Linux under the offscreen platform with PySide6 6.11.2.
-It rendered 2840×3880 RGB, converted to a non-null pixmap and painted, twice
-over. So the preview path is not unconditionally broken on that input, and
-whatever this is depends on the platform, the display, or state built up
-across a session. Recorded because a negative result is worth as much as a
-positive one when the next person starts here.
-
-**What is left, in the order worth checking:**
-
-- **`to_pixmap`, which is `PIL.ImageQt`.** The one place a Pillow buffer
-  becomes something Qt paints, and the classic shape of this kind of crash:
-  `ImageQt` wraps the image's memory rather than copying it, so its lifetime
-  and Qt's have to be reasoned about rather than assumed. `QPixmap.fromImage`
-  copies, which is why it survives here, but the margin is one function call
-  wide. Converting through an explicit `QImage.copy()` — or through raw bytes
-  with an explicit `bytesPerLine` — would remove the question entirely, and is
-  cheap enough to do on suspicion.
-- **Three copies of an eleven-megapixel page, per preview.** That page is
-  2840×3880: about 33MB as PIL RGB, 44MB as ARGB32 inside `ImageQt`, and 44MB
-  again as the `QPixmap`. `Ctrl+R` toggles, so a session spent comparing the
-  overlay against the render does that repeatedly. Worth measuring what is
-  actually released between toggles before assuming it is fine; a graphics
-  allocation that fails on macOS need not come back as a `MemoryError`.
-- **The Retina backing store.** A 2× display doubles what the view rasterises,
-  and none of the testing has ever run on one. Nothing specific is suspected
-  here; it is simply an entire dimension the offscreen platform does not have.
-- **`QGraphicsScene.clear()` and a stale wrapper.** `show_page` clears the
-  scene and every dict that held its items, which is exactly right, so this
-  one looks handled — but it is the other classic, and preview is the code
-  path that calls it most.
-
-The first task is therefore still not a fix: read the trace the next crash
-leaves, and let that pick from the list rather than picking by argument. The
-failed reproduction above is why — an afternoon of plausible reasoning
-narrowed this less than one captured trace will.
-
-**The log file.** `review` configures logging exactly as the CLI does —
-`basicConfig` onto stderr — and a window launched from Finder, or from a
-bundle once 4.10 lands, has no stderr anyone will ever read. Every
-`log.warning` about a skipped page, every `log.exception` from a worker
-thread, is already being written and thrown away.
-
-Add a file handler alongside the stream one, in the directory
-`gui.crash.crash_directory` already picks — `~/Library/Logs/comictrans/` on
-macOS, the XDG state directory elsewhere, `COMICTRANS_LOG_DIR` over both.
-That decision is made and tested; reuse it rather than making it twice, and
-the two files then sit side by side where anyone looking for one finds the
-other. Rotate this one properly — `RotatingFileHandler`, a megabyte or so, a
-couple of backups — since unlike the crash file it takes a line per page.
-
-**A log record survives a segfault.** `logging.FileHandler` flushes on every
-record, measured: a process that logs a line and then dereferences null exits
-139 with the line on disk. So the ordinary log is a second, independent trace
-for a hard crash — log the risky thing *before* doing it, at debug level, and
-a log that ends mid-page names the page even when `faulthandler` cannot say
-why. The two answer different halves: `faulthandler` says where the process
-was, the log says what it was trying to do.
-
-They stay two files for the same reason they answer different halves.
-`faulthandler` writes from a signal handler and must not contend with the
-logging module's locks.
-
-**Nothing is ever sent anywhere.** "Crash report" normally means telemetry;
-here it means a file on your own disk that you may choose to attach to
-something. No network calls anywhere in the pipeline is an invariant, and it
-does not stop being one because the payload is a stack trace.
-
-**The log must not contain the comic.** `source_text` and `translation` are
-the user's material, and a log that dumps region text is both a privacy
-problem and enormous. Region ids, image names, counts, exception types and
-tracebacks — not content. Worth a test, because the easy way to write a log
-line is to interpolate the object that has the text in it.
-
-**Three hooks, once, at startup.** `sys.excepthook` for the main thread,
-`threading.excepthook` for anything the worker threads do not catch
-themselves (`RunJob` already catches, but its own handler could raise), and
-`qInstallMessageHandler` so Qt's warnings land in the same file instead of
-the terminal. The last one is likely to be the most informative of the three:
-Qt says a good deal about layouts and dangling objects that nobody currently
-sees.
-
-**A swallowed exception is not a success.** Once the hooks exist, decide what
-the window does after one. Carrying on silently is what happens today and is
-the worst option, since the document may be half-edited. The cheap answer is
-a status-bar line and a log entry — "something went wrong; see the log" —
-which at least matches what the user experienced. The expensive answer is to
-work out per site whether the state is recoverable. Start cheap.
-
-**Then the audit.** The window's own call sites are patchy rather than
-missing: `_on_region_drawn` guards `sample_region_colors`, and
-`_merged_colors` calls the same function unguarded; `_on_rescan_fonts` calls
-`fonts.available_families()` with nothing around it; `_on_image_selected` and
-`_on_render_preview` both catch `ComictransError` and are the model to follow.
-That is a starting list, not the list — the pass is to walk every slot and ask
-what it does when the thing under it raises.
-
-Two rules for the pass. A `ComictransError` is an expected failure and gets a
-message the user can act on; anything else is a bug and gets logged with its
-traceback. And a failure must leave the document either unchanged or
-consistent — never half-edited, since undo is a stack of whole plans and a
-partial edit poisons it.
-
-**Somewhere to find it.** A **Help > Open Log Folder** item, so attaching a
-log to a bug report is one click rather than a paragraph of instructions.
-Cheap, and it is what makes the rest of this milestone useful to anyone but
-the person who wrote it.
-
-**What this is not.** Not a crash-reporting service, not telemetry, not
-automatic issue filing, and not a general refactor of the pipeline's error
-handling — `extract` and `apply` already report through `ExtractReport` and
-`ApplyReport`, and the CLI's exit codes and stderr behaviour must not move.
-This is about the window.
-
-**Testing.** The hooks are testable: point the file handler at a `tmp_path`,
-raise from a slot, and assert the traceback landed in the file and the comic
-text did not. The audit is testable one guarded site at a time, by making the
-thing under it raise. Even the segfault turned out testable — `gui.crash`'s
-suite kills a subprocess and reads the function name back out of the file —
-so the pattern exists to copy. What is not testable is the crash actually
-being hunted here, since it has never been reproduced off a Mac.
 
 ## 4.8 macOS look and feel
 

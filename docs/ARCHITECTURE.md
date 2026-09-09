@@ -554,14 +554,16 @@ extract_dialog.py what to read, where the plan goes, in what languages
 run_panel.py    the dock a run reports into, whose rows go where they name
 preferences.py  what a new run starts from — no Qt
 preferences_dialog.py  those defaults, and a reminder of what they are not
-crash.py        fatal-signal traces to a file — no Qt
+logfile.py      the application log, and the hooks that fill it — no Qt
+crash.py        fatal-signal traces to a second file — no Qt
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
 `document.py`, `preview.py`, `sampling.py`, `about.py`, `run_report.py`,
-`preferences.py` and `crash.py` need no display and import no Qt;
+`preferences.py`, `logfile.py` and `crash.py` need no display and import
+no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that knows about more than one other
 widget, which is what keeps an edit's ripple effects (the window title's
@@ -993,6 +995,60 @@ both and a row knows whether there is anywhere to go. An extract does *not*
 list the regions that merely need checking: the plan it just wrote flags every
 one of them, the page list counts them, and Next Flagged Region walks them, so
 a second copy in a panel would go stale the moment one was fixed.
+
+**Two files, because a failure comes in two kinds.** `review` configured
+logging the way the CLI does — a stream handler onto stderr — and a window
+launched from Finder has no stderr anyone will ever read, so everything it
+said was written and thrown away. `gui.logfile` adds a rotating file
+alongside; `gui.crash` keeps a separate one for a process that dies. They
+stay separate because the crash file is written from a signal handler and
+must not contend with the locks the logging module takes.
+
+The file takes DEBUG while the stream handler keeps whatever level the CLI
+chose, which is what makes "log the risky thing before doing it" worth doing:
+a log that ends mid-page names the page even when nothing else can. `install`
+pins the existing handlers at the root level before opening the root up, or
+`-q` would quietly start printing INFO to a terminal it was told to keep
+quiet.
+
+**The log must not contain the comic, so a `Region` cannot say it.**
+`source_text`, `translation` and `notes` carry `repr=False`. The easy way to
+write a log line is `log.info("region %s", region)`, and the easy way for a
+traceback to carry text is a local variable in a frame — neither is a place
+the translator's work should turn up, and neither is defended by remembering
+to be careful. `region.translation` still prints when asked for by name;
+nothing prints it by accident. Two tests hold the line, one per route.
+
+**One hook covers the whole swallowed-exception case.** Measured: PySide6
+calls `sys.excepthook` for an exception raised inside a slot, whether the
+slot was invoked from C++ or queued through the event loop. So the window
+does not need per-slot wrapping to stop those vanishing — the hook logs the
+traceback and the window puts a line in the status bar naming the type. That
+matters because PySide6 does not abort on one: without this the event loop
+carries on with the document possibly half-edited and the only evidence on a
+terminal nobody had open.
+
+`threading.excepthook` catches what a worker thread's own handler misses, and
+`qInstallMessageHandler` routes Qt's own warnings — the most informative of
+the three, since Qt says a good deal about layouts and dangling objects that
+nobody was seeing.
+
+**Guard what touches the world; let the hook catch the rest.** The audit that
+came with this found fewer holes than expected: the handlers that read a
+page, render a preview, merge two regions or write a plan already caught
+`ComictransError`. What was left were the ones that read the filesystem
+outside a plan — rescanning fonts, and the two dialogs whose font box does it
+on construction — plus deleting a region that could have gone underneath the
+window. Those are guarded; everything else relies on the hook, which is the
+honest trade, since wrapping forty slots that cannot fail would be forty
+places to keep in step.
+
+`_report_failure` decides how loudly by what kind of error it is. A
+`ComictransError` is an expected failure carrying something to act on, so the
+message *is* the message. Anything else is a bug: the status bar gets its
+type and a pointer to the log, and the log gets the traceback, because a type
+and a line number are what a bug report needs and neither belongs in a status
+bar.
 
 **A hard crash gets a file, because it gets nothing else.** An exception in a
 Qt slot is printed and the event loop carries on — survivable. A segfault, or

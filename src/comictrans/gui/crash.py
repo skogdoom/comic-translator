@@ -17,35 +17,25 @@ and is a different thing with different rules: this file is written from a
 signal handler and must not contend with the logging module's locks, and it
 holds only the last thing the process did before dying.
 
-No Qt. The location wants ``~/Library/Logs`` on macOS, which is where a user
-and Console.app both look and which ``QStandardPaths`` has no enum for — its
-``AppDataLocation`` is ``Application Support``, the wrong answer on the one
-platform this tool targets. So the path is worked out here, and this module
-is tested like any other.
+No Qt, and it shares :func:`comictrans.gui.logfile.log_directory` with the
+application log so the two files sit side by side: whoever finds one finds
+the other.
 """
 
 from __future__ import annotations
 
 import faulthandler
 import logging
-import os
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
 from .. import __version__
+from .logfile import log_directory
 
 log = logging.getLogger(__name__)
 
-APPLICATION = "comictrans"
 FILENAME = "review-crash.log"
-
-LOG_DIR_ENV = "COMICTRANS_LOG_DIR"
-"""Overrides where traces go, the same escape hatch ``COMICTRANS_FONT_PATH``
-is for fonts. It exists for the suite, which must not write into the log
-directory of whoever runs it, and works for anyone who wants their logs
-somewhere else."""
 
 MAX_BYTES = 512 * 1024
 """When the file passes this, it is rolled to ``.old`` and started again.
@@ -55,25 +45,6 @@ thousands of launches. Two files, never more: enough to still have the crash
 after launching the application again to look for it, which is exactly what
 somebody does.
 """
-
-
-def crash_directory() -> Path:
-    """Where crash traces go, by the convention of the platform.
-
-    macOS has one and it is not the one ``QStandardPaths`` would give: logs
-    live in ``~/Library/Logs``, which is where Console.app reads and where
-    anyone asked for a log will look. Elsewhere, the XDG state directory,
-    which is the closest equivalent for something that is neither
-    configuration nor a cache.
-    """
-    override = os.environ.get(LOG_DIR_ENV)
-    if override:
-        return Path(override).expanduser()
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Logs" / APPLICATION
-    state = os.environ.get("XDG_STATE_HOME")
-    root = Path(state) if state else Path.home() / ".local" / "state"
-    return root / APPLICATION
 
 
 _file: IO[str] | None = None
@@ -101,7 +72,7 @@ def enable(directory: Path | None = None) -> Path | None:
     disk costs the traces and nothing else.
     """
     global _file
-    path = (directory or crash_directory()) / FILENAME
+    path = (directory or log_directory()) / FILENAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         _roll(path)
@@ -133,12 +104,4 @@ def disable() -> None:
         _file = None
 
 
-__all__ = [
-    "APPLICATION",
-    "FILENAME",
-    "LOG_DIR_ENV",
-    "MAX_BYTES",
-    "crash_directory",
-    "disable",
-    "enable",
-]
+__all__ = ["FILENAME", "MAX_BYTES", "disable", "enable"]
