@@ -142,6 +142,28 @@ class CanvasMode(StrEnum):
     """The next click reports the region under it, then this ends."""
 
 
+MODE_HINTS: dict[CanvasMode, str] = {
+    CanvasMode.SELECT: "click a region to select it · drag to pan · Ctrl and the wheel zooms",
+    CanvasMode.RESHAPE: (
+        "drag a corner to reshape · drag inside to move · double-click an edge to add "
+        "a corner or a corner to remove it · Esc cancels"
+    ),
+    CanvasMode.DRAW: (
+        "click to place each corner · click the first again, double-click or Enter to "
+        "close it · Backspace takes one back · Esc cancels"
+    ),
+    CanvasMode.MERGE: "click the region to merge the selected one with · Esc cancels",
+    CanvasMode.PICK: "click a colour on the page · Esc cancels",
+}
+"""What each mode does to a click, in one line, for the window to show.
+
+Beside the modes rather than in the window, because the gestures are this
+widget's own behaviour: a mode that gains a gesture should gain its line in
+the same edit. Written to be read at a glance and to stay short — the line
+sits under the canvas, where a long one would be cut off rather than wrap.
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class _ShapeDrag:
     """A polygon being dragged, and what it looked like before it started.

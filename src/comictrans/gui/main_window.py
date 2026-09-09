@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .. import fonts
@@ -36,6 +38,7 @@ from .canvas import (
     COLOR_APPROXIMATE,
     COLOR_EXACT,
     COLOR_MANUAL,
+    MODE_HINTS,
     CanvasMode,
     PageCanvas,
     RegionAppearance,
@@ -43,6 +46,7 @@ from .canvas import (
 )
 from .document import PlanDocument
 from .header_dialog import HeaderDialog
+from .hint_line import HintLine
 from .inspector import RegionInspector
 from .page_list import PageList
 from .preview import render_preview
@@ -120,7 +124,20 @@ class MainWindow(QMainWindow):
         self._canvas = PageCanvas()
         self._inspector = RegionInspector()
 
-        self.setCentralWidget(self._canvas)
+        # The canvas with a hint line under it, rather than the canvas alone.
+        # A mode's gestures were announced once, in a status bar message that
+        # the next message replaced, so they were discoverable only in the
+        # second after switching mode. This line stays put.
+        self._hint = HintLine()
+        self._hint.set_hint(MODE_HINTS[CanvasMode.SELECT])
+
+        centre = QWidget()
+        stack = QVBoxLayout(centre)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(0)
+        stack.addWidget(self._canvas, 1)
+        stack.addWidget(self._hint)
+        self.setCentralWidget(centre)
         self._pages_dock = QDockWidget("Pages", self)
         self._pages_dock.setObjectName("pages_dock")
         self._pages_dock.setWidget(self._pages)
@@ -663,19 +680,9 @@ class MainWindow(QMainWindow):
 
     def _on_edit_shape_toggled(self, on: bool) -> None:
         self._canvas.set_mode(CanvasMode.RESHAPE if on else CanvasMode.SELECT)
-        if on:
-            self.statusBar().showMessage(
-                "drag a corner to reshape, inside to move; double-click an edge to "
-                "add a corner or a corner to remove it; Esc cancels"
-            )
 
     def _on_add_region_toggled(self, on: bool) -> None:
         self._canvas.set_mode(CanvasMode.DRAW if on else CanvasMode.SELECT)
-        if on:
-            self.statusBar().showMessage(
-                "click to place each corner; click the first one again, double-click "
-                "or press Enter to close it; Backspace takes one back, Esc cancels"
-            )
 
     def _on_canvas_mode_changed(self, mode: str) -> None:
         """Keep the checked action and the canvas saying the same thing.
@@ -685,6 +692,7 @@ class MainWindow(QMainWindow):
         round. Signals are blocked because setting a check mark here must not
         look like someone clicking it.
         """
+        self._hint.set_hint(MODE_HINTS[CanvasMode(mode)])
         for action, value in (
             (self._edit_shape_action, CanvasMode.RESHAPE),
             (self._add_region_action, CanvasMode.DRAW),
@@ -730,10 +738,6 @@ class MainWindow(QMainWindow):
 
     def _on_merge_toggled(self, on: bool) -> None:
         self._canvas.set_mode(CanvasMode.MERGE if on else CanvasMode.SELECT)
-        if on and self._current_region is not None:
-            self.statusBar().showMessage(
-                f"click the region to merge {self._current_region} with; Esc cancels"
-            )
 
     def _on_region_picked(self, region_id: str) -> None:
         """The other half of a merge, clicked on the page."""
@@ -815,7 +819,9 @@ class MainWindow(QMainWindow):
             return
         self._sampling = field
         self._canvas.set_mode(CanvasMode.PICK)
-        self.statusBar().showMessage(f"click the page to take the {field} colour")
+        # Which colour is being taken is not visible anywhere else, so the
+        # line says it in place of the mode's own general one.
+        self._hint.set_hint(f"click the page to take the {field} colour · Esc cancels")
 
     def _on_point_picked(self, point: Point) -> None:
         field, self._sampling = self._sampling, None

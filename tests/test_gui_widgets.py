@@ -45,7 +45,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
-from comictrans.gui.canvas import COLOR_MANUAL, CanvasMode
+from comictrans.gui.canvas import COLOR_MANUAL, MODE_HINTS, CanvasMode
 from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
 
@@ -2072,3 +2072,62 @@ def test_merging_needs_something_to_merge_with(qapp: object, plan_with_a_blank_p
     window._pages.select_image("page-002.png")
 
     assert not window._merge_action.isEnabled(), "the only region on its page"
+
+
+# -- the hint line ------------------------------------------------------------
+
+
+def test_the_hint_line_says_what_a_click_does_in_each_mode(
+    qapp: object, two_page_plan: Path
+) -> None:
+    # The gestures used to be announced once, in a status bar message the next
+    # message replaced. This line stays put for as long as the mode does.
+    window = _shown_window(two_page_plan)
+    assert window._hint.hint() == MODE_HINTS[CanvasMode.SELECT]
+
+    window._edit_shape_action.setChecked(True)
+    assert window._hint.hint() == MODE_HINTS[CanvasMode.RESHAPE]
+    assert "double-click an edge" in window._hint.hint()
+
+    window._add_region_action.setChecked(True)
+    assert window._hint.hint() == MODE_HINTS[CanvasMode.DRAW]
+
+    window._add_region_action.setChecked(False)
+    assert window._hint.hint() == MODE_HINTS[CanvasMode.SELECT], "and it comes back"
+
+
+def test_the_hint_line_names_the_colour_being_taken(qapp: object, two_page_plan: Path) -> None:
+    # Which of the two colours is being picked is not visible anywhere else.
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    window._inspector._text_color.sample_requested.emit()
+
+    assert "text colour" in window._hint.hint()
+
+    _click_scene(window._canvas, 20, 20)
+
+    assert window._hint.hint() == MODE_HINTS[CanvasMode.SELECT]
+
+
+def test_the_hint_line_sits_under_the_canvas_and_cannot_widen_the_window(
+    qapp: object, two_page_plan: Path
+) -> None:
+    # The shape of the defect recorded as 4 in known-bugs.md, one layer out: a
+    # label wide enough to read must not set a floor under the whole window.
+    window = _shown_window(two_page_plan)
+    layout = window.centralWidget().layout()
+
+    assert layout.itemAt(0).widget() is window._canvas
+    assert layout.itemAt(1).widget() is window._hint
+
+    assert window.centralWidget().minimumSizeHint().width() < 100, "it costs no width"
+
+    # What will not fit is elided rather than cut off mid-word, and the whole
+    # line stays readable in the tooltip.
+    window._hint.set_hint(MODE_HINTS[CanvasMode.RESHAPE])
+    window._hint.resize(200, window._hint.height())
+
+    assert window._hint.text() != window._hint.hint(), "a long line in a narrow one"
+    assert window._hint.text().endswith("…")
+    assert window._hint.toolTip() == MODE_HINTS[CanvasMode.RESHAPE]
