@@ -327,6 +327,10 @@ the end of this one, and `Ctrl+Shift+Down` skips ahead to the next region
 with something worth checking. All three are on the toolbar, and switch off
 when there is nowhere left to go.
 
+A line under the canvas says what a click does in whatever mode the window is
+in — placing corners, reshaping, merging, taking a colour — and stays there
+for as long as the mode does, rather than scrolling past in the status bar.
+
 The **Window** menu closes and reopens the two panels, and **Reset Layout**
 puts them back where they started. The layout is remembered between
 sessions — the only thing this tool stores outside a plan file.

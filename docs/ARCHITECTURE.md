@@ -513,6 +513,7 @@ preview.py     render_page called on the current document — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 qimage.py      the one function that turns a Pillow image into a QPixmap
 canvas.py      the page: a pixmap, and clickable region outlines over it
+hint_line.py    the line under it: what a click does, elided to fit
 sampling.py    colours read off the page for a region drawn by hand
 inspector.py   one region's fields, writing straight through to the document
 color_box.py    a colour field: a swatch, the standard values, the eyedropper
@@ -520,8 +521,8 @@ page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
 header_dialog.py the settings every region is drawn under
 font_box.py     a font field offering only what fonts.py can resolve
-main_window.py wires the four widgets together; the only module that
-               knows about all of them at once
+main_window.py wires the widgets together; the only module that knows
+               about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
@@ -693,6 +694,20 @@ than a set of switches that could be on together. The window's two checkable
 actions follow the canvas through `mode_changed` rather than driving it,
 because the canvas leaves a mode on its own: an outline that closes and a
 pixel that is picked both end the mode that produced them.
+
+**A mode's gestures are shown, not announced.** The line under the canvas
+carries them, keyed off the same `mode_changed` the toolbar follows, and its
+text lives in `canvas.MODE_HINTS` beside the modes themselves — a mode that
+gains a gesture gains its line in the same edit. It replaced a status bar
+message shown once on entering a mode, which meant the gestures were
+readable for exactly as long as it took the next message to arrive. The
+label (`hint_line.py`) takes an `Ignored` horizontal size policy so that a
+line wide enough to read cannot set a floor under the window's width:
+measured at 405px of text against a central widget whose minimum stays 70px,
+and a window minimum of 478px either way. What will not fit is elided with
+the whole line in the tooltip — the same bargain `font_box` strikes with a
+long family name, and the reason the hints are ordered with the gesture you
+need most at the front.
 
 **`review` may measure the page; `apply` may not.** The invariant is about
 the second pass: everything `apply` needs is in the plan file, which is what
