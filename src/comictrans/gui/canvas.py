@@ -138,6 +138,9 @@ class CanvasMode(StrEnum):
     PICK = "pick"
     """The next click reports the page pixel under it, then this ends."""
 
+    MERGE = "merge"
+    """The next click reports the region under it, then this ends."""
+
 
 @dataclass(frozen=True, slots=True)
 class _ShapeDrag:
@@ -237,6 +240,11 @@ class PageCanvas(QGraphicsView):
     point_picked = Signal(object)
     """A page pixel was clicked in pick mode: an ``(x, y)`` point. The page
     itself is not here, so reading the colour there is for whoever has it."""
+
+    region_picked = Signal(str)
+    """A region was clicked in merge mode: the one to fold the selected one
+    into. Reported rather than selected, because the selection is the other
+    half of the pair."""
 
     mode_changed = Signal(str)
     """The canvas changed mode, including when it left one of its own accord
@@ -381,6 +389,8 @@ class PageCanvas(QGraphicsView):
         self.viewport().setCursor(
             Qt.CursorShape.CrossCursor
             if mode in (CanvasMode.DRAW, CanvasMode.PICK)
+            else Qt.CursorShape.PointingHandCursor
+            if mode is CanvasMode.MERGE
             else Qt.CursorShape.ArrowCursor
         )
         self.mode_changed.emit(str(mode))
@@ -708,6 +718,15 @@ class PageCanvas(QGraphicsView):
                 self._pick(event.position())
                 event.accept()
                 return
+            if self._mode is CanvasMode.MERGE:
+                # A click on nothing is a miss, not a cancel: the outlines
+                # are thin and the one you want is easy to skim past.
+                region_id = self.region_at(event.position())
+                if region_id is not None:
+                    self.region_picked.emit(region_id)
+                    self.set_mode(CanvasMode.SELECT)
+                event.accept()
+                return
             if self._mode is CanvasMode.DRAW:
                 self._place_point(event.position())
                 event.accept()
@@ -800,6 +819,10 @@ class PageCanvas(QGraphicsView):
         key = event.key()
         if key == Qt.Key.Key_Escape and self._drag is not None:
             self._cancel_drag()
+            event.accept()
+            return
+        if key == Qt.Key.Key_Escape and self._mode in (CanvasMode.PICK, CanvasMode.MERGE):
+            self.set_mode(CanvasMode.SELECT)
             event.accept()
             return
         if self._mode is CanvasMode.DRAW:

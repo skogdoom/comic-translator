@@ -793,3 +793,112 @@ def test_how_a_region_is_erased_is_an_editable_field() -> None:
     assert doc.region("r1").erase is Erase.NONE
     doc.undo()
     assert doc.region("r1").erase is None
+
+
+# -- merging ------------------------------------------------------------------
+
+LEFT_HALF = ((10, 10), (110, 10), (110, 110), (10, 110))
+RIGHT_HALF = ((60, 10), (160, 10), (160, 110), (60, 110))
+
+
+def _halves(**overrides: object) -> PlanDocument:
+    """One balloon traced as two overlapping regions, which is the case."""
+    return _document(
+        _region(
+            "page-001.png",
+            id="page-001-001",
+            order=1,
+            polygon=LEFT_HALF,
+            source_text="NON CI POSSO",
+            translation="I CAN'T",
+        ),
+        _region(
+            "page-001.png",
+            id="page-001-002",
+            order=2,
+            polygon=RIGHT_HALF,
+            source_text="CREDERE!",
+            translation="BELIEVE IT!",
+            **overrides,
+        ),
+    )
+
+
+def test_merging_keeps_the_earlier_region_and_covers_both_outlines() -> None:
+    doc = _halves()
+
+    merged = doc.merge_regions("page-001-001", "page-001-002")
+
+    assert merged.id == "page-001-001", "the older name is the one that stays"
+    assert merged.order == 1
+    assert doc.ordered_ids() == ("page-001-001",)
+    assert merged.geometry is Geometry.MANUAL, "a person decided this shape"
+    assert set(merged.polygon) == {(10, 10), (160, 10), (160, 110), (10, 110)}
+    assert merged.source_text == "NON CI POSSO\nCREDERE!"
+    assert merged.translation == "I CAN'T\nBELIEVE IT!"
+
+
+def test_merging_is_the_same_either_way_round() -> None:
+    forwards = _halves().merge_regions("page-001-001", "page-001-002")
+    backwards = _halves().merge_regions("page-001-002", "page-001-001")
+
+    assert forwards == backwards, "which one you clicked first is not a decision"
+
+
+def test_a_merge_takes_the_worse_confidence_and_the_flags_that_matter() -> None:
+    doc = _halves(confidence=0.4, low_confidence=True, skip=True, font="Marker Felt")
+
+    merged = doc.merge_regions("page-001-001", "page-001-002")
+
+    assert merged.confidence == 0.4, "as good as its worse half"
+    assert merged.low_confidence
+    assert not merged.skip, "one half was to be lettered, so the merged one is"
+    assert merged.font == "Marker Felt", "an override on either half is kept"
+
+
+def test_merging_is_one_undo_step() -> None:
+    doc = _halves()
+    doc.merge_regions("page-001-001", "page-001-002")
+
+    assert doc.undo()
+
+    assert doc.ordered_ids() == ("page-001-001", "page-001-002")
+    assert doc.region("page-001-001").polygon == LEFT_HALF
+    assert not doc.dirty
+
+
+def test_regions_that_do_not_overlap_are_not_merged() -> None:
+    # A hull across two balloons would swallow the artwork between them, and
+    # erase would then paint over it.
+    doc = _document(_apart(1), _apart(2))
+
+    with pytest.raises(ValueError, match="do not overlap"):
+        doc.merge_regions("r1", "r2")
+
+    assert len(doc.plan.regions) == 2
+    assert not doc.dirty
+
+
+def test_a_region_is_not_merged_with_itself_or_across_pages() -> None:
+    doc = _document(
+        _apart(1),
+        _region("page-002.png", id="r2", polygon=Box(0, 0, 100, 100).as_polygon()),
+    )
+
+    with pytest.raises(ValueError, match="with itself"):
+        doc.merge_regions("r1", "r1")
+    with pytest.raises(ValueError, match="different pages"):
+        doc.merge_regions("r1", "r2")
+
+
+def test_a_merge_can_be_handed_colours_read_from_the_merged_shape() -> None:
+    doc = _halves()
+
+    merged = doc.merge_regions(
+        "page-001-001",
+        "page-001-002",
+        fill_color=Color(1, 2, 3),
+        text_color=Color(250, 251, 252),
+    )
+
+    assert (merged.fill_color, merged.text_color) == (Color(1, 2, 3), Color(250, 251, 252))

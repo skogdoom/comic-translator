@@ -277,6 +277,18 @@ fill colour is disabled while it is chosen, because nothing is painted with
 it. This is the field to reach for when a fill colour appears to do nothing:
 under the default `flat`, it only ever repaints pixels that read as lettering.
 
+**Edit > Merge Region…** (`Ctrl+M`) folds two regions into one, for the
+balloon detection traced as two: select one, then click the other. The merged
+outline is the convex hull of both, its colours are read from the page inside
+that shape, and the texts are joined in reading order. The earlier region
+keeps its id and order — a name in a report should stay the name it was — and
+the geometry becomes `manual`, because you decided the shape.
+
+It is refused unless the two outlines genuinely overlap, and shared area is
+what counts, not shared bounding boxes: two balloons on opposite sides of a
+panel have no simple polygon covering both and only both, and a hull across
+them would swallow the artwork between, which erase would then paint over.
+
 **Edit > Delete Region** (`Ctrl+Backspace`) removes the selected region. A
 delete is a delete, not a `skip: true` in disguise — the region is gone from
 the file the next time you save. `Ctrl+Z` puts it back while the session

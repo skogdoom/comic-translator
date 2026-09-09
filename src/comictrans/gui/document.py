@@ -26,7 +26,9 @@ from ..model import (
     Polygon,
     Region,
     TextCase,
+    convex_hull,
     polygon_is_simple,
+    polygons_overlap,
 )
 from ..planfile import load_plan, write_plan
 from ..planfile.schema import (
@@ -93,6 +95,11 @@ def validated_polygon(polygon: Polygon) -> Polygon:
         # both leave edges touching, and neither is a shape apply could fill.
         raise ValueError("that shape crosses or folds over itself")
     return points
+
+
+def _joined(first: str, second: str) -> str:
+    """Two halves of one balloon's text, in reading order, blanks dropped."""
+    return "\n".join(part for part in (first.strip(), second.strip()) if part)
 
 
 def _numbers_used(plan: Plan) -> dict[str, int]:
@@ -530,6 +537,71 @@ class PlanDocument:
             replace(self.plan, regions=(*regions[:index], region, *regions[index:])), run=None
         )
         return region
+
+    def merge_regions(
+        self,
+        first_id: str,
+        second_id: str,
+        *,
+        fill_color: Color | None = None,
+        text_color: Color | None = None,
+    ) -> Region:
+        """Fold two regions into one, and hand back what they became.
+
+        For the balloon detection traced as two, which is the case this
+        exists for. **Refused unless the outlines genuinely overlap** — not
+        the loose bounding-box test :func:`overlapping_region_ids` warns
+        with, but shared area. Two balloons on opposite sides of a panel have
+        no simple polygon covering both and only both: the convex hull across
+        them would swallow the artwork between, and erase would then paint
+        over it.
+
+        What survives is the earlier region: an id is how a region is named
+        in a report or a note, and the one that keeps its name should be the
+        one whose name is older. The texts are joined in reading order, the
+        geometry becomes ``manual`` because a person decided this shape, and
+        the confidence is the lower of the two, since the merged reading is
+        only as good as its worse half. Colours are the earlier one's unless
+        the caller has re-sampled them from the merged outline.
+        """
+        first, second = self.region(first_id), self.region(second_id)
+        if first.id == second.id:
+            raise ValueError("a region cannot be merged with itself")
+        if first.image != second.image:
+            raise ValueError("regions on different pages cannot be merged")
+        if not polygons_overlap(first.polygon, second.polygon):
+            raise ValueError("those outlines do not overlap")
+
+        order = self.ordered_ids()
+        if order.index(second.id) < order.index(first.id):
+            first, second = second, first
+
+        merged = replace(
+            first,
+            geometry=Geometry.MANUAL,
+            polygon=validated_polygon(convex_hull((*first.polygon, *second.polygon))),
+            fill_color=fill_color or first.fill_color,
+            text_color=text_color or first.text_color,
+            confidence=min(first.confidence, second.confidence),
+            low_confidence=first.low_confidence or second.low_confidence,
+            # Skipped only if both halves were: merging a balloon someone
+            # meant to leave alone with one they meant to letter leaves text
+            # to letter.
+            skip=first.skip and second.skip,
+            source_text=_joined(first.source_text, second.source_text),
+            translation=_joined(first.translation, second.translation),
+            notes=_joined(first.notes, second.notes),
+            font=first.font or second.font,
+            font_size=first.font_size or second.font_size,
+            erase=first.erase or second.erase,
+        )
+        regions = tuple(
+            merged if region.id == first.id else region
+            for region in self.plan.regions
+            if region.id != second.id
+        )
+        self._record(replace(self.plan, regions=regions), run=None)
+        return merged
 
     def delete_region(self, region_id: str) -> Region:
         """Remove a region from the plan, and hand it back.

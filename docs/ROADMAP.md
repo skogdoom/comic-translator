@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.5 | Region editing | XL |
 | 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
 | 4.13 | Preferences | M |
@@ -50,19 +49,14 @@ string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Help text describes the UI, so it goes
 after the UI stops moving.
 
-**Foundations come before what stands on them.** 4.4 went first for that
-reason: undo built for five text fields would have needed rewriting the
-moment a polygon could move, so it snapshots whole plans instead and 4.5
-inherits it. Zoom went before 4.5 for a plainer reason: dragging a polygon
-vertex accurately means being able to see it.
+**Foundations come before what stands on them.** 4.4 and zoom went early for
+that reason, and region editing — the largest of the minor milestones, now
+shipped — stood on both: undo built for five text fields would have needed
+rewriting the moment a polygon could move, so it snapshots whole plans
+instead, and dragging a polygon vertex accurately means being able to see
+it.
 
-Two orderings are judgement calls rather than dependencies.
-
-**Region editing (4.5) before the two pipeline milestones.** Extract and
-apply both already work from a terminal. A bad polygon cannot be fixed
-anywhere at all — not in the GUI, and not without hand-editing pixel
-coordinates in YAML. Given what `known-bugs.md` already records about
-detection, editing earns its place first despite being the larger job.
+One ordering is a judgement call rather than a dependency.
 
 **Rendering (4.14) before extract (4.6).** Both run a pipeline pass from
 the window, and both need the same worker thread, progress and cancel.
@@ -71,113 +65,6 @@ safe to call off the main thread — and the more valuable, because reviewing
 a plan and then leaving for a terminal to render it is the obvious hole in
 the window as it stands. Build the threading on the easy case; extract
 reuses it with the harder question on top.
-
-## 4.5 Region editing
-
-Edit a region's polygon, add a region, delete a region, merge two.
-
-The largest milestone on the list and the one that changes what the GUI is.
-Four passes: model and schema, then move and reshape, then add and delete,
-then merge. **The first three passes are done** — what they settled is
-recorded below as done, not as a plan. Merge is what is left.
-
-### Done: model and schema
-
-Plan schema version 2. Each page's hash moved out of every region into a
-top-level `images` list, so a page with no text on it is in the plan and can
-be drawn on; `Geometry` gained `manual`, for a polygon a person drew.
-Version 1 files are upgraded as they are read — the images list is rebuilt
-from the regions, which carry the same facts — so no existing plan is
-orphaned. `README.md` and `ARCHITECTURE.md` carry the details.
-
-Note the compatibility direction: an older comictrans meeting `geometry:
-manual` or an `images` list fails with a `PlanError`. At `0.1.0` with one
-user that is cheap, and it will not stay cheap.
-
-### Done: move and reshape
-
-**Edit > Edit Region Shape** (`Ctrl+E`) puts handles on the selected
-region's corners: drag one to move it, drag inside to move the whole shape,
-double-click an edge to add a corner or a corner to remove one, `Esc` to
-abandon a drag. A mode rather than always on, because dragging inside a
-region is also how the page pans.
-
-The canvas draws the drag and reports the outline once, on mouse up, so one
-drag is one undo step. `PlanDocument.set_polygon` validates it by the
-reader's own rules — the correctness trap below, now closed — and marks the
-geometry `manual`; a refused shape is put back on screen from the document.
-`README.md` and `ARCHITECTURE.md` carry the details.
-
-Vertex editing did not need a colour of its own, but `manual` did: violet,
-beside green for traced and orange for approximate.
-
-### Done: add and delete
-
-**Edit > Add Region** (`Ctrl+Shift+A`) draws an outline corner by corner —
-click the first corner again, double-click or Enter to close it, Backspace
-to take one back, `Esc` to abandon. **Edit > Delete Region**
-(`Ctrl+Backspace`) removes the selected one, with no confirmation dialog:
-undo is the safety net every other edit here gets, and the status bar says
-what went and how to get it back. Both are one undo step.
-
-No OCR, as settled: a drawn region's `source_text` is typed in beside its
-translation, and until then the region reads as held back. Its colours are
-measured off the page by `gui/sampling.py`, through the same
-`detect.color.sample_colors` extract uses; both colours are editable on any
-region from the inspector, with the standard lettering values, a colour
-dialog, and an eyedropper that takes the next click on the page.
-`ARCHITECTURE.md` carries the measurements behind the ink-box heuristic.
-
-The two questions this pass opened are answered in the code. Ids are
-numbered past the highest a page has used, with a session high-water mark so
-a deleted region's name is not handed on. A hand-drawn region records
-`confidence: 1.0`: the field is not optional, `0.0` would flag it as a
-doubtful reading forever, and read beside `geometry: manual` the pair says
-what it is — nothing measured this, so there is no measurement to doubt.
-
-### Settled, not yet built
-
-**A merge is undoable like everything else.** 4.4's snapshot stack gives it
-for free, as it did the three passes above: a merged plan is a new `Plan`
-pushed through the same `_record`, with no undo code of its own.
-
-**Merging is refused unless the polygons genuinely overlap.** With that
-gate, the merged polygon is the convex hull of both. This covers the case
-merge exists for — one balloon traced as two regions, the class of bug
-`known-bugs.md` and the fixtures already show — and refuses the case the
-single-polygon model cannot represent honestly. Two balloons on opposite
-sides of a panel have no simple polygon covering both and only both; a hull
-across them would swallow the artwork between, which erase would then wipe.
-
-The gate must test real polygon intersection, not the bounding-box ratio
-`overlapping_region_ids` uses — that one exists to warn about regions
-drawing over each other at apply time and is deliberately loose.
-`model.segments_intersect` already gives the edge-crossing half; a
-ray-cast point-in-polygon test for the containment half belongs beside it,
-where it stays free of OpenCV. `detect._contains_centers` is the same test
-but built on `cv2.pointPolygonTest`, so it cannot be reused from the
-document layer.
-
-### Open
-
-- **What a merged region keeps.** Two regions have two ids, two orders, two
-  source texts and two translations, and the merge has to pick. The id and
-  order of the earlier one is the obvious answer; the texts joined with a
-  newline is a guess worth checking against a real double-traced balloon.
-  Colours can be re-sampled from the merged outline, which is what the add
-  pass built.
-
-### The correctness trap, closed
-
-`write_plan` performs no schema validation — the reader does, which was
-harmless only while the GUI could not produce a plan the reader would
-reject. Editable polygons could: `polygon_is_simple` rejects
-self-intersecting and degenerate polygons at load, so the window could have
-written a file it then refused to reopen. Geometry edits are validated in
-`gui.document` before they reach the plan, against limits shared with the
-reader through `planfile.schema`. The two passes still to come add
-polygons of their own and inherit that: an added or merged region goes
-through the same `set_polygon` gate.
 
 ## 4.14 Render pages from the GUI
 
@@ -235,8 +122,8 @@ Leave `--merge` out. Re-extracting over an open plan is exactly the merge
 case, including its lost-hand-work reporting and its exit status, and that
 is a second feature. Extract to a new plan, then open it.
 
-Once 4.5 exists, re-extracting a page is destructive against hand-edited
-regions. Keep the two apart.
+Now that regions can be drawn, reshaped and merged by hand, re-extracting a
+page is destructive against exactly that work. Keep the two apart.
 
 ## 4.13 Preferences
 
@@ -286,7 +173,7 @@ appears. What is actually left, roughly by value:
   below and 4.10's build config already need — `QIcon.fromTheme` returns
   nothing on macOS, so there is no route that avoids shipping files. Doing
   it here rather than earlier also means drawing icons once for a toolbar
-  4.5 has finished adding buttons to. Icon sets carry licences; whichever
+  region editing has finished adding buttons to. Icon sets carry licences; whichever
   is chosen needs recording in `LICENSE` and in the About dialog.
 - An `.icns` icon and bundle identity, which mostly overlaps with 4.10
 - `AboutRole` on the About action, so macOS moves it into the application

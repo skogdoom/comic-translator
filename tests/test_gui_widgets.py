@@ -1994,3 +1994,80 @@ def test_one_action_swaps_between_the_overlay_and_the_rendered_page(
 
     assert not window._showing_preview
     assert window._preview_action.text() == PREVIEW_TEXT
+
+
+# -- merging ------------------------------------------------------------------
+
+OVER_BALLOON_A = ((200, 60), (400, 60), (400, 200), (200, 200))
+"""A second outline dragged across the first, as a double-traced balloon is."""
+
+
+def test_merging_two_regions_from_the_canvas(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._on_polygon_edited("page-001-002", OVER_BALLOON_A)
+    window._go_to_region("page-001-001")
+
+    window._merge_action.setChecked(True)
+    assert window._canvas.mode is CanvasMode.MERGE
+
+    _click_scene(window._canvas, 350, 130)  # inside the second outline only
+
+    assert [r.id for r in window.document.regions_for("page-001.png")] == ["page-001-001"]  # type: ignore[union-attr]
+    assert window._current_region == "page-001-001"
+    assert window._canvas.region_ids() == {"page-001-001"}
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._merge_action.isChecked()
+    assert "merged" in window.statusBar().currentMessage()
+
+    merged = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert merged.geometry is Geometry.MANUAL
+    assert (400, 60) in merged.polygon, "the hull reaches the far side"
+
+
+def test_merging_refuses_outlines_that_do_not_overlap(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._merge_action.setChecked(True)
+
+    _click_scene(window._canvas, 400, 130)  # the balloon across the page
+
+    assert len(window.document.regions_for("page-001.png")) == 2  # type: ignore[union-attr]
+    assert not window.isWindowModified()
+    assert "do not overlap" in window.statusBar().currentMessage()
+
+
+def test_a_merged_region_takes_its_colours_from_the_merged_shape(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._on_polygon_edited("page-001-002", OVER_BALLOON_A)
+    window._go_to_region("page-001-001")
+    # A colour the page cannot produce, so inheriting it would show.
+    window.document.set_fill_color("page-001-001", Color(1, 2, 3))  # type: ignore[union-attr]
+    window._merge_action.setChecked(True)
+
+    _click_scene(window._canvas, 350, 130)
+
+    merged = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert merged.fill_color.as_tuple() == BALLOON_WHITE, "read off the page, not inherited"
+
+
+def test_escape_leaves_merge_mode(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._merge_action.setChecked(True)
+
+    QTest.keyClick(window._canvas, Qt.Key.Key_Escape)
+
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._merge_action.isChecked()
+
+
+def test_merging_needs_something_to_merge_with(qapp: object, plan_with_a_blank_page: Path) -> None:
+    window = _shown_window(plan_with_a_blank_page)
+    window._go_to_region("page-001-001")
+    assert window._merge_action.isEnabled(), "two regions on this page"
+
+    window._pages.select_image("page-002.png")
+
+    assert not window._merge_action.isEnabled(), "the only region on its page"

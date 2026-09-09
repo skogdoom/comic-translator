@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from .. import fonts
 from ..errors import ComictransError
 from ..imaging import PageImage, load_page
-from ..model import Geometry, Point, Polygon, Region
+from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
 from .about_dialog import AboutDialog
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -136,6 +136,7 @@ class MainWindow(QMainWindow):
         self._canvas.polygon_edited.connect(self._on_polygon_edited)
         self._canvas.region_drawn.connect(self._on_region_drawn)
         self._canvas.point_picked.connect(self._on_point_picked)
+        self._canvas.region_picked.connect(self._on_region_picked)
         self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
@@ -221,6 +222,12 @@ class MainWindow(QMainWindow):
         self._add_region_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self._add_region_action.toggled.connect(self._on_add_region_toggled)
         edit_menu.addAction(self._add_region_action)
+
+        self._merge_action = QAction("&Merge Region…", self)
+        self._merge_action.setCheckable(True)
+        self._merge_action.setShortcut(QKeySequence("Ctrl+M"))
+        self._merge_action.toggled.connect(self._on_merge_toggled)
+        edit_menu.addAction(self._merge_action)
 
         # No confirmation: undo is the safety net every other edit here gets,
         # and a dialog on every delete would be one to click through rather
@@ -328,6 +335,7 @@ class MainWindow(QMainWindow):
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._edit_shape_action)
         self._toolbar.addAction(self._add_region_action)
+        self._toolbar.addAction(self._merge_action)
         self._toolbar.addAction(self._delete_region_action)
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._previous_region_action)
@@ -398,6 +406,15 @@ class MainWindow(QMainWindow):
         self._edit_shape_action.setEnabled(can_edit_shapes)
         self._add_region_action.setEnabled(can_edit_shapes)
         self._delete_region_action.setEnabled(can_edit_shapes and self._current_region is not None)
+        # Something to merge with: another region on this page.
+        on_page = (
+            len(self.document.regions_for(self._current_image))
+            if self.document is not None and self._current_image is not None
+            else 0
+        )
+        self._merge_action.setEnabled(
+            can_edit_shapes and self._current_region is not None and on_page > 1
+        )
         if not can_edit_shapes:
             self._canvas.set_mode(CanvasMode.SELECT)
 
@@ -670,6 +687,7 @@ class MainWindow(QMainWindow):
         for action, value in (
             (self._edit_shape_action, CanvasMode.RESHAPE),
             (self._add_region_action, CanvasMode.DRAW),
+            (self._merge_action, CanvasMode.MERGE),
         ):
             with QSignalBlocker(action):
                 action.setChecked(mode == value)
@@ -700,6 +718,46 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"added {region.id} — type the text on the page, then its translation"
         )
+
+    def _on_merge_toggled(self, on: bool) -> None:
+        self._canvas.set_mode(CanvasMode.MERGE if on else CanvasMode.SELECT)
+        if on and self._current_region is not None:
+            self.statusBar().showMessage(
+                f"click the region to merge {self._current_region} with; Esc cancels"
+            )
+
+    def _on_region_picked(self, region_id: str) -> None:
+        """The other half of a merge, clicked on the page."""
+        if self.document is None or self._current_region is None:
+            return
+        first = self._current_region
+        try:
+            colors = self._merged_colors(first, region_id)
+            merged = self.document.merge_regions(first, region_id, **colors)
+        except (ValueError, KeyError, ComictransError) as exc:
+            self.statusBar().showMessage(f"not merged: {exc}", 5000)
+            return
+        self._current_region = None  # one of the two is gone
+        self._refresh_page_visuals()
+        self._go_to_region(merged.id)
+        self._update_actions_enabled()
+        self.statusBar().showMessage(f"merged {first} and {region_id} into {merged.id}", 5000)
+
+    def _merged_colors(self, first_id: str, second_id: str) -> dict[str, Color]:
+        """Colours read off the page inside what the merged outline will be.
+
+        The two halves each sampled part of the balloon; the merged shape
+        covers all of it, so it is worth asking the page again. An empty
+        answer leaves ``merge_regions`` to keep the earlier region's.
+        """
+        if self.document is None or self._page is None:
+            return {}
+        first, second = self.document.region(first_id), self.document.region(second_id)
+        if first.image != second.image:
+            return {}
+        hull = convex_hull((*first.polygon, *second.polygon))
+        fill, text = sample_region_colors(self._page, hull)
+        return {"fill_color": fill, "text_color": text}
 
     def _on_delete_region(self) -> None:
         if self.document is None or self._current_region is None:

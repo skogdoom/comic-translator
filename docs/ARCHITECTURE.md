@@ -714,6 +714,23 @@ four real fixture pages reproduces exactly what extract recorded in 20 of
 them; the twenty-first differs by a near-white tint on a whisper balloon
 (#ebf8f4 against #ffffff).
 
+**A merge is refused unless the outlines share area.** The bounding-box
+ratio `overlapping_region_ids` warns with is deliberately loose — it exists to
+say "these two will draw over each other", where a false positive costs a
+glance. Merging cannot use it: the merged polygon is the convex hull of both
+outlines, and a hull across two balloons on opposite sides of a panel covers
+the artwork between them, which erase then paints over. So `model` grew a real
+test — `polygons_overlap`, built from the edge-crossing check that was already
+there plus a ray-cast `point_in_polygon` for the case where one outline is
+wholly inside the other. Both are kept free of OpenCV, which has
+`pointPolygonTest` and is already a dependency of `detect`, because
+`gui.document` needs them and is deliberately free of numpy and OpenCV.
+
+The hull, rather than a union: a `Region` holds one simple polygon, and the
+union of two overlapping outlines is not always one. A hull is, it covers
+everything both covered, and with the overlap gate in front of it the extra
+area it claims is the notch between two tracings of the same balloon.
+
 **Region ids go forward, never back.** A new region is numbered past the
 highest its page has used, and the document keeps that high-water mark for
 the session so that deleting the last region on a page and drawing another
