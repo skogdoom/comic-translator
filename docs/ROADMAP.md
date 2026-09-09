@@ -24,6 +24,7 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
+| 4.16 | Move a region | S |
 | 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
 | 4.13 | Preferences | M |
@@ -42,7 +43,8 @@ Three things decide this order.
 **Cheap and immediately felt comes first.** 4.1 to 4.3 were small and
 visible the moment the window opened, which is why they went first, and
 4.11, 4.12 and 4.15 were the same shape: felt on every page of every
-review, and waiting on nothing.
+review, and waiting on nothing. 4.16 is the same shape again, and is a
+refinement of code that is still fresh.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
@@ -65,6 +67,60 @@ safe to call off the main thread — and the more valuable, because reviewing
 a plan and then leaving for a terminal to render it is the obvious hole in
 the window as it stands. Build the threading on the easy case; extract
 reuses it with the harder question on top.
+
+## 4.16 Move a region
+
+Move the selected region without first entering a mode, and nudge it with
+the arrow keys.
+
+Half of this exists: in **Edit Region Shape** (`Ctrl+E`), dragging inside an
+outline already moves the whole shape, offset-clamped so it stops at the
+edge of the page rather than flattening against it, and that mode stays on
+the region it was chosen for. What is missing is reaching it without the
+mode at all, which is the common case — a balloon sits a few pixels off and
+nothing else about it needs changing.
+
+### Settled
+
+**A modifier drag, not a plain one.** `Cmd`-drag (Qt's `ControlModifier`)
+inside a region moves it, in select mode and reshape mode alike. Plain
+dragging cannot be it: dragging inside a region is also how the page is
+panned, which is the whole reason reshaping is a mode. Handing plain drag to
+moving would take the pan away exactly where it is needed most — at the zoom
+where a balloon fills the viewport. `Ctrl`+wheel is zoom, but `Ctrl`+drag is
+unclaimed on the canvas.
+
+**Arrow keys nudge**, one pixel at a time, ten with `Shift`. The precise
+half of the same job, and free of the pan conflict entirely. The catch is
+focus: the inspector's text fields hold it for most of a session and swallow
+arrows, which is why stepping between regions is `Ctrl+Up/Down` (see the
+comment on those actions in `main_window`). Either the canvas has to have
+focus for this to work, or the nudge needs a modifier of its own.
+
+### Open
+
+- **Undo granularity for nudges.** One drag is one undo step today because
+  `_on_polygon_edited` ends the edit run after every polygon edit. Forty
+  taps of an arrow key must not be forty steps: they should coalesce on the
+  `(region_id, "polygon")` run key already there, and break when the
+  selection moves. That is a deliberate change to the current rule, not an
+  oversight in it.
+- **Does moving alone make the geometry `manual`?** It does now — every
+  route through `set_polygon` marks it — and the case for keeping that is
+  that a polygon put somewhere by hand is not one detection traced. The cost
+  is that nudging a region one pixel clears its `approximate` "check this"
+  flag. Worth agreeing on before it happens by accident.
+- **Cursor feedback.** A move cursor over a region while the modifier is
+  held, so the gesture is discoverable without reading the status bar.
+
+### Traps
+
+A `Cmd`-drag that starts on a corner handle in reshape mode is ambiguous:
+the corner should win, and the status hint has to say so. Modifier-dragging
+on a trackpad is awkward, which is what the keyboard nudge is for. And the
+page clamp that whole-shape drags already use applies to both routes — a
+move must not put a corner off the top or left, where the plan file reader
+would refuse it.
 
 ## 4.14 Render pages from the GUI
 
@@ -173,8 +229,8 @@ appears. What is actually left, roughly by value:
   below and 4.10's build config already need — `QIcon.fromTheme` returns
   nothing on macOS, so there is no route that avoids shipping files. Doing
   it here rather than earlier also means drawing icons once for a toolbar
-  region editing has finished adding buttons to. Icon sets carry licences; whichever
-  is chosen needs recording in `LICENSE` and in the About dialog.
+  region editing has finished adding buttons to. Icon sets carry licences;
+  whichever is chosen needs recording in `LICENSE` and in the About dialog.
 - An `.icns` icon and bundle identity, which mostly overlaps with 4.10
 - `AboutRole` on the About action, so macOS moves it into the application
   menu where it belongs, and the same for a Preferences action once 4.13
