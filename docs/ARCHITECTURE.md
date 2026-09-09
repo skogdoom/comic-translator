@@ -784,3 +784,13 @@ it — a real `QMessageBox` opens a native modal event loop even under
 `offscreen`, and nothing will ever click its button. Every test that leaves
 a document dirty either saves or discards it, or patches the dialog, before
 the test ends.
+
+A second one, found while testing that the page still pans in reshape mode:
+a synthetic press-move-release that reaches `QGraphicsView`'s own
+`ScrollHandDrag` — one that starts where nothing on the canvas intercepts it
+— **segfaults the offscreen platform**, taking the whole run with it. Drags
+that the canvas handles itself are fine, which is every drag the suite makes
+on a region or a corner handle. Panning is therefore checked by hand rather
+than in the suite; the press falls through to the view in one line, and what
+is worth testing about it — that the selection does not follow the click — is
+tested without dragging at all.
