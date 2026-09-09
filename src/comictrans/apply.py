@@ -12,6 +12,7 @@ inside it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,6 +27,26 @@ from .util import is_within
 log = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class PageProgress:
+    """Where a run has got to, handed over just before a page is rendered.
+
+    Reported before rather than after, so a caller showing it has the name of
+    the page currently being worked on rather than the last one that finished
+    — which is the one a slow page makes you want to know.
+    """
+
+    index: int
+    """Position in the run, counting from zero."""
+    total: int
+    image: str
+
+
+ProgressCallback = Callable[[PageProgress], None]
+CancelCheck = Callable[[], bool]
+"""Asked between pages whether to stop. See ``apply_plan``."""
+
+
 @dataclass(slots=True)
 class ApplyReport:
     """What happened, for the end-of-run summary and the exit code."""
@@ -33,6 +54,8 @@ class ApplyReport:
     pages_written: list[Path] = field(default_factory=list)
     outcomes: list[tuple[str, RegionOutcome]] = field(default_factory=list)
     page_failures: list[tuple[str, str]] = field(default_factory=list)
+    cancelled: bool = False
+    """Whether the run was stopped part-way rather than reaching the last page."""
 
     def _count(self, status: str) -> int:
         return sum(1 for _, outcome in self.outcomes if outcome.status == status)
@@ -69,8 +92,18 @@ class ApplyReport:
 
     @property
     def ok(self) -> bool:
-        """A deliberate ``skip: true`` passes; an unfinished translation does not."""
-        return not self.page_failures and not any(o.unfinished for _, o in self.outcomes)
+        """A deliberate ``skip: true`` passes; an unfinished translation does not.
+
+        A cancelled run is not ok either. Nothing it wrote is wrong — pages
+        are written whole — but pages the plan named are missing, and a caller
+        that treated that as success would be reporting a chapter it did not
+        render.
+        """
+        return (
+            not self.cancelled
+            and not self.page_failures
+            and not any(o.unfinished for _, o in self.outcomes)
+        )
 
 
 def source_for(plan_path: Path, region_image: str) -> Path:
@@ -79,13 +112,20 @@ def source_for(plan_path: Path, region_image: str) -> Path:
 
 
 def check_output_dir(output: Path, sources: list[Path]) -> None:
-    """Refuse an output directory that would write into the source tree."""
+    """Refuse an output directory that would write into the source tree.
+
+    This is where the invariant that source images are never written to is
+    actually enforced, so it is the one refusal in this tool with no
+    ``--force`` and no equivalent anywhere else: the command line has no flag
+    for it and the review window's render dialog offers no checkbox. The
+    wording avoids naming ``--output`` because the window shows it too.
+    """
     for source in sources:
         if is_within(output, source):
             raise InputError(
-                f"--output {output} is inside the source directory {source}. "
-                "Source images are never written to; choose a directory "
-                "outside the source tree."
+                f"the output directory {output} is inside the source directory "
+                f"{source}. Source images are never written to; choose a "
+                "directory outside the source tree."
             )
 
 
@@ -126,8 +166,22 @@ def apply_plan(
     font: str | None = None,
     image_format: str | None = None,
     force: bool = False,
+    progress: ProgressCallback | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> ApplyReport:
-    """Render every page the plan refers to into ``output``."""
+    """Render every page the plan refers to into ``output``.
+
+    ``progress`` is called once per page, before it is rendered, so a caller
+    driving this from a window can say where it has got to. ``should_cancel``
+    is asked at the same moment and stops the run when it answers true. Both
+    are optional and neither changes what is rendered: this loop is the only
+    implementation of "render every page of a plan", and a second copy of it
+    outside this module would be a second place for the two to drift.
+
+    Cancelling takes effect between pages, never inside one. What is on disk
+    when a run stops is therefore always whole pages, the same files a
+    complete run would have written for them, and re-running finishes the job.
+    """
     images = plan.image_names()
     sources = [source_for(plan_path, image) for image in images]
     check_output_dir(output, sorted({path.parent for path in sources}))
@@ -138,7 +192,14 @@ def apply_plan(
         raise ComictransError(str(exc)) from exc
 
     report = ApplyReport()
-    for image, source in zip(images, sources, strict=True):
+    for index, (image, source) in enumerate(zip(images, sources, strict=True)):
+        if should_cancel is not None and should_cancel():
+            report.cancelled = True
+            log.warning("cancelled after %d page(s)", len(report.pages_written))
+            break
+        if progress is not None:
+            progress(PageProgress(index=index, total=len(images), image=image))
+
         regions: tuple[Region, ...] = plan.regions_for(image)
         try:
             page = load_page(source)

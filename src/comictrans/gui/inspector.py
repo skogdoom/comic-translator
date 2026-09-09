@@ -45,7 +45,7 @@ from .document import PlanDocument, RegionFlags
 from .font_box import FontBox
 
 ERASE_CHOICES: tuple[tuple[str, Erase | None, str], ...] = (
-    ("(plan default)", None, "whatever --erase says when apply runs"),
+    ("(plan default)", None, "whatever the run is set to erase: --erase, or the render dialog"),
     ("the lettering", Erase.FLAT, "repaint the original lettering in the fill colour"),
     ("the whole region", Erase.POLYGON, "flood the whole outline with the fill colour"),
     ("reconstruct", Erase.INPAINT, "rebuild the lettering's pixels from the ones around them"),

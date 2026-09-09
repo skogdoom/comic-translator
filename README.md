@@ -318,6 +318,46 @@ Overlay** while the rendered page is up: one button, and its label says which
 way it goes. Your place is kept across the swap in both directions — the zoom,
 the position, and the region you had selected.
 
+**File > Render Pages…** (`Ctrl+Shift+R`) runs the whole `apply` pass without
+leaving the window. The dialog asks the three things the command line asks
+for as flags — where to write, what format, and how to erase the original
+lettering — plus whether to overwrite pages already in that directory, which
+is `--force` as a checkbox rather than a refusal you rerun the command to get
+past. Everything else comes from the plan's own header, so a chapter rendered
+from here and the same chapter rendered by `comictrans apply` are made the
+same way.
+
+The output directory is prefilled with a directory beside the pages, and one
+inside the source tree is refused with the button disabled and the reason
+underneath it. There is no override, no confirmation and nothing to hold
+down: it is the same check `--output` gets, and the only refusal in this tool
+that cannot be argued with. Source images are never written to.
+
+**A plan with unsaved edits is saved first**, and the button says so — it
+reads *Save and Render* rather than *Render*. Pages rendered from a plan that
+exists only in a window are pages that cannot be regenerated, which is the
+property the two passes exist to have. The live preview renders unsaved edits
+happily, because a preview is ephemeral and output files are not.
+
+There is no equivalent of `--skip-hash-check`, and that is deliberate. The
+window verifies every page's hash when it opens a plan and refuses one whose
+images have changed, so a render started from an open plan has already passed
+the check that flag exists to skip. **Reload** checks again.
+
+The run happens on a worker thread, so the window stays usable while a
+chapter renders: a panel along the bottom names the page being worked on and
+how far along the run is. **Cancel** stops it after that page rather than
+part-way through one, so what is on disk is always whole pages and re-running
+finishes the job.
+
+When it is done the panel lists what wants a second look — a page that failed
+to render at all, a region whose text would not fit, one with no translation,
+one lettered below the readable minimum or condensed to make it fit, one
+still holding its source text. Click a row and the window goes to that
+region, changing page if it is on another one. It is a panel rather than a
+dialog because that list is a thing to work through, not a thing to dismiss;
+it opens itself when a run finishes and closes from the **Window** menu.
+
 The page starts fitted to the window. `Ctrl+=` and `Ctrl+-` zoom, `Ctrl+0`
 fits again and `Ctrl+1` is actual size; Ctrl and the wheel zooms about the
 pointer, and on a Mac trackpad pinch works too. The status bar shows the
