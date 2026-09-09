@@ -11,6 +11,7 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
@@ -18,7 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from comictrans.errors import OcrUnavailableError
+from comictrans import fonts
+from comictrans.errors import InputError, OcrUnavailableError
 from comictrans.model import (
     Box,
     Color,
@@ -47,7 +49,7 @@ from .conftest import (
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QDesktopServices, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -57,7 +59,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from comictrans.gui import extract_dialog, run_job
+from comictrans.gui import extract_dialog, logfile, run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -3037,3 +3039,103 @@ def test_a_window_without_settings_stores_nothing(qapp: object) -> None:
     window._on_preferences_changed(_preferences())
 
     assert window._preferences.source_language == "ja", "held, but only in this window"
+
+
+# -- when something goes wrong -------------------------------------------
+#
+# The log file, the hooks and what must never reach them are tested without
+# Qt in test_gui_logfile.py. What is left for here is what the window itself
+# does: say so rather than silently doing nothing.
+
+
+def test_an_expected_failure_says_what_to_do_about_it(qapp: object) -> None:
+    window = MainWindow()
+
+    window._report_failure("saving", InputError("the disk is full"))
+
+    assert "the disk is full" in window.statusBar().currentMessage()
+
+
+def test_a_bug_says_its_name_and_points_at_the_log(qapp: object) -> None:
+    """A traceback belongs in a file; a status bar gets the type and a pointer."""
+    window = MainWindow()
+
+    window._report_failure("rendering", ValueError("index out of range"))
+
+    message = window.statusBar().currentMessage()
+    assert "ValueError" in message
+    assert "see the log" in message
+    assert "index out of range" not in message, "that is what the log is for"
+
+
+def test_the_window_hears_about_an_exception_nobody_caught(qapp: object, tmp_path: Path) -> None:
+    """PySide6 prints these and carries on, so without this nothing is said."""
+    window = MainWindow()
+    logfile.install(tmp_path)
+    logfile.install_hooks()
+    try:
+        try:
+            raise RuntimeError("in a slot")
+        except RuntimeError:
+            sys.excepthook(*sys.exc_info())  # type: ignore[arg-type]
+        assert "RuntimeError" in window.statusBar().currentMessage()
+        assert "see the log" in window.statusBar().currentMessage()
+    finally:
+        logfile.uninstall()
+        logfile.set_notifier(None)
+
+
+def test_closing_the_window_stops_it_being_notified(qapp: object) -> None:
+    """The next window registers itself; a closed one must not still be listening."""
+    window = MainWindow()
+    window.close()
+
+    assert logfile._notify is None
+
+
+def test_rescanning_fonts_reports_a_filesystem_failure_rather_than_vanishing(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+
+    def unreadable() -> tuple[str, ...]:
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(fonts, "available_families", unreadable)
+    monkeypatch.setattr(fonts, "forget_available_families", lambda: None)
+
+    window._on_rescan_fonts()
+
+    assert "rescanning fonts" in window.statusBar().currentMessage()
+
+
+def test_the_help_menu_offers_the_log_folder(qapp: object, tmp_path: Path) -> None:
+    window = MainWindow()
+
+    assert window._open_logs_action.text() == "Open &Log Folder"
+
+
+def test_opening_the_log_folder_makes_it_first(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder nothing has written to yet still has to open."""
+    target = tmp_path / "not-there-yet"
+    monkeypatch.setenv(logfile.LOG_DIR_ENV, str(target))
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda _url: True)
+    window = MainWindow()
+
+    window._on_open_logs()
+
+    assert target.is_dir()
+
+
+def test_a_desktop_that_will_not_open_it_still_says_where_it_is(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(logfile.LOG_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda _url: False)
+    window = MainWindow()
+
+    window._on_open_logs()
+
+    assert str(tmp_path) in window.statusBar().currentMessage()

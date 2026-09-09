@@ -11,7 +11,7 @@ pixels, origin top-left, integers.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Self
 
@@ -213,9 +213,17 @@ class Region:
     fill_color: Color
     text_color: Color
     confidence: float
-    source_text: str
-    translation: str = ""
-    notes: str = ""
+
+    # The three fields that hold the comic itself, and the only three kept
+    # out of this class's repr. A repr is what ends up in a log line someone
+    # wrote as `log.info("...%s", region)`, and in the locals of any
+    # traceback that passes through — neither of which is a place the
+    # translator's text should turn up. `region.translation` still prints
+    # when it is asked for by name; nothing prints it by accident.
+    source_text: str = field(repr=False)
+    translation: str = field(default="", repr=False)
+    notes: str = field(default="", repr=False)
+
     low_confidence: bool = False
     skip: bool = False
     erase: Erase | None = None

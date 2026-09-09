@@ -64,10 +64,11 @@ def run(plan_path: Path | None = None) -> int:
     two things, and a modal dialog in front of one of them is in the way of
     the other. The status bar names both.
 
-    Fatal-signal traces are turned on first — see :mod:`comictrans.gui.crash`.
-    A segfault or a ``qFatal`` abort kills the process outright, and a window
-    launched from Finder has no stderr for it to be reported on, so the trace
-    goes to a file instead.
+    Diagnostics are turned on first, before anything can go wrong. A window
+    launched from Finder has no stderr at all, so both halves go to files:
+    :mod:`comictrans.gui.logfile` for what a running window says and for
+    anything nobody caught, and :mod:`comictrans.gui.crash` for the traceback
+    of a process that dies outright.
 
     Raises :class:`GuiUnavailableError` rather than letting an import error or
     a platform-plugin failure escape as something unreadable — both are things
@@ -80,12 +81,17 @@ def run(plan_path: Path | None = None) -> int:
             f"({unavailable_reason()}). Install it with: uv sync --extra gui"
         )
 
-    # Before the QApplication, so a fatal signal raised while Qt is starting
-    # up has somewhere to go too. Never raises; returns None if it could not
-    # open the file, and the window opens either way.
+    # Before the QApplication, so anything that goes wrong while Qt is
+    # starting up has somewhere to go too. None of this raises: an unwritable
+    # home costs the diagnostics and the window opens either way.
+    from . import logfile
     from .crash import enable as enable_crash_traces
 
+    written = logfile.install()
+    logfile.install_hooks()
     traces = enable_crash_traces()
+    if written is not None:
+        log.info("log file: %s", written)
     if traces is not None:
         log.info("crash traces: %s", traces)
 
@@ -98,6 +104,10 @@ def run(plan_path: Path | None = None) -> int:
             f"PySide6 is installed but could not open a display: {exc}. On Linux this "
             "usually means a system Qt/X11 library is missing; on macOS it should just work."
         ) from exc
+
+    # Now that Qt exists, its own warnings can be routed too — the most
+    # informative of the three hooks, and the only one that needs it running.
+    logfile.install_qt_message_handler()
 
     from PySide6.QtCore import QSettings
 

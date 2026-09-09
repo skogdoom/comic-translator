@@ -17,8 +17,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QByteArray, QSettings, QSignalBlocker, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtCore import QByteArray, QSettings, QSignalBlocker, Qt, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
@@ -53,6 +53,7 @@ from .extract_dialog import ExtractDialog
 from .header_dialog import HeaderDialog
 from .hint_line import HintLine
 from .inspector import RegionInspector
+from .logfile import log_directory, set_notifier
 from .page_list import PageList
 from .preferences import Preferences, load_preferences, save_preferences
 from .preferences_dialog import PreferencesDialog
@@ -200,6 +201,12 @@ class MainWindow(QMainWindow):
         # messages the status bar shows for saves and preview results.
         self._zoom_label = QLabel()
         self.statusBar().addPermanentWidget(self._zoom_label)
+
+        # Anything nobody caught says so here rather than nowhere. PySide6
+        # prints a slot's exception and carries on, so without this the
+        # window survives with its state possibly half-updated and all the
+        # user sees is a button that did nothing.
+        set_notifier(self._on_unhandled)
 
         self._build_menus()
         self._build_toolbar()
@@ -396,6 +403,13 @@ class MainWindow(QMainWindow):
         window_menu.addAction(self._reset_layout_action)
 
         help_menu = self.menuBar().addMenu("&Help")
+        # Above About, because it is the one someone reaches for with a
+        # problem in hand rather than curiosity.
+        self._open_logs_action = QAction("Open &Log Folder", self)
+        self._open_logs_action.triggered.connect(self._on_open_logs)
+        help_menu.addAction(self._open_logs_action)
+        help_menu.addSeparator()
+
         self._about_action = QAction("&About comictrans review", self)
         self._about_action.triggered.connect(self._on_about)
         help_menu.addAction(self._about_action)
@@ -869,7 +883,11 @@ class MainWindow(QMainWindow):
             return
         going = self._current_region
         neighbour = self._neighbour_of(going)
-        self.document.delete_region(going)
+        try:
+            self.document.delete_region(going)
+        except (KeyError, ComictransError) as exc:  # gone underneath us
+            self._report_failure(f"deleting {going}", exc)
+            return
         self._current_region = None
         self._refresh_page_visuals()
         if neighbour is not None:
@@ -1176,8 +1194,14 @@ class MainWindow(QMainWindow):
         self._zoom_label.setText(f"{round(factor * 100)}%{fitting}")
 
     def _on_rescan_fonts(self) -> None:
-        self._inspector._font.rescan()
-        count = len(fonts.available_families())
+        # Reads every font file on the system, so it is one of the few things
+        # here that can fail for reasons outside this process.
+        try:
+            self._inspector._font.rescan()
+            count = len(fonts.available_families())
+        except (OSError, ComictransError) as exc:
+            self._report_failure("rescanning fonts", exc)
+            return
         self.statusBar().showMessage(f"{count} font families available", 5000)
 
     def _on_edit_header(self) -> None:
@@ -1191,7 +1215,11 @@ class MainWindow(QMainWindow):
         """
         if self.document is None:
             return
-        dialog = HeaderDialog(self.document, self)
+        try:
+            dialog = HeaderDialog(self.document, self)
+        except (OSError, ComictransError) as exc:  # its font box reads the disk
+            self._report_failure("opening the plan header", exc)
+            return
         dialog.edited.connect(self._on_header_edited)
         dialog.exec()
 
@@ -1210,7 +1238,11 @@ class MainWindow(QMainWindow):
         there is nothing to apply and nothing to cancel, which is also what
         macOS expects of a Preferences window.
         """
-        dialog = PreferencesDialog(self._preferences, self)
+        try:
+            dialog = PreferencesDialog(self._preferences, self)
+        except (OSError, ComictransError) as exc:  # its font box reads the disk
+            self._report_failure("opening preferences", exc)
+            return
         dialog.changed.connect(lambda: self._on_preferences_changed(dialog.preferences()))
         dialog.exec()
 
@@ -1229,6 +1261,43 @@ class MainWindow(QMainWindow):
         if self._preferences.last_directory:
             return Path(self._preferences.last_directory)
         return Path.home()
+
+    def _report_failure(self, doing: str, exc: Exception) -> None:
+        """Say what went wrong, and decide how loudly by what kind it is.
+
+        A ``ComictransError`` is an expected failure with something the user
+        can act on in it, so the message is the message. Anything else is a
+        bug: the status bar gets its name and the log gets its traceback,
+        because a type and a line number are what a bug report needs and
+        neither belongs in a status bar.
+        """
+        if isinstance(exc, ComictransError):
+            log.warning("%s: %s", doing, exc)
+            self.statusBar().showMessage(f"{doing}: {exc}", 8000)
+        else:
+            log.exception("%s failed", doing, exc_info=exc)
+            self.statusBar().showMessage(
+                f"{doing} failed: {type(exc).__name__} — see the log", 8000
+            )
+
+    def _on_unhandled(self, message: str) -> None:
+        """Something reached the excepthook. Say so; the log has the rest."""
+        self.statusBar().showMessage(message, 10000)
+
+    def _on_open_logs(self) -> None:
+        """Show the folder holding the log and the crash traces.
+
+        Both files live there, so attaching one to a bug report is a click
+        rather than a paragraph of instructions about ``~/Library``.
+        """
+        directory = log_directory()
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self._report_failure("opening the log folder", exc)
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory))):
+            self.statusBar().showMessage(f"logs are in {directory}", 10000)
 
     def _on_about(self) -> None:
         AboutDialog(self).exec()
@@ -1260,6 +1329,7 @@ class MainWindow(QMainWindow):
             self._job.cancel()
             self._job.wait()
             self._job = None
+        set_notifier(None)
         self._save_layout()
         event.accept()
 

@@ -29,33 +29,6 @@ def _leave_faulthandler_as_found() -> object:
         faulthandler.enable()
 
 
-def test_macos_logs_go_where_macos_keeps_logs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Not Application Support, which is what QStandardPaths would say."""
-    monkeypatch.delenv(crash.LOG_DIR_ENV, raising=False)
-    monkeypatch.setattr(sys, "platform", "darwin")
-
-    assert crash.crash_directory() == Path.home() / "Library" / "Logs" / "comictrans"
-
-
-def test_elsewhere_they_go_to_the_xdg_state_directory(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(crash.LOG_DIR_ENV, raising=False)
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setenv("XDG_STATE_HOME", "/var/state")
-
-    assert crash.crash_directory() == Path("/var/state/comictrans")
-
-    monkeypatch.delenv("XDG_STATE_HOME")
-    assert crash.crash_directory() == Path.home() / ".local" / "state" / "comictrans"
-
-
-def test_the_environment_can_put_them_somewhere_else(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setenv(crash.LOG_DIR_ENV, str(tmp_path))
-
-    assert crash.crash_directory() == tmp_path
-
-
 def test_enabling_writes_a_banner_naming_the_version(tmp_path: Path) -> None:
     path = crash.enable(tmp_path)
 

@@ -156,3 +156,58 @@ not a patch.
 
 **Impact.** Space only. Nothing is hidden, nothing is misreported, and no
 plan data is affected.
+
+## 5. The review window has been seen to vanish during preview
+
+Reported after a session on a Mac: the window disappeared outright while
+using Render Preview. Not a dialog, not a frozen window — the process died.
+
+**Unlike every other entry here, this one has not been reproduced.** It is
+recorded anyway because the eliminations cost real time and would otherwise
+have to be paid for twice, and because there is now a tool that will name it
+the next time it happens. Read the rest of this entry as an open hunt rather
+than a decision.
+
+**What it is not.** PySide6 6.11.2 does not abort on an exception in a slot —
+measured; it prints the traceback and the event loop carries on. So a window
+that vanishes is a segfault or an abort, and `qFatal` (which Qt raises when it
+gives up, on a `QThread` destroyed while running among other things) takes the
+same route. From outside the two are indistinguishable.
+
+Preview eliminates the whole thread-related branch: `render_preview` is
+synchronous on the main thread and touches no OCR, no recogniser and no
+worker thread. Apple Vision on a `QThread`, a `QThread` destroyed while
+running, and the job read after `deleteLater` are all out unless it turns out
+to happen elsewhere too.
+
+**A reproduction was attempted and did not crash.** The reported plan and its
+page — `tests/fixtures/11-complex_six_panel_page.png`, byte-identical to the
+one in the report — were run through `render_preview`, `to_pixmap` and a real
+paint into a `QGraphicsScene`, on Linux under the offscreen platform with
+PySide6 6.11.2. It rendered 2840×3880 RGB, converted to a non-null pixmap and
+painted. So the preview path is not unconditionally broken on that input, and
+whatever this is depends on the platform, the display, or state accumulated
+across a session.
+
+**What is left, in the order worth checking:**
+
+- `to_pixmap`, which is `PIL.ImageQt`. It wraps the image's memory rather than
+  copying it; `QPixmap.fromImage` copying is the only reason it survives, and
+  that margin is one function call wide. Converting through an explicit
+  `QImage.copy()`, or through raw bytes with an explicit `bytesPerLine`, would
+  remove the question entirely.
+- Three copies of an eleven-megapixel page per preview: about 33MB as PIL RGB,
+  44MB as ARGB32 inside `ImageQt`, 44MB again as the `QPixmap`. `Ctrl+R`
+  toggles, so comparing overlay against render does that repeatedly, and a
+  graphics allocation that fails on macOS need not come back as a
+  `MemoryError`.
+- The Retina backing store, which none of the testing has ever run on.
+- `QGraphicsScene.clear()` with a stale wrapper. `show_page` clears the scene
+  and every dict that held its items, so this looks handled — but it is the
+  other classic, and preview is the path that calls it most.
+
+**What closes this.** `gui.crash` now writes a Python traceback naming the
+exact line to `~/Library/Logs/comictrans/review-crash.log` on `SIGSEGV` and
+`SIGABRT` alike. One captured trace picks from the list above; until there is
+one, picking by argument is what the failed reproduction already showed does
+not work.
