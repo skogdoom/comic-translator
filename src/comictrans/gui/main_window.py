@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from .. import fonts
 from ..apply import ApplyReport
 from ..errors import ComictransError
+from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
 from .about_dialog import AboutDialog
@@ -47,6 +48,7 @@ from .canvas import (
     mode_hint,
 )
 from .document import PlanDocument
+from .extract_dialog import ExtractDialog
 from .header_dialog import HeaderDialog
 from .hint_line import HintLine
 from .inspector import RegionInspector
@@ -54,8 +56,8 @@ from .page_list import PageList
 from .preview import render_preview
 from .qimage import to_pixmap
 from .render_dialog import RenderDialog
-from .render_job import RenderJob, RenderRequest
-from .render_panel import RenderPanel
+from .run_job import ExtractJob, RenderJob, RenderRequest, RunJob
+from .run_panel import RunPanel
 from .sampling import color_at, sample_region_colors
 
 log = logging.getLogger(__name__)
@@ -117,10 +119,11 @@ class MainWindow(QMainWindow):
         self._sampling: str | None = None
         """Which colour field asked for a pixel, while the canvas takes one."""
 
-        self._render_job: RenderJob | None = None
-        """The run in flight, or None. At most one: the action that starts a
-        render is disabled while one is going, so there is never a second
-        thread to keep track of or a second report arriving out of order."""
+        self._job: RunJob | None = None
+        """The pass in flight, or None. At most one, of either kind: both
+        actions that start one are disabled while one is going, so there is
+        never a second thread to keep track of or a second report arriving
+        out of order."""
         self._settings = settings
         self._views: dict[str, ViewState] = {}
         """How each page was last being read, keyed by image.
@@ -157,15 +160,18 @@ class MainWindow(QMainWindow):
         self._inspector_dock.setWidget(self._inspector)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
 
-        # Along the bottom, and closed until something has been rendered:
-        # it is a panel to work through afterwards, not part of reviewing a
-        # page. Reopened from the Window menu, like the other two.
-        self._render_panel = RenderPanel()
-        self._render_dock = QDockWidget("Render", self)
-        self._render_dock.setObjectName("render_dock")
-        self._render_dock.setWidget(self._render_panel)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._render_dock)
-        self._render_dock.hide()
+        # Along the bottom, and closed until something has been run: it is
+        # a panel to work through afterwards, not part of reviewing a page.
+        # One dock for both passes, because the two are never both current —
+        # an extract ends by opening the plan it wrote, at which point the
+        # last render's report describes a plan that is no longer open.
+        # Reopened from the Window menu, like the other two.
+        self._run_panel = RunPanel()
+        self._run_dock = QDockWidget("Run", self)
+        self._run_dock.setObjectName("run_dock")
+        self._run_dock.setWidget(self._run_panel)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._run_dock)
+        self._run_dock.hide()
 
         self._pages.image_selected.connect(self._on_image_selected)
         self._canvas.region_selected.connect(self._on_region_selected)
@@ -179,8 +185,8 @@ class MainWindow(QMainWindow):
         self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
-        self._render_panel.region_activated.connect(self._on_render_row_activated)
-        self._render_panel.cancel_requested.connect(self._on_render_cancel)
+        self._run_panel.row_activated.connect(self._on_run_row_activated)
+        self._run_panel.cancel_requested.connect(self._on_run_cancel)
 
         # A permanent widget, so the zoom stays readable behind the transient
         # messages the status bar shows for saves and preview results.
@@ -228,8 +234,14 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
-        # In File rather than View, because this is the one thing in the
-        # window that writes something other than the plan.
+        # In File rather than View: these two are the window's other two
+        # verbs, and neither of them writes the plan you are reviewing.
+        # Extract first, because it is where a chapter starts.
+        self._extract_action = QAction("&Extract Pages…", self)
+        self._extract_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        self._extract_action.triggered.connect(self._on_extract)
+        file_menu.addAction(self._extract_action)
+
         self._render_action = QAction("&Render Pages…", self)
         self._render_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
         self._render_action.triggered.connect(self._on_render)
@@ -355,7 +367,7 @@ class MainWindow(QMainWindow):
         window_menu = self.menuBar().addMenu("&Window")
         window_menu.addAction(self._pages_dock.toggleViewAction())
         window_menu.addAction(self._inspector_dock.toggleViewAction())
-        window_menu.addAction(self._render_dock.toggleViewAction())
+        window_menu.addAction(self._run_dock.toggleViewAction())
         window_menu.addSeparator()
         self._reset_layout_action = QAction("&Reset Layout", self)
         self._reset_layout_action.triggered.connect(self._on_reset_layout)
@@ -395,13 +407,14 @@ class MainWindow(QMainWindow):
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._preview_action)
 
-        # Render Pages is not here, and that is a measurement rather than an
-        # oversight: these twelve labels already want 1138px of a window that
-        # opens at 1200, and a thirteenth pushes the bar into its overflow
-        # menu — taking Render Preview, which is used on every page, with it.
-        # A whole-chapter render is a once-a-sitting command with a menu item
-        # and Ctrl+Shift+R; the toolbar holds the ones used every few
-        # seconds. Worth revisiting when 4.8 replaces these words with icons.
+        # Neither Extract Pages nor Render Pages is here, and that is a
+        # measurement rather than an oversight: these twelve labels already
+        # want 1138px of a window that opens at 1200, and a thirteenth pushes
+        # the bar into its overflow menu — taking Render Preview, which is
+        # used on every page, with it. Running a whole chapter through either
+        # pass is a once-a-sitting command with a menu item and a shortcut;
+        # the toolbar holds the ones used every few seconds. Worth revisiting
+        # when 4.8 replaces these words with icons.
 
     # -- layout ----------------------------------------------------------
 
@@ -431,9 +444,9 @@ class MainWindow(QMainWindow):
         self.restoreState(self._default_state)
         for dock in (self._pages_dock, self._inspector_dock):
             dock.setVisible(True)
-        # Not the render dock: it starts closed, and a layout reset should
-        # put it back to closed rather than open one holding an old report.
-        self._render_dock.setVisible(False)
+        # Not the run dock: it starts closed, and a layout reset should put
+        # it back to closed rather than open one holding an old report.
+        self._run_dock.setVisible(False)
         self.resize(1200, 800)
 
     def _update_actions_enabled(self) -> None:
@@ -448,13 +461,16 @@ class MainWindow(QMainWindow):
         self._undo_action.setEnabled(has_document and self.document.can_undo)  # type: ignore[union-attr]
         self._redo_action.setEnabled(has_document and self.document.can_redo)  # type: ignore[union-attr]
         # A render covers the whole plan, so it wants pages rather than a
-        # page: a plan open on no particular page can still be rendered. One
-        # at a time, hence the job check.
+        # page: a plan open on no particular page can still be rendered.
+        # Extract needs no document at all — it is how you get one — but
+        # both wait their turn, hence the job check on each.
+        idle = self._job is None
         self._render_action.setEnabled(
             has_document
             and bool(self.document.plan.image_names())  # type: ignore[union-attr]
-            and self._render_job is None
+            and idle
         )
+        self._extract_action.setEnabled(idle)
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
         self._preview_action.setText(OVERLAY_TEXT if self._showing_preview else PREVIEW_TEXT)
@@ -996,7 +1012,7 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("preview: everything fits")
 
-    # -- rendering -------------------------------------------------------
+    # -- running a pass --------------------------------------------------
 
     def _on_render(self) -> None:
         """Ask what to render and where, save the plan, then start the run."""
@@ -1019,67 +1035,121 @@ class MainWindow(QMainWindow):
 
     def _start_render(self, request: RenderRequest) -> None:
         job = RenderJob(request, self)
-        job.progressed.connect(self._render_panel.advance)
         job.completed.connect(self._on_render_finished)
-        job.failed.connect(self._on_render_failed)
-        self._render_job = job
-        self._render_panel.start(request.total, request.output)
-        self._render_dock.show()
+        self._start(job, "Rendering", request.total, request.output)
+
+    def _on_extract(self) -> None:
+        """Ask what to read and where the plan goes, then start the run.
+
+        Nothing about the open document is touched. The plan this writes did
+        not exist when the run started, and the window only opens it once it
+        is on disk and complete — which is also why a cancelled extract has
+        nothing to show you.
+        """
+        start_in = self.document.path.parent if self.document is not None else None
+        dialog = ExtractDialog(start_in, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        request = dialog.request()
+        job = ExtractJob(request, self)
+        job.completed.connect(self._on_extract_finished)
+        self._start(job, "Reading", request.total, request.plan_path)
+
+    def _start(self, job: RunJob, verb: str, total: int, where: Path) -> None:
+        """Wire up a pass, show the panel, and set it going."""
+        job.progressed.connect(self._run_panel.advance)
+        job.failed.connect(self._on_run_failed)
+        self._job = job
+        self._run_panel.start(verb, total, where)
+        self._run_dock.show()
         self._update_actions_enabled()
-        self.statusBar().showMessage(f"rendering {request.total} page(s) to {request.output}")
+        self.statusBar().showMessage(f"{verb.lower()} {total} page(s) — {where}")
         job.start()
 
-    def _on_render_cancel(self) -> None:
-        if self._render_job is not None:
-            self._render_job.cancel()
-            self.statusBar().showMessage("stopping after the page being rendered…")
+    def _on_run_cancel(self) -> None:
+        if self._job is not None:
+            self._job.cancel()
+            self.statusBar().showMessage("stopping after the page being worked on…")
 
-    def _finish_render(self) -> RenderRequest | None:
-        """Let the worker thread end, and give the render action back."""
-        job, self._render_job = self._render_job, None
+    def _finish_run(self) -> RunJob | None:
+        """Let the worker thread end, and give the two actions back."""
+        job, self._job = self._job, None
         if job is None:
             return None
         job.wait()
-        request = job.request
         # Parented to the window, so it would otherwise sit in its child
-        # list for the rest of the session, one per run.
+        # list for the rest of the session, one per run. Deferred, so the
+        # request on it is still readable in the slot that asked for this.
         job.deleteLater()
         self._update_actions_enabled()
-        return request
+        return job
 
     def _on_render_finished(self, report: ApplyReport) -> None:
-        request = self._finish_render()
-        if request is None:
+        job = self._finish_run()
+        if not isinstance(job, RenderJob):
             return
-        self._render_panel.show_report(report, request.output)
-        self._render_dock.show()
+        output = job.request.output
+        self._run_panel.show_render(report, output)
+        self._run_dock.show()
         pages = len(report.pages_written)
-        checks = self._render_panel.row_count()
+        checks = self._run_panel.row_count()
         what = "cancelled after" if report.cancelled else "rendered"
         tail = f" — {checks} to check" if checks else ""
-        self.statusBar().showMessage(f"{what} {pages} page(s) to {request.output}{tail}")
+        self.statusBar().showMessage(f"{what} {pages} page(s) to {output}{tail}")
 
-    def _on_render_failed(self, message: str) -> None:
-        """Nothing was rendered at all — an unresolvable font, most likely.
+    def _on_extract_finished(self, report: ExtractReport) -> None:
+        """Show what was read, and open the plan it wrote.
+
+        Opening it is the point of the exercise — a plan file is not a thing
+        to go and find in a file dialog you just told where to put it — and
+        ``open_plan`` asks about unsaved changes on the way, the same as any
+        other open. A cancelled run wrote nothing, so there is nothing to
+        open and the panel says so instead.
+        """
+        job = self._finish_run()
+        if not isinstance(job, ExtractJob):
+            return
+        plan_path = job.request.plan_path
+        self._run_panel.show_extract(report, plan_path)
+        self._run_dock.show()
+        if report.cancelled:
+            self.statusBar().showMessage(f"cancelled after {report.pages_read} page(s)")
+            return
+        self.open_plan(plan_path)
+
+    def _on_run_failed(self, message: str) -> None:
+        """Nothing happened at all — an unresolvable font, or no recogniser.
 
         Said in the panel rather than a message box: the panel is already
         open and already the place this run reports to, and a modal here
         would be one more thing to dismiss before reading the reason.
         """
-        self._finish_render()
-        self._render_panel.show_failure(message)
-        self._render_dock.show()
-        self.statusBar().showMessage(f"render failed: {message}")
+        self._finish_run()
+        self._run_panel.show_failure(message)
+        self._run_dock.show()
+        self.statusBar().showMessage(f"failed: {message}")
 
-    def _on_render_row_activated(self, image: str, region_id: str) -> None:
-        """A row in the report names a region. Go and look at it."""
+    def _on_run_row_activated(self, image: str, region_id: str) -> None:
+        """A row in the report names a page, or a region on one. Go there.
+
+        The plan can have moved on since the run — an extract opens a
+        different one, an edit deletes a region — so the row is checked
+        against the document rather than trusted.
+        """
         if self.document is None:
             return
-        if region_id not in self.document.ordered_ids():
-            # Edited, or a different plan opened, since the run.
-            self.statusBar().showMessage(f"{region_id} ({image}) is no longer in this plan", 3000)
+        if region_id:
+            if region_id not in self.document.ordered_ids():
+                self.statusBar().showMessage(
+                    f"{region_id} ({image}) is no longer in this plan", 3000
+                )
+                return
+            self._go_to_region(region_id)
             return
-        self._go_to_region(region_id)
+        if image not in self.document.images():
+            self.statusBar().showMessage(f"{image} is not in this plan", 3000)
+            return
+        self._pages.select_image(image)
 
     def _on_zoom_changed(self, factor: float) -> None:
         fitting = " (fit)" if self._canvas.fitting else ""
@@ -1139,10 +1209,10 @@ class MainWindow(QMainWindow):
         # so a render in flight is stopped and waited for rather than closed
         # over the top of. It stops after the page it is on; what is on disk
         # is whole pages either way.
-        if self._render_job is not None:
-            self._render_job.cancel()
-            self._render_job.wait()
-            self._render_job = None
+        if self._job is not None:
+            self._job.cancel()
+            self._job.wait()
+            self._job = None
         self._save_layout()
         event.accept()
 

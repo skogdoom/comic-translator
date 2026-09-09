@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from comictrans.errors import OcrUnavailableError
 from comictrans.model import (
     Box,
     Color,
@@ -34,6 +35,8 @@ from .conftest import (
     ART_DARK,
     BALLOON_WHITE,
     INK_BLACK,
+    FakeRecognizer,
+    lines_for,
     make_page_array,
     make_plan,
     save_page,
@@ -52,6 +55,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
+from comictrans.gui import run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -61,6 +65,7 @@ from comictrans.gui.canvas import (
     mode_hint,
     move_modifier_name,
 )
+from comictrans.gui.extract_dialog import ExtractDialog
 from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
 from comictrans.gui.render_dialog import (
@@ -69,7 +74,7 @@ from comictrans.gui.render_dialog import (
     RenderDialog,
     suggested_output,
 )
-from comictrans.gui.render_job import RenderJob, RenderRequest
+from comictrans.gui.run_job import ExtractJob, ExtractRequest, RenderJob, RenderRequest
 
 BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
@@ -2338,30 +2343,35 @@ def test_a_held_arrow_key_speeds_up_and_a_fresh_press_does_not(
     assert press(repeating=False) == NUDGE_STEP, "and a fresh press is a pixel again"
 
 
-# -- rendering pages from the window ------------------------------------
+# -- running a pass from the window --------------------------------------
 #
-# The apply loop itself, its progress reports and its cancelling are tested
-# in test_apply.py, and what a finished run is worth showing in
-# test_gui_render.py. What is left for here is the plumbing: that the dialog
-# refuses what it must, that a run reaches disk and comes back into the
-# panel, and that a row in the panel selects the region it names.
+# Each pipeline loop, its progress reports and its cancelling are tested
+# where the loop lives — test_apply.py and test_extract.py — and what a
+# finished run is worth showing in test_gui_run.py. What is left for here is
+# the plumbing: that the dialogs refuse what they must, that a run reaches
+# disk and comes back into the panel, and that a row in the panel goes where
+# it says.
 
 
-def _run_render(window: MainWindow, request: RenderRequest) -> None:
-    """Start a render and wait for its report to reach the window.
+def _await_run(window: MainWindow) -> None:
+    """Wait for the pass in flight to report back into the window.
 
     ``wait`` returns when the worker thread has stopped; the report is a
     queued signal and still needs an event-loop turn to be delivered.
     """
-    window._start_render(request)
-    job = window._render_job
+    job = window._job
     assert job is not None
-    assert job.wait(60_000), "the render thread did not finish"
+    assert job.wait(60_000), "the worker thread did not finish"
     for _ in range(20):
         QApplication.processEvents()
-        if window._render_job is None:
+        if window._job is None:
             return
     raise AssertionError("the report never reached the window")
+
+
+def _run_render(window: MainWindow, request: RenderRequest) -> None:
+    window._start_render(request)
+    _await_run(window)
 
 
 def test_the_render_dialog_suggests_a_directory_beside_the_pages(
@@ -2460,9 +2470,9 @@ def test_a_finished_run_reports_into_the_panel(
 
     _run_render(window, request)
 
-    panel = window._render_panel
+    panel = window._run_panel
     assert str(request.output) in panel._headline.text()
-    assert not window._render_dock.isHidden(), "the panel opens itself when there is a report"
+    assert not window._run_dock.isHidden(), "the panel opens itself when there is a report"
     # page-001-002 is the region the fixture holds back with no translation.
     assert panel.row_count() == 1
     assert window._render_action.isEnabled(), "the run is over"
@@ -2478,7 +2488,7 @@ def test_a_row_in_the_report_selects_the_region_it_names(
     window._pages.select_image("page-002.png")
     assert window._current_region == "page-002-001"
 
-    window._render_panel.select_row(0)
+    window._run_panel.select_row(0)
 
     assert window._current_image == "page-001.png", "it changed page to get there"
     assert window._current_region == "page-001-002"
@@ -2493,7 +2503,7 @@ def test_a_row_naming_a_region_that_has_since_gone_says_so(
     window.document.delete_region("page-001-002")  # type: ignore[union-attr]
     window.document.save()  # type: ignore[union-attr]
 
-    window._render_panel.select_row(0)
+    window._run_panel.select_row(0)
 
     assert "no longer in this plan" in window.statusBar().currentMessage()
 
@@ -2507,7 +2517,7 @@ def test_the_render_action_is_held_back_while_a_run_is_going(
 
     # A job that is never started: what is being tested is the rule, not how
     # long a render happens to take.
-    window._render_job = RenderJob(RenderDialog(window.document, window).request(), window)  # type: ignore[arg-type]
+    window._job = RenderJob(RenderDialog(window.document, window).request(), window)  # type: ignore[arg-type]
     window._update_actions_enabled()
 
     assert not window._render_action.isEnabled()
@@ -2517,12 +2527,12 @@ def test_cancelling_from_the_panel_reaches_the_run(qapp: object, two_page_plan: 
     window = MainWindow()
     window.open_plan(two_page_plan)
     job = RenderJob(RenderDialog(window.document, window).request(), window)  # type: ignore[arg-type]
-    window._render_job = job
+    window._job = job
 
-    window._render_panel._cancel.click()
+    window._run_panel._cancel.click()
 
     assert job.cancelling
-    assert not window._render_panel._cancel.isEnabled(), "one press is all there is to give"
+    assert not window._run_panel._cancel.isEnabled(), "one press is all there is to give"
 
 
 def test_a_plan_with_no_pages_has_nothing_to_render(qapp: object, tmp_path: Path) -> None:
@@ -2547,7 +2557,243 @@ def test_a_run_that_cannot_start_says_so_in_the_panel(
 
     _run_render(window, request)
 
-    assert "Could not render" in window._render_panel._headline.text()
-    assert "No Such Font Anywhere" in window._render_panel._headline.text()
+    assert "Could not run" in window._run_panel._headline.text()
+    assert "No Such Font Anywhere" in window._run_panel._headline.text()
     assert not request.output.exists(), "nothing was written"
     assert window._render_action.isEnabled(), "and the window is usable again"
+
+
+# -- extracting pages from the window ------------------------------------
+
+
+@pytest.fixture
+def loose_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Three images and one file that is not one, with OCR stubbed out.
+
+    ``get_recognizer`` is replaced where the job looks it up, so the test
+    neither needs Apple Vision nor depends on whether the machine running it
+    has Tesseract. What is being tested here is the window, not detection.
+    """
+    source = tmp_path / "scans"
+    source.mkdir()
+    boxes = [Box(160, 140, 360, 164), Box(160, 180, 340, 204)]
+    for name in ("page-001.png", "page-002.png", "page-003.png"):
+        save_page(
+            make_page_array(
+                (600, 800),
+                ART_DARK,
+                [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes)],
+            ),
+            source / name,
+        )
+    (source / "notes.txt").write_text("not a page", encoding="utf-8")
+
+    lines = {
+        name: lines_for(boxes, ["NON CI POSSO", "CREDERE!"])
+        for name in ("page-001.png", "page-002.png")
+    }
+    lines["page-003.png"] = []  # a page with nothing on it
+    monkeypatch.setattr(run_job, "get_recognizer", lambda config: FakeRecognizer(lines))
+    return source
+
+
+def test_the_extract_dialog_puts_the_plan_where_the_command_line_would(
+    qapp: object, loose_pages: Path
+) -> None:
+    dialog = ExtractDialog(None, None)
+    dialog._source.setText(str(loose_pages))
+
+    assert dialog.plan_path() == loose_pages / "comic-plan.yaml"
+    assert dialog.refusal() == ""
+    assert len(dialog.pages()) == 3, "the .txt is not one of them"
+
+
+def test_a_plan_path_typed_by_hand_stops_following_the_input(
+    qapp: object, loose_pages: Path, tmp_path: Path
+) -> None:
+    dialog = ExtractDialog(None, None)
+    dialog._source.setText(str(loose_pages))
+    chosen = tmp_path / "mine.yaml"
+    dialog._plan.setText(str(chosen))
+    dialog._plan.textEdited.emit(str(chosen))  # what typing into it does
+
+    dialog._source.setText(str(loose_pages / "page-001.png"))
+
+    assert dialog.plan_path() == chosen, "a path someone typed is not a default to overwrite"
+
+
+def test_the_extract_dialog_refuses_an_input_with_nothing_to_read(
+    qapp: object, tmp_path: Path
+) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    dialog = ExtractDialog(None, None)
+
+    assert "Choose a folder" in dialog.refusal()
+
+    dialog._source.setText(str(tmp_path / "nowhere"))
+    assert "does not exist" in dialog.refusal()
+
+    dialog._source.setText(str(empty))
+    assert "no supported images found" in dialog.refusal()
+
+
+def test_an_existing_plan_is_refused_until_overwriting_is_ticked(
+    qapp: object, loose_pages: Path
+) -> None:
+    (loose_pages / "comic-plan.yaml").write_text("# already here\n", encoding="utf-8")
+    dialog = ExtractDialog(None, None)
+    dialog._source.setText(str(loose_pages))
+
+    assert "already exists" in dialog.refusal()
+    assert not dialog._ok.isEnabled()
+    assert not dialog._force.isHidden(), "the box appears when there is something to overwrite"
+
+    dialog._force.setChecked(True)
+
+    assert dialog.refusal() == ""
+    assert dialog.request().force
+
+
+def test_the_dialog_asks_for_the_four_things_it_is_scoped_to(
+    qapp: object, loose_pages: Path
+) -> None:
+    dialog = ExtractDialog(None, None)
+    dialog._source.setText(str(loose_pages))
+    dialog._source_language.setText("fr")
+    dialog._target_language.setText("sv")
+    dialog._languages.setText("fr, pt-BR")
+    dialog._engine.setCurrentIndex(dialog._engine.findData("tesseract"))
+
+    request = dialog.request()
+
+    assert request.source_language == "fr"
+    assert request.target_language == "sv"
+    assert request.config.ocr.languages == ("fr", "pt-BR")
+    assert request.config.ocr.engine == "tesseract"
+    assert request.font is None, "the header font is left to extract's own fallback chain"
+
+
+def test_the_ocr_languages_default_to_the_source_language(qapp: object, loose_pages: Path) -> None:
+    dialog = ExtractDialog(None, None)
+    dialog._source.setText(str(loose_pages))
+    dialog._source_language.setText("de")
+
+    assert dialog.request().config.ocr.languages == ("de",)
+
+
+def _extract(window: MainWindow, request: ExtractRequest) -> None:
+    job = ExtractJob(request, window)
+    job.completed.connect(window._on_extract_finished)
+    window._start(job, "Reading", request.total, request.plan_path)
+    _await_run(window)
+
+
+def test_extracting_writes_a_plan_and_opens_it(
+    qapp: object, loose_pages: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(loose_pages))
+    request = dialog.request()
+    before = {path.name: sha256_file(path) for path in loose_pages.glob("*.png")}
+
+    _extract(window, request)
+
+    assert request.plan_path.is_file()
+    assert window.document is not None
+    assert window.document.path == request.plan_path, "the window is now on what it just wrote"
+    assert window._pages.count() == 3
+    assert {path.name: sha256_file(path) for path in loose_pages.glob("*.png")} == before
+
+
+def test_a_finished_extract_reports_the_pages_the_plan_cannot_speak_for(
+    qapp: object, loose_pages: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(loose_pages))
+
+    _extract(window, dialog.request())
+
+    panel = window._run_panel
+    assert "3 pages read into" in panel._headline.text()
+    assert not window._run_dock.isHidden()
+    # page-003 came back empty; notes.txt was never a page.
+    assert panel.row_count() == 2
+    assert window._extract_action.isEnabled(), "the run is over"
+
+
+def test_a_row_naming_a_page_selects_that_page(
+    qapp: object, loose_pages: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(loose_pages))
+    _extract(window, dialog.request())
+    assert window._current_image == "page-001.png"
+
+    window._run_panel.select_row(0)
+
+    assert window._current_image == "page-003.png", "the page that came back empty"
+
+
+def test_a_row_for_something_that_never_became_a_page_goes_nowhere(
+    qapp: object, loose_pages: Path, font_dir: Path
+) -> None:
+    """notes.txt is not in the plan, so its row is inert rather than lying."""
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(loose_pages))
+    _extract(window, dialog.request())
+    assert window._current_image == "page-001.png"
+
+    window._run_panel.select_row(1)  # notes.txt
+
+    assert window._current_image == "page-001.png", "nothing to go to, so nothing moved"
+
+
+def test_a_cancelled_extract_writes_no_plan_and_opens_nothing(
+    qapp: object, loose_pages: Path, font_dir: Path
+) -> None:
+    """Half a chapter is not a plan file — see ExtractJob."""
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(loose_pages))
+    request = dialog.request()
+
+    job = ExtractJob(request, window)
+    job.completed.connect(window._on_extract_finished)
+    job.cancel()  # before it starts, so no page is read at all
+    window._start(job, "Reading", request.total, request.plan_path)
+    _await_run(window)
+
+    assert not request.plan_path.exists()
+    assert window.document is None, "there is nothing to open"
+    assert "was not written" in window._run_panel._headline.text()
+
+
+def test_a_run_with_no_recogniser_says_so_and_writes_nothing(
+    qapp: object, loose_pages: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(config: object) -> object:
+        raise OcrUnavailableError("no OCR backend available")
+
+    monkeypatch.setattr(run_job, "get_recognizer", refuse)
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(loose_pages))
+    request = dialog.request()
+
+    _extract(window, request)
+
+    assert "no OCR backend available" in window._run_panel._headline.text()
+    assert not request.plan_path.exists()
+    assert window._extract_action.isEnabled()
+
+
+def test_extract_needs_no_open_plan_and_render_does(qapp: object) -> None:
+    window = MainWindow()
+
+    assert window._extract_action.isEnabled(), "it is how you get a plan in the first place"
+    assert not window._render_action.isEnabled()

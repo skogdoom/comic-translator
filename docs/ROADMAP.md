@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.6 | Extract from the GUI | L |
 | 4.13 | Preferences | M |
 | 4.7 | Help instructions | S–M |
 | 4.8 | macOS look and feel | M |
@@ -55,43 +54,14 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-One ordering was a judgement call rather than a dependency, and it has
-already paid out: **rendering (4.14) went before extract (4.6)**. Both run a
-pipeline pass from the window and both need the same worker thread, progress
-and cancel. Rendering was the simpler of the two — no OCR, so no question
-about what is safe to call off the main thread — and the more valuable,
-because reviewing a plan and then leaving for a terminal to render it was the
-obvious hole in the window. The threading was built on the easy case;
-extract reuses it with the harder question on top.
-
-## 4.6 Extract from the GUI
-
-Choose an input and run extract without leaving the window.
-
-**It cannot run on the UI thread.** Detection alone is 0.1 to 0.3 seconds
-per page, and 2.8 seconds on the screentoned fixture, before OCR. A
-forty-page chapter is a frozen window for a minute or more. It needs a
-worker thread, progress, and cancel — the harness 4.14 built and left
-behind: `gui.render_job.RenderJob` is a `QThread` around one pipeline call,
-`gui.render_panel` is the dock a run reports into, and `apply_plan` took its
-progress and cancel callbacks rather than letting the window reimplement its
-loop. Do the same to `extract`: `extract_page` is the per-page hook, and
-`extract` loops internally and offers nowhere to report from.
-
-Verify that Apple Vision works off the main thread before building on the
-assumption. This is the question 4.14 did not have to answer, and the reason
-it went first.
-
-Scope for a first version: input path, plan path, languages, OCR engine.
-Extract has around fifteen detection-tuning flags and they can stay on the
-command line.
-
-Leave `--merge` out. Re-extracting over an open plan is exactly the merge
-case, including its lost-hand-work reporting and its exit status, and that
-is a second feature. Extract to a new plan, then open it.
-
-Now that regions can be drawn, reshaped and merged by hand, re-extracting a
-page is destructive against exactly that work. Keep the two apart.
+One ordering was a judgement call rather than a dependency, and it paid out:
+**rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
+the window and both needed the same worker thread, progress and cancel.
+Rendering was the simpler of the two — no OCR, so no question about what is
+safe to call off the main thread — and the more valuable, because reviewing a
+plan and then leaving for a terminal to render it was the obvious hole in the
+window. The threading was built on the easy case, and extract reused it: by
+the time it landed, the harness was a base class and one `work()` method.
 
 ## 4.13 Preferences
 
@@ -105,17 +75,24 @@ it again, and only that text changes — is the property the whole two-pass
 design exists to have. 4.12 edits *this* plan; 4.13 decides what a *new*
 one starts from. Those two must not blur into each other.
 
-That is also why this milestone waited: 4.14, now shipped, and 4.6 are the
-first things in the tool that create something a default could seed. Before
-them, a preferences dialog had almost nothing legitimate to hold.
+That is also why this milestone waited: 4.14 and 4.6 were the first things in
+the tool that create something a default could seed. Both have shipped, and
+both now ask the same questions on every run.
 
 What it holds:
 
-- For 4.14, now that the render dialog exists and asks these every time:
-  default output directory, erase strategy, output format
-- For 4.6: default font, case, `font_size_min_ratio`, `condense_min`, OCR
-  engine and languages, seeded into a new plan's header
+- For the render dialog: default output directory, erase strategy, output
+  format
+- For the extract dialog: source and target language, OCR languages and
+  engine, and a default font to record in a new plan's header — extract
+  currently walks its own fallback chain, which is right as a default and
+  wrong as the only answer
 - Everywhere: which directory the Open and Save dialogs start in
+
+A fourth is now visible that was not before: **the detection-tuning flags.**
+The extract dialog deliberately leaves all fifteen on the command line, and
+preferences is where a machine-wide default for one of them would go if any
+of them turns out to want one. None has yet.
 
 On macOS this wants Cmd+, and the application menu — see 4.8.
 

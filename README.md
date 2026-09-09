@@ -318,6 +318,42 @@ Overlay** while the rendered page is up: one button, and its label says which
 way it goes. Your place is kept across the swap in both directions — the zoom,
 the position, and the region you had selected.
 
+**File > Extract Pages…** (`Ctrl+Shift+E`) runs the `extract` pass without
+leaving the window, and opens the plan it wrote. It is the only thing here
+that works with no plan open, because it is how you get one. Point it at a
+folder of pages or a single image, say where the plan goes — prefilled with
+the same path `extract` picks with no `--plan` — and give it the language
+pair and the recogniser.
+
+Those four are the whole dialog. `extract` has around fifteen
+detection-tuning flags, and they stay on the command line: they exist for the
+page that came out wrong, which is a thing you iterate on in a terminal
+against `--debug-dir`. The font is not asked for either — with no `--font`,
+extract walks its fallback chain and records what it found, and the header
+font is editable here the moment the plan opens.
+
+Reading a page is detection and OCR, 0.1 to 2.8 seconds of it, so this runs
+on a worker thread like a render: the panel names the page being read, and
+**Cancel** stops after it. **A cancelled extract writes nothing at all.**
+That is the opposite of a cancelled render, and for a reason: a render stopped
+part-way leaves whole pages, each exactly what a complete run would have
+written, while a plan file names the images it covers, so half of one is a
+file claiming a chapter it never read. There is no partial form of it that is
+still true.
+
+When it finishes, the plan opens in this window and the panel lists what the
+plan itself cannot tell you: a page that could not be read, a page with
+nothing detected on it, an input that was not an image. Regions that merely
+need checking are not listed — the page list counts them and `Ctrl+Shift+Down`
+walks them, and a second copy in a panel would go stale the moment you fixed
+one.
+
+**There is no `--merge` here.** Re-extracting over a plan you have worked on
+is the merge case, with its own reporting for hand work that has nowhere to
+go, and it stays on the command line. Now that regions can be drawn, reshaped
+and merged by hand, re-detecting a page is destructive against exactly that
+work. Extract to a new plan, and open it.
+
 **File > Render Pages…** (`Ctrl+Shift+R`) runs the whole `apply` pass without
 leaving the window. The dialog asks the three things the command line asks
 for as flags — where to write, what format, and how to erase the original

@@ -1,13 +1,16 @@
-"""The dock a render runs in: a progress bar, then what needs a second look.
+"""The dock a pipeline pass runs in: a progress bar, then what needs a look.
 
 A panel rather than a modal, for two reasons. A modal progress dialog would
 stop you reading the plan while a chapter renders, which is the one thing
 there is to do while waiting for it. And the report it leaves behind is a
-list of regions to go and look at — a thing to work through, not a thing to
-dismiss — so its rows select the region they name, and the window follows.
+list of pages and regions to go and look at — a thing to work through, not a
+thing to dismiss — so its rows select what they name, and the window follows.
 
-What counts as worth a second look is decided in ``render_report``, which
-needs no Qt and is tested on its own. This module only draws it.
+One dock for both passes, because the two are never both current: an extract
+ends by opening the plan it wrote, at which point the last render's report
+describes a plan that is no longer open. What counts as worth a second look
+is decided in ``run_report``, which needs no Qt and is tested on its own.
+This module only draws it.
 """
 
 from __future__ import annotations
@@ -30,21 +33,31 @@ from PySide6.QtWidgets import (
 )
 
 from ..apply import ApplyReport
-from .render_report import RenderRow, counts, headline, rows_for
+from ..extract import ExtractReport
+from .run_report import (
+    RunRow,
+    extract_counts,
+    extract_headline,
+    extract_rows,
+    render_counts,
+    render_headline,
+    render_rows,
+)
 
 _IMAGE, _REGION, _PROBLEM, _DETAIL = range(4)
 
 NOTHING_TO_CHECK = "Nothing needs a second look."
-IDLE = "No pages rendered yet."
+IDLE = "Nothing has been run yet."
 
 
-class RenderPanel(QWidget):
-    """Progress while a run is going, and its report once it is done."""
+class RunPanel(QWidget):
+    """Progress while a pass is going, and its report once it is done."""
 
     cancel_requested = Signal()
 
-    region_activated = Signal(str, str)
-    """``(image, region_id)`` — a row was chosen and wants selecting."""
+    row_activated = Signal(str, str)
+    """``(image, region_id)`` — a row was chosen and wants going to. The
+    region id is empty for a row that names only a page."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -92,9 +105,10 @@ class RenderPanel(QWidget):
 
     # -- while it runs ---------------------------------------------------
 
-    def start(self, total: int, output: Path) -> None:
+    def start(self, what: str, total: int, where: Path) -> None:
+        """``what`` is the verb for this pass: "Rendering", "Reading"."""
         self._rows.clear()
-        self._headline.setText(f"Rendering {total} page{'' if total == 1 else 's'} to {output}")
+        self._headline.setText(f"{what} {total} page{'' if total == 1 else 's'} — {where}")
         self._counts.setText("")
         self._progress.setRange(0, total)
         self._progress.setValue(0)
@@ -119,27 +133,34 @@ class RenderPanel(QWidget):
 
     # -- once it is done -------------------------------------------------
 
-    def show_report(self, report: ApplyReport, output: Path) -> None:
-        self._running.hide()
-        self._headline.setText(headline(report, output))
-        self._counts.setText(counts(report))
-        self._fill(rows_for(report))
+    def show_render(self, report: ApplyReport, output: Path) -> None:
+        self._show(render_headline(report, output), render_counts(report), render_rows(report))
+
+    def show_extract(self, report: ExtractReport, plan_path: Path) -> None:
+        self._show(
+            extract_headline(report, plan_path),
+            extract_counts(report),
+            extract_rows(report),
+        )
 
     def show_failure(self, message: str) -> None:
         self._running.hide()
-        self._headline.setText(f"Could not render: {message}")
+        self._headline.setText(f"Could not run: {message}")
         self._counts.setText("")
         self._rows.clear()
 
-    def _fill(self, rows: tuple[RenderRow, ...]) -> None:
+    def _show(self, headline: str, counts: str, rows: tuple[RunRow, ...]) -> None:
+        self._running.hide()
+        self._headline.setText(headline)
+        self._counts.setText(counts if rows else f"{counts}\n{NOTHING_TO_CHECK}")
+        self._fill(rows)
+
+    def _fill(self, rows: tuple[RunRow, ...]) -> None:
         self._rows.clear()
-        if not rows:
-            self._counts.setText(f"{self._counts.text()}\n{NOTHING_TO_CHECK}")
-            return
         for row in rows:
             item = QTreeWidgetItem([row.image, row.region_id or "—", row.problem, row.detail])
             if row.selectable:
-                item.setData(_IMAGE, Qt.ItemDataRole.UserRole, (row.image, row.region_id))
+                item.setData(_IMAGE, Qt.ItemDataRole.UserRole, (row.image, row.region_id or ""))
             else:
                 for column in (_IMAGE, _REGION, _PROBLEM, _DETAIL):
                     item.setToolTip(column, row.detail)
@@ -152,7 +173,7 @@ class RenderPanel(QWidget):
         target = items[0].data(_IMAGE, Qt.ItemDataRole.UserRole)
         if target is not None:
             image, region_id = target
-            self.region_activated.emit(image, region_id)
+            self.row_activated.emit(image, region_id)
 
     # -- for the window and the tests ------------------------------------
 
@@ -160,10 +181,10 @@ class RenderPanel(QWidget):
         return self._rows.topLevelItemCount()
 
     def select_row(self, index: int) -> None:
-        """Choose a row as a click would, which emits ``region_activated``."""
+        """Choose a row as a click would, which emits ``row_activated``."""
         item = self._rows.topLevelItem(index)
         if item is not None:
             self._rows.setCurrentItem(item)
 
 
-__all__ = ["IDLE", "NOTHING_TO_CHECK", "RenderPanel"]
+__all__ = ["IDLE", "NOTHING_TO_CHECK", "RunPanel"]

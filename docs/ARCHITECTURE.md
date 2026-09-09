@@ -118,19 +118,31 @@ class PlanDocument:
 render_preview(document: PlanDocument, image: str) -> Preview   # .image, .outcomes, .problems
 ```
 
-Milestone 4.14 put the apply pass behind a window too, and added one
-parameter pair to the pass rather than a second copy of its loop:
+Milestones 4.14 and 4.6 put both passes behind the window too, and each
+gained the same parameter pair rather than a second copy of its loop:
 
 ```python
+# progress — imports nothing of ours, like model
+@dataclass(frozen=True, slots=True)
+class PageProgress:
+    index: int; total: int; image: str
+ProgressCallback = Callable[[PageProgress], None]
+CancelCheck = Callable[[], bool]
+
 # apply
 apply_plan(plan, plan_path, output, config, *, font=None, image_format=None,
-           force=False,
-           progress: Callable[[PageProgress], None] | None = None,
-           should_cancel: Callable[[], bool] | None = None) -> ApplyReport
+           force=False, progress=None, should_cancel=None) -> ApplyReport
+
+# extract
+extract(target, plan_path, recognizer, font_family, config, *, case=…,
+        source_language=…, target_language=…, debug_dir=None,
+        progress=None, should_cancel=None) -> (Plan, ExtractReport)
 ```
 
-Both are asked once per page, before it is rendered. `ApplyReport` gained
-`cancelled` to say a run stopped early, and `ok` is false when it did.
+Both callbacks are asked once per page, before it is worked on. Each report
+gained `cancelled` to say a run stopped early, and `ok` is false when it did.
+The two live in `progress.py` rather than in either pass, because both take
+them and neither should import the other for a dataclass.
 
 ## Fitting text to a polygon
 
@@ -535,16 +547,17 @@ page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
 header_dialog.py the settings every region is drawn under
 font_box.py     a font field offering only what fonts.py can resolve
-render_report.py what a finished run is worth showing — no Qt
-render_job.py   apply_plan on a worker thread, reporting by signal
+run_report.py   what a finished run is worth showing — no Qt
+run_job.py      a pipeline pass on a worker thread, reporting by signal
 render_dialog.py where to write, in what format, erasing how
-render_panel.py the dock a run reports into, whose rows select a region
+extract_dialog.py what to read, where the plan goes, in what languages
+run_panel.py    the dock a run reports into, whose rows go where they name
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py`, `sampling.py`, `about.py` and `render_report.py`
+`document.py`, `preview.py`, `sampling.py`, `about.py` and `run_report.py`
 need no display and import no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that knows about more than one other
@@ -833,39 +846,75 @@ only, so a region the GUI flags as overlapping is exactly one `apply` would
 also warn about — never a surprise the GUI invented on its own reading of
 the plan.
 
-**Rendering runs off the UI thread, and the loop stays in `apply`.** A
-chapter is a second or so a page, all of it in Pillow, numpy and OpenCV;
-doing that in the window's thread would freeze it for the length of the run,
-with no progress and no way out. So `gui.render_job` runs `apply_plan` on a
-worker thread — but it runs `apply_plan`, not a loop of its own. The
-alternative was for the window to iterate the pages itself so it could report
-between them, and that is a second implementation of "render every page of a
-plan" to keep in step with the first. Two optional callbacks on the existing
-loop cost less and cannot drift.
+**Both passes run off the UI thread, and both loops stay where they are.** A
+chapter is a second or so a page — apply in Pillow, numpy and OpenCV, extract
+in detection and OCR on top of them — and either would freeze the window for
+the length of the run, with no progress and no way out. So `gui.run_job` runs
+`apply_plan` and `extract` on a worker thread, but it runs *them*, not loops
+of its own. The alternative was for the window to iterate the pages itself so
+it could report between them, and that is a second implementation of "every
+page of a chapter" to keep in step with the first, per pass. Two optional
+callbacks on each existing loop cost less and cannot drift.
 
-`RenderJob` subclasses `QThread` rather than moving a worker object onto one.
+`RunJob` subclasses `QThread` rather than moving a worker object onto one.
 The usual advice is the other way round, and it is right when the worker has
 slots to be called while it runs, because a thread that only executes `run()`
-has no event loop to deliver them to. This worker has nothing to receive: it
-is stopped through a `threading.Event`, not a slot. Overriding `run()` then
-costs nothing and fixes the thing the other shape gets wrong here — with an
-idling event loop, `wait()` blocks until somebody remembers to quit it, which
-made closing the window during a render hang for the full timeout.
+has no event loop to deliver them to. These workers have nothing to receive:
+they are stopped through a `threading.Event`, not a slot. Overriding `run()`
+then costs nothing and fixes the thing the other shape gets wrong here — with
+an idling event loop, `wait()` blocks until somebody remembers to quit it,
+which made closing the window during a render hang for the full timeout.
 
-The plan a job renders is the frozen `Plan` it was handed at the start, so
-editing the document while it runs cannot change what lands on disk, and no
-lock is needed for that. Nothing else is shared: `render_page` allocates its
-own images and `FontFile.load` builds a new FreeType font per call, so a live
-preview on the main thread and a render on the worker do not meet.
+The plan a render job works from is the frozen `Plan` it was handed at the
+start, so editing the document while it runs cannot change what lands on
+disk, and no lock is needed for that. An extract job shares even less: the
+plan it writes did not exist when it started. Nothing else is shared either —
+`render_page` allocates its own images and `FontFile.load` builds a new
+FreeType font per call — so a live preview on the main thread and a run on
+the worker do not meet.
 
-**Cancelling happens between pages, never inside one.** A page takes about a
-second, so waiting for the one in flight costs nothing, and it buys the
-guarantee worth having: what a cancelled run leaves on disk is whole pages,
-byte-identical to the ones a complete run would have written, and re-running
-finishes the job. A half-written page would be a file that looks rendered and
-is not. The Cancel button disables itself on the first press and says
-"Cancelling…", because a button that still looks pressable invites the
-assumption that the press did not land.
+**Apple Vision on a worker thread.** `performRequests_error_` is synchronous
+and Apple's own guidance is to run it off the main queue, so the request side
+is what the API is for. What a Python thread does not get for free is an
+autorelease pool: PyObjC does not install one per thread, and without it every
+Objective-C object autoreleased in the adapter leaks for the life of the
+process — forty pages of CGImages and Vision observations. The adapter
+therefore opens one around each page, which is the right granularity anyway:
+the pool drains when the page is done rather than when the chapter is. **This is reasoned, not measured:** it was written on Linux, where
+pyobjc will not install, so it has never actually run. What *was* measured is
+the harness around it — a real Tesseract run through `ExtractJob` executed on
+a different thread id from the window's, which turned its event loop 272,000
+times while two pages were read. The Vision-specific half wants one run on a
+Mac to confirm.
+
+**Cancelling happens between pages, never inside one** — and what that leaves
+behind is each pass's own business. A page takes about a second, so waiting
+for the one in flight costs nothing. For `apply` it buys the guarantee worth
+having: what a cancelled run leaves on disk is whole pages, byte-identical to
+the ones a complete run would have written, and re-running finishes the job.
+
+`extract` is the opposite, and deliberately so: a cancelled extract writes
+**nothing**. Its output is one file that names the images it covers, so half
+of one is a plan claiming a chapter it never read — there is no partial form
+of it that is still true, the way a rendered page is. `extract` itself still
+returns the plan it built; refusing to write it is the caller's decision, and
+`ExtractJob` makes it. That is also why the window opens the plan only on a
+run that finished.
+
+The Cancel button disables itself on the first press and says "Cancelling…",
+because a button that still looks pressable invites the assumption that the
+press did not land.
+
+**Extract asks for four things, and the other fifteen stay on the command
+line.** Input, plan path, the language pair and the recogniser are what you
+decide every time. The detection-tuning flags — contour area, solidity,
+extent, colour segmentation — exist for the page that came out wrong, which
+is a thing you iterate on in a terminal against `--debug-dir`; putting them in
+a dialog would be putting a debugging session in one. `--merge` is left out
+for a different reason: re-detecting over hand-drawn, reshaped and merged
+regions is destructive against exactly that work, and carrying translations
+across by geometry is a second feature with its own failure mode. Extract to a
+new plan, and open it.
 
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what
@@ -898,9 +947,20 @@ and the window follows onto the right page. A modal would also have stopped
 you reading the plan while a chapter rendered, which is the one thing there
 is to do while waiting for it.
 
-Which outcomes are worth listing is decided in `gui.render_report`, which
-imports no Qt and is tested on its own. It is the same judgement the CLI's
-end-of-run summary makes, kept out of the widget so that it can be.
+Which outcomes are worth listing is decided in `gui.run_report`, which
+imports no Qt and is tested on its own. It is the same judgement each pass's
+end-of-run summary makes on the command line, kept out of the widget so that
+it can be.
+
+**One dock for both passes**, because the two are never both current: an
+extract ends by opening the plan it wrote, at which point the last render's
+report describes a plan that is no longer open. The two reports are different
+lists — a render's rows are regions to go and look at, an extract's are pages
+the plan cannot speak for — but they are the same shape, so `RunRow` carries
+both and a row knows whether there is anywhere to go. An extract does *not*
+list the regions that merely need checking: the plan it just wrote flags every
+one of them, the page list counts them, and Next Flagged Region walks them, so
+a second copy in a panel would go stale the moment one was fixed.
 
 **Testing.** `gui.document` and `gui.preview` are tested like any other
 module, no different setup. The widget tests build a real `QApplication`
@@ -915,13 +975,16 @@ it — a real `QMessageBox` opens a native modal event loop even under
 a document dirty either saves or discards it, or patches the dialog, before
 the test ends.
 
-A render is waited for rather than polled: the test starts it, calls
+A run is waited for rather than polled: the test starts it, calls
 `QThread.wait`, and then turns the event loop over, because the report is a
 queued signal and arrives only once the main thread processes events. The
 things that depend on timing rather than on a rule — that the action is
 disabled while a run is going, that Cancel reaches the job — are tested on a
 job that is never started, so they check the rule instead of racing a
-three-page render.
+three-page run. The extract tests replace `get_recognizer` where `run_job`
+looks it up, so they neither need Apple Vision nor depend on whether the
+machine running them has Tesseract; what is under test there is the window,
+and detection has its own tests.
 
 A second one, found while testing that the page still pans in reshape mode:
 a synthetic press-move-release that reaches `QGraphicsView`'s own
