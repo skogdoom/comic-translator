@@ -118,6 +118,20 @@ class PlanDocument:
 render_preview(document: PlanDocument, image: str) -> Preview   # .image, .outcomes, .problems
 ```
 
+Milestone 4.14 put the apply pass behind a window too, and added one
+parameter pair to the pass rather than a second copy of its loop:
+
+```python
+# apply
+apply_plan(plan, plan_path, output, config, *, font=None, image_format=None,
+           force=False,
+           progress: Callable[[PageProgress], None] | None = None,
+           should_cancel: Callable[[], bool] | None = None) -> ApplyReport
+```
+
+Both are asked once per page, before it is rendered. `ApplyReport` gained
+`cancelled` to say a run stopped early, and `ok` is false when it did.
+
 ## Fitting text to a polygon
 
 For each line's vertical band, the usable width is the widest horizontal run
@@ -521,18 +535,22 @@ page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
 header_dialog.py the settings every region is drawn under
 font_box.py     a font field offering only what fonts.py can resolve
+render_report.py what a finished run is worth showing — no Qt
+render_job.py   apply_plan on a worker thread, reporting by signal
+render_dialog.py where to write, in what format, erasing how
+render_panel.py the dock a run reports into, whose rows select a region
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py`, `sampling.py` and `about.py` need no display and
-import no Qt;
+`document.py`, `preview.py`, `sampling.py`, `about.py` and `render_report.py`
+need no display and import no Qt;
 they are tested directly, the same as any other module. The widget modules do
-— `main_window.py` is the only one that imports more than one of the others,
-which is what keeps an edit's ripple effects (the window title's dirty
-marker, another region's overlap flag, the page list's flag count) in one
-place instead of three widgets each guessing at the other two's state.
+— `main_window.py` is the only one that knows about more than one other
+widget, which is what keeps an edit's ripple effects (the window title's
+dirty marker, another region's overlap flag, the page list's flag count) in
+one place instead of three widgets each guessing at the other two's state.
 
 **Why a document, not a `Plan` passed around.** `apply` treats a `Plan` as
 immutable — load it, render it, done. The GUI cannot: the whole point is
@@ -815,6 +833,75 @@ only, so a region the GUI flags as overlapping is exactly one `apply` would
 also warn about — never a surprise the GUI invented on its own reading of
 the plan.
 
+**Rendering runs off the UI thread, and the loop stays in `apply`.** A
+chapter is a second or so a page, all of it in Pillow, numpy and OpenCV;
+doing that in the window's thread would freeze it for the length of the run,
+with no progress and no way out. So `gui.render_job` runs `apply_plan` on a
+worker thread — but it runs `apply_plan`, not a loop of its own. The
+alternative was for the window to iterate the pages itself so it could report
+between them, and that is a second implementation of "render every page of a
+plan" to keep in step with the first. Two optional callbacks on the existing
+loop cost less and cannot drift.
+
+`RenderJob` subclasses `QThread` rather than moving a worker object onto one.
+The usual advice is the other way round, and it is right when the worker has
+slots to be called while it runs, because a thread that only executes `run()`
+has no event loop to deliver them to. This worker has nothing to receive: it
+is stopped through a `threading.Event`, not a slot. Overriding `run()` then
+costs nothing and fixes the thing the other shape gets wrong here — with an
+idling event loop, `wait()` blocks until somebody remembers to quit it, which
+made closing the window during a render hang for the full timeout.
+
+The plan a job renders is the frozen `Plan` it was handed at the start, so
+editing the document while it runs cannot change what lands on disk, and no
+lock is needed for that. Nothing else is shared: `render_page` allocates its
+own images and `FontFile.load` builds a new FreeType font per call, so a live
+preview on the main thread and a render on the worker do not meet.
+
+**Cancelling happens between pages, never inside one.** A page takes about a
+second, so waiting for the one in flight costs nothing, and it buys the
+guarantee worth having: what a cancelled run leaves on disk is whole pages,
+byte-identical to the ones a complete run would have written, and re-running
+finishes the job. A half-written page would be a file that looks rendered and
+is not. The Cancel button disables itself on the first press and says
+"Cancelling…", because a button that still looks pressable invites the
+assumption that the press did not land.
+
+**A render saves first; a preview does not.** `apply_plan` takes a `Plan`
+object and would happily render what is in the window, which is exactly what
+the live preview does. The difference is what survives: a preview is
+ephemeral, and output files are not. Pages rendered from a plan that exists
+only in a window are pages nobody can regenerate — which is the property the
+two passes exist to have — so the render dialog offers "Save and Render"
+rather than rendering an unsaved document, and its button says which of the
+two it is about to do.
+
+There is no equivalent of `--skip-hash-check` in the window, and none is
+needed: `PlanDocument.open` hash-checks every page, so a plan whose images
+have changed does not open at all. A render started from an open plan has
+already passed the check that flag exists to skip.
+
+**The output-directory refusal is the one thing here with no override.**
+`check_output_dir` is where "source images are never written to" is actually
+enforced, and it is asked on every keystroke rather than after the dialog
+closes: the button stays disabled and the reason sits under the field. No
+checkbox, no confirmation, no modifier. Every other refusal in this tool has
+a `--force`; this one must not grow one, in either surface. Its message
+avoids naming `--output` for that reason — the same sentence has to read
+right in a dialog.
+
+**The report is a dock, not a dialog.** What a finished run leaves behind is
+a list of regions to go and look at — text that would not fit, a translation
+still holding its source, a page that failed outright. That is a thing to
+work through, not a thing to dismiss, so its rows select the region they name
+and the window follows onto the right page. A modal would also have stopped
+you reading the plan while a chapter rendered, which is the one thing there
+is to do while waiting for it.
+
+Which outcomes are worth listing is decided in `gui.render_report`, which
+imports no Qt and is tested on its own. It is the same judgement the CLI's
+end-of-run summary makes, kept out of the widget so that it can be.
+
 **Testing.** `gui.document` and `gui.preview` are tested like any other
 module, no different setup. The widget tests build a real `QApplication`
 under `QT_QPA_PLATFORM=offscreen` and skip — rather than fail — on a machine
@@ -827,6 +914,14 @@ it — a real `QMessageBox` opens a native modal event loop even under
 `offscreen`, and nothing will ever click its button. Every test that leaves
 a document dirty either saves or discards it, or patches the dialog, before
 the test ends.
+
+A render is waited for rather than polled: the test starts it, calls
+`QThread.wait`, and then turns the event loop over, because the report is a
+queued signal and arrives only once the main thread processes events. The
+things that depend on timing rather than on a rule — that the action is
+disabled while a run is going, that Cancel reaches the job — are tested on a
+job that is never started, so they check the rule instead of racing a
+three-page render.
 
 A second one, found while testing that the page still pans in reshape mode:
 a synthetic press-move-release that reaches `QGraphicsView`'s own

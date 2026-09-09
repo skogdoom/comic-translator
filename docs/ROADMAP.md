@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.14 | Render pages from the GUI | M–L |
 | 4.6 | Extract from the GUI | L |
 | 4.13 | Preferences | M |
 | 4.7 | Help instructions | S–M |
@@ -56,48 +55,14 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-One ordering is a judgement call rather than a dependency.
-
-**Rendering (4.14) before extract (4.6).** Both run a pipeline pass from
-the window, and both need the same worker thread, progress and cancel.
-Rendering is the simpler of the two — no OCR, so no question about what is
-safe to call off the main thread — and the more valuable, because reviewing
-a plan and then leaving for a terminal to render it is the obvious hole in
-the window as it stands. Build the threading on the easy case; extract
-reuses it with the harder question on top.
-
-## 4.14 Render pages from the GUI
-
-Run `apply` without leaving the window.
-
-**Require a save first.** `apply_plan` takes a `Plan` object, so the GUI
-*could* render unsaved edits, and preview already does exactly that. But
-preview is ephemeral and output files are not: pages rendered from a plan
-that is not on disk are pages that cannot be regenerated, which is the
-whole point of the two-pass design. Offer "Save and Render…" rather than
-rendering a document that exists only in the window.
-
-**`check_output_dir` becomes a dialog with no override.** It refuses an
-output directory inside the source tree, which is how the invariant that
-source images are never written to is actually enforced. Every other
-refusal in this tool has a `--force`; this one must not grow one.
-
-**`apply_plan` needs an optional per-page progress callback.** Its loop is
-internal, so the alternative is the GUI reimplementing the loop, and a
-second copy of the loop is a second place for the two to drift. One
-optional parameter keeps a single implementation, the same way
-`render_preview` calls `render_page` rather than drawing its own.
-
-The rest follows the CLI: `--force` becomes a confirmation rather than a
-default, `--skip-hash-check` needs an equivalent or an explicit refusal,
-and the choice of erase strategy and output format belongs in the dialog.
-
-`resolve_styles` runs before any page is written, so an unresolvable font
-fails cleanly with nothing on disk. Keep that ordering.
-
-`ApplyReport` carries `pages_written`, `outcomes` and `page_failures`. In a
-window that wants to be a readable panel rather than a modal that vanishes
-— ideally one whose rows select the region that would not fit.
+One ordering was a judgement call rather than a dependency, and it has
+already paid out: **rendering (4.14) went before extract (4.6)**. Both run a
+pipeline pass from the window and both need the same worker thread, progress
+and cancel. Rendering was the simpler of the two — no OCR, so no question
+about what is safe to call off the main thread — and the more valuable,
+because reviewing a plan and then leaving for a terminal to render it was the
+obvious hole in the window. The threading was built on the easy case;
+extract reuses it with the harder question on top.
 
 ## 4.6 Extract from the GUI
 
@@ -106,13 +71,16 @@ Choose an input and run extract without leaving the window.
 **It cannot run on the UI thread.** Detection alone is 0.1 to 0.3 seconds
 per page, and 2.8 seconds on the screentoned fixture, before OCR. A
 forty-page chapter is a frozen window for a minute or more. It needs a
-worker thread, progress, and cancel — the harness 4.14 will already have
-built. `extract_page` is the per-page hook; `extract` loops internally and
-offers nowhere to report from.
+worker thread, progress, and cancel — the harness 4.14 built and left
+behind: `gui.render_job.RenderJob` is a `QThread` around one pipeline call,
+`gui.render_panel` is the dock a run reports into, and `apply_plan` took its
+progress and cancel callbacks rather than letting the window reimplement its
+loop. Do the same to `extract`: `extract_page` is the per-page hook, and
+`extract` loops internally and offers nowhere to report from.
 
 Verify that Apple Vision works off the main thread before building on the
-assumption. This is the question 4.14 does not have to answer, and the
-reason it goes first.
+assumption. This is the question 4.14 did not have to answer, and the reason
+it went first.
 
 Scope for a first version: input path, plan path, languages, OCR engine.
 Extract has around fifteen detection-tuning flags and they can stay on the
@@ -137,13 +105,14 @@ it again, and only that text changes — is the property the whole two-pass
 design exists to have. 4.12 edits *this* plan; 4.13 decides what a *new*
 one starts from. Those two must not blur into each other.
 
-That is also why this milestone waits: 4.14 and 4.6 are the first things in
-the tool that create something a default could seed. Before them, a
-preferences dialog has almost nothing legitimate to hold.
+That is also why this milestone waited: 4.14, now shipped, and 4.6 are the
+first things in the tool that create something a default could seed. Before
+them, a preferences dialog had almost nothing legitimate to hold.
 
-What it then holds:
+What it holds:
 
-- For 4.14: default output directory, erase strategy, output format
+- For 4.14, now that the render dialog exists and asks these every time:
+  default output directory, erase strategy, output format
 - For 4.6: default font, case, `font_size_min_ratio`, `condense_min`, OCR
   engine and languages, seeded into a new plan's header
 - Everywhere: which directory the Open and Save dialogs start in

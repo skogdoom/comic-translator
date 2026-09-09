@@ -44,7 +44,13 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialogButtonBox,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+)
 
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
@@ -57,6 +63,13 @@ from comictrans.gui.canvas import (
 )
 from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
+from comictrans.gui.render_dialog import (
+    RENDER,
+    SAVE_AND_RENDER,
+    RenderDialog,
+    suggested_output,
+)
+from comictrans.gui.render_job import RenderJob, RenderRequest
 
 BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
@@ -2323,3 +2336,218 @@ def test_a_held_arrow_key_speeds_up_and_a_fresh_press_does_not(
     assert press(repeating=True) > NUDGE_STEP, "then it picks up"
 
     assert press(repeating=False) == NUDGE_STEP, "and a fresh press is a pixel again"
+
+
+# -- rendering pages from the window ------------------------------------
+#
+# The apply loop itself, its progress reports and its cancelling are tested
+# in test_apply.py, and what a finished run is worth showing in
+# test_gui_render.py. What is left for here is the plumbing: that the dialog
+# refuses what it must, that a run reaches disk and comes back into the
+# panel, and that a row in the panel selects the region it names.
+
+
+def _run_render(window: MainWindow, request: RenderRequest) -> None:
+    """Start a render and wait for its report to reach the window.
+
+    ``wait`` returns when the worker thread has stopped; the report is a
+    queued signal and still needs an event-loop turn to be delivered.
+    """
+    window._start_render(request)
+    job = window._render_job
+    assert job is not None
+    assert job.wait(60_000), "the render thread did not finish"
+    for _ in range(20):
+        QApplication.processEvents()
+        if window._render_job is None:
+            return
+    raise AssertionError("the report never reached the window")
+
+
+def test_the_render_dialog_suggests_a_directory_beside_the_pages(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+
+    assert dialog.output_dir() == suggested_output(two_page_plan)
+    assert dialog.refusal() == "", "the suggestion is one the dialog will accept"
+
+
+def test_the_render_dialog_refuses_to_write_into_the_source_tree(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    ok = dialog._buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    for target in (two_page_plan.parent, two_page_plan.parent / "rendered"):
+        dialog._output.setText(str(target))
+        assert "inside the source directory" in dialog.refusal()
+        assert not ok.isEnabled(), "and there is no way to insist"
+
+    dialog._output.setText(str(two_page_plan.parent.parent / "elsewhere"))
+    assert dialog.refusal() == ""
+    assert ok.isEnabled()
+
+
+def test_the_render_dialog_refuses_an_empty_directory_and_a_file(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+
+    dialog._output.setText("   ")
+    assert "Choose a directory" in dialog.refusal()
+
+    dialog._output.setText(str(two_page_plan))
+    assert "is a file, not a directory" in dialog.refusal()
+
+
+def test_the_render_button_says_when_it_will_save_first(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    assert RenderDialog(window.document, window)._ok.text() == RENDER  # type: ignore[arg-type]
+
+    window.document.set_translation("page-001-001", "CHANGED")  # type: ignore[union-attr]
+    assert RenderDialog(window.document, window)._ok.text() == SAVE_AND_RENDER  # type: ignore[arg-type]
+
+    window.document.save()  # type: ignore[union-attr]
+
+
+def test_the_dialog_asks_for_the_three_things_the_command_line_flags_ask_for(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._format.setCurrentIndex(dialog._format.findData("tiff"))
+    dialog._erase.setCurrentIndex(dialog._erase.findData("inpaint"))
+    dialog._force.setChecked(True)
+
+    request = dialog.request()
+
+    assert request.image_format == "tiff"
+    assert request.config.erase.strategy == "inpaint"
+    assert request.force
+    assert request.config.typeset.condense_min == window.document.plan.header.condense_min  # type: ignore[union-attr]
+
+
+def test_rendering_writes_the_pages_and_leaves_the_sources_alone(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    source = two_page_plan.parent
+    before = {path.name: sha256_file(path) for path in source.glob("*.png")}
+    request = RenderDialog(window.document, window).request()  # type: ignore[arg-type]
+
+    _run_render(window, request)
+
+    assert sorted(p.name for p in request.output.iterdir()) == ["page-001.png", "page-002.png"]
+    assert {path.name: sha256_file(path) for path in source.glob("*.png")} == before
+
+
+def test_a_finished_run_reports_into_the_panel(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    request = RenderDialog(window.document, window).request()  # type: ignore[arg-type]
+
+    _run_render(window, request)
+
+    panel = window._render_panel
+    assert str(request.output) in panel._headline.text()
+    assert not window._render_dock.isHidden(), "the panel opens itself when there is a report"
+    # page-001-002 is the region the fixture holds back with no translation.
+    assert panel.row_count() == 1
+    assert window._render_action.isEnabled(), "the run is over"
+
+
+def test_a_row_in_the_report_selects_the_region_it_names(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    request = RenderDialog(window.document, window).request()  # type: ignore[arg-type]
+    _run_render(window, request)
+    window._pages.select_image("page-002.png")
+    assert window._current_region == "page-002-001"
+
+    window._render_panel.select_row(0)
+
+    assert window._current_image == "page-001.png", "it changed page to get there"
+    assert window._current_region == "page-001-002"
+
+
+def test_a_row_naming_a_region_that_has_since_gone_says_so(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    _run_render(window, RenderDialog(window.document, window).request())  # type: ignore[arg-type]
+    window.document.delete_region("page-001-002")  # type: ignore[union-attr]
+    window.document.save()  # type: ignore[union-attr]
+
+    window._render_panel.select_row(0)
+
+    assert "no longer in this plan" in window.statusBar().currentMessage()
+
+
+def test_the_render_action_is_held_back_while_a_run_is_going(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    assert window._render_action.isEnabled()
+
+    # A job that is never started: what is being tested is the rule, not how
+    # long a render happens to take.
+    window._render_job = RenderJob(RenderDialog(window.document, window).request(), window)  # type: ignore[arg-type]
+    window._update_actions_enabled()
+
+    assert not window._render_action.isEnabled()
+
+
+def test_cancelling_from_the_panel_reaches_the_run(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    job = RenderJob(RenderDialog(window.document, window).request(), window)  # type: ignore[arg-type]
+    window._render_job = job
+
+    window._render_panel._cancel.click()
+
+    assert job.cancelling
+    assert not window._render_panel._cancel.isEnabled(), "one press is all there is to give"
+
+
+def test_a_plan_with_no_pages_has_nothing_to_render(qapp: object, tmp_path: Path) -> None:
+    empty = tmp_path / "pages" / "comic-plan.yaml"
+    empty.parent.mkdir()
+    write_plan(make_plan(_header(), ()), empty)
+    window = MainWindow()
+    window.open_plan(empty)
+
+    assert not window._render_action.isEnabled()
+
+
+def test_a_run_that_cannot_start_says_so_in_the_panel(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """An unresolvable font fails before any page is written, and reports."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.document.set_header_font("No Such Font Anywhere")  # type: ignore[union-attr]
+    window.document.save()  # type: ignore[union-attr]
+    request = RenderDialog(window.document, window).request()  # type: ignore[arg-type]
+
+    _run_render(window, request)
+
+    assert "Could not render" in window._render_panel._headline.text()
+    assert "No Such Font Anywhere" in window._render_panel._headline.text()
+    assert not request.output.exists(), "nothing was written"
+    assert window._render_action.isEnabled(), "and the window is usable again"

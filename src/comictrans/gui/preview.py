@@ -47,12 +47,17 @@ class Preview:
 
 
 def apply_config_for(document: PlanDocument) -> ApplyConfig:
-    """The same defaults ``apply`` uses for this plan, with no CLI overrides.
+    """The same defaults ``apply`` uses for this plan, with no overrides.
 
-    Deliberately not configurable from here: the preview's whole value is
-    that it matches a plain ``comictrans apply`` of the same plan file. A
-    font or erase-strategy override belongs on the command line, not folded
-    silently into what the GUI happens to show you.
+    Everything here comes from the plan's own header. Nothing the window is
+    doing leaks in, which is what makes a preview worth trusting: it matches
+    a plain ``comictrans apply`` of the same plan file rather than showing
+    you a page rendered under settings that only exist in this session.
+
+    The render dialog starts from this too, and layers on the one setting it
+    asks for — the erase strategy, which is ``--erase`` on the command line.
+    That is a choice made in front of you, not folded in silently, and it is
+    the only way the two differ.
     """
     header = document.plan.header
     return ApplyConfig(

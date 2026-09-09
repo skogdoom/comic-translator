@@ -7,7 +7,13 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from comictrans.apply import ApplyReport, apply_plan, check_output_dir, resolve_styles
+from comictrans.apply import (
+    ApplyReport,
+    PageProgress,
+    apply_plan,
+    check_output_dir,
+    resolve_styles,
+)
 from comictrans.config import ApplyConfig, EraseConfig, TypesetConfig
 from comictrans.errors import ComictransError, InputError
 from comictrans.imaging import load_page, output_format_for, output_path
@@ -439,3 +445,105 @@ def test_a_comfortable_region_is_not_reported_as_undersized(
     report = _apply(project)
     assert report.rendered == 1
     assert report.undersized == []
+
+
+# -- progress and cancelling -------------------------------------------
+#
+# Both exist for the review window, which runs this loop on a worker thread
+# and has to say where it has got to and be able to stop. They are tested
+# here rather than through the window because they are properties of the
+# loop, not of Qt.
+
+
+@pytest.fixture
+def three_pages(tmp_path: Path) -> tuple[Path, Path, Plan]:
+    """Three pages in one plan, otherwise the same as ``project``."""
+    source = tmp_path / "pages"
+    source.mkdir()
+    names = ["page-001.png", "page-002.png", "page-003.png"]
+    digests = {name: sha256_file(save_page(_page_array(), source / name)) for name in names}
+    plan = make_plan(
+        _header(),
+        tuple(_region(name, id=name.removesuffix(".png")) for name in names),
+        digests,
+    )
+    plan_path = source / "comic-plan.yaml"
+    write_plan(plan, plan_path)
+    return plan_path, tmp_path / "out", plan
+
+
+def test_progress_names_each_page_in_order_before_it_is_rendered(
+    three_pages: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    plan_path, output, plan = three_pages
+    seen: list[tuple[int, int, str, bool]] = []
+
+    def note(progress: object) -> None:
+        assert isinstance(progress, PageProgress)
+        written = (output / progress.image).exists()
+        seen.append((progress.index, progress.total, progress.image, written))
+
+    report = apply_plan(plan, plan_path, output, ApplyConfig(), progress=note)
+
+    assert report.ok
+    assert seen == [
+        (0, 3, "page-001.png", False),
+        (1, 3, "page-002.png", False),
+        (2, 3, "page-003.png", False),
+    ], "each page is announced before it is rendered, not after"
+
+
+def test_a_run_nobody_stops_is_not_marked_cancelled(
+    three_pages: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    plan_path, output, plan = three_pages
+
+    report = apply_plan(plan, plan_path, output, ApplyConfig(), should_cancel=lambda: False)
+
+    assert not report.cancelled
+    assert report.ok
+    assert len(report.pages_written) == 3
+
+
+def test_cancelling_stops_between_pages_and_leaves_whole_ones(
+    three_pages: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    plan_path, output, plan = three_pages
+    full = apply_plan(plan, plan_path, output / "all", ApplyConfig())
+    assert len(full.pages_written) == 3
+
+    rendered: list[str] = []
+
+    def note(progress: PageProgress) -> None:
+        rendered.append(progress.image)
+
+    stopped = apply_plan(
+        plan,
+        plan_path,
+        output / "some",
+        ApplyConfig(),
+        progress=note,
+        # Asked before each page, so answering true once the first has been
+        # announced stops the run with exactly that page written.
+        should_cancel=lambda: len(rendered) >= 1,
+    )
+
+    assert stopped.cancelled
+    assert not stopped.ok, "pages the plan names are missing"
+    assert [path.name for path in stopped.pages_written] == ["page-001.png"]
+    assert sorted(p.name for p in (output / "some").iterdir()) == ["page-001.png"]
+    assert sha256_file(output / "some" / "page-001.png") == sha256_file(
+        output / "all" / "page-001.png"
+    ), "a page a cancelled run wrote is the page a whole run would have written"
+
+
+def test_cancelling_before_the_first_page_writes_nothing(
+    three_pages: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    plan_path, output, plan = three_pages
+
+    report = apply_plan(plan, plan_path, output, ApplyConfig(), should_cancel=lambda: True)
+
+    assert report.cancelled
+    assert report.pages_written == []
+    assert not output.exists()
