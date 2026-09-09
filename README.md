@@ -236,6 +236,15 @@ written straight into the plan as you type — the source text among them,
 since a region you drew by hand has no OCR reading, and the plan file has
 always been hand-editable anyway.
 
+**Moving a region** needs no mode: `Ctrl`-drag it (`Cmd` on macOS), or use
+the **arrow keys** — one pixel a tap, ten with `Shift` — once the page itself
+has focus, which one click on it gives. Plain dragging still pans the page,
+which is why the modifier is there; the cursor turns into a move cursor while
+you hold it over the selected region. A region stops at the edge of the page
+rather than going off it, a run of nudges is one undo step, and a moved region
+records `geometry: manual` like a reshaped one — it is no longer where
+detection put it.
+
 **Edit > Edit Region Shape** (`Ctrl+E`) puts a handle on every corner of the
 selected region. Drag a corner to move it, drag anywhere inside the outline
 to move the whole shape, and double-click an edge to add a corner or a corner

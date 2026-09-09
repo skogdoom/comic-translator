@@ -74,6 +74,24 @@ HANDLE_GRAB = 10.0
 EDGE_GRAB = 8.0
 """How near an edge a double-click has to land to put a corner in it."""
 
+NUDGE_STEP = 1
+NUDGE_STRIDE = 10
+"""How far an arrow key moves the selected region, plain and with Shift.
+
+One pixel because that is the unit the plan file is written in and the
+smallest thing worth correcting; ten because crossing a balloon one pixel at
+a time is not a correction, it is a chore.
+"""
+
+MOVE_MODIFIER = Qt.KeyboardModifier.ControlModifier
+"""Held to drag the selected region instead of the page. Command on macOS.
+
+Plain dragging cannot be it: dragging inside a region is also how the page is
+panned, and taking that away would cost most at the zoom where one balloon
+fills the viewport. The wheel already pairs with this modifier to zoom;
+dragging with it was unclaimed.
+"""
+
 ZOOM_MIN = 0.05
 ZOOM_MAX = 8.0
 ZOOM_STEP = 1.25
@@ -143,10 +161,13 @@ class CanvasMode(StrEnum):
 
 
 MODE_HINTS: dict[CanvasMode, str] = {
-    CanvasMode.SELECT: "click a region to select it · drag to pan · Ctrl and the wheel zooms",
+    CanvasMode.SELECT: (
+        "click a region to select it · Ctrl-drag or the arrow keys move it · "
+        "drag to pan · Ctrl and the wheel zooms"
+    ),
     CanvasMode.RESHAPE: (
-        "drag a corner to reshape · drag inside to move · double-click an edge to add "
-        "a corner or a corner to remove it · Esc cancels"
+        "drag a corner to reshape · drag inside or use the arrow keys to move · "
+        "double-click an edge to add a corner or a corner to remove it · Esc cancels"
     ),
     CanvasMode.DRAW: (
         "click to place each corner · click the first again, double-click or Enter to "
@@ -253,6 +274,12 @@ class PageCanvas(QGraphicsView):
     the mouse comes up, so one drag is one edit — and only when the shape
     actually changed. Whoever receives it decides whether it is legal; the
     canvas draws shapes, it does not know what a plan file will accept."""
+
+    polygon_nudged = Signal(str, object)
+    """A key moved the selected region: its id and the polygon. Separate from
+    ``polygon_edited`` because it is a step in a run rather than a finished
+    gesture — forty taps of an arrow key are one thing done, and undo should
+    agree."""
 
     region_drawn = Signal(object)
     """An outline drawn by hand closed: a polygon of whole-pixel points. What
@@ -577,6 +604,22 @@ class PageCanvas(QGraphicsView):
         right, bottom = max(left, rect.right() - 1), max(top, rect.bottom() - 1)
         return (round(max(left, min(right, x))), round(max(top, min(bottom, y))))
 
+    def _offset_polygon(self, polygon: Polygon, dx: float, dy: float) -> Polygon:
+        """The whole shape moved, stopped at the edge of the page.
+
+        The offset is clamped, not each corner: clamping them one by one
+        would flatten the polygon against the edge instead of stopping it
+        there. Shared by the drag and the arrow keys, so both stop the same
+        way and neither can put a corner off the top or left, where the plan
+        file reader would refuse it.
+        """
+        rect = self._page_rect()
+        xs = [x for x, _ in polygon]
+        ys = [y for _, y in polygon]
+        dx = max(rect.left() - min(xs), min(rect.right() - 1 - max(xs), dx))
+        dy = max(rect.top() - min(ys), min(rect.bottom() - 1 - max(ys), dy))
+        return tuple(self._clamped(x + dx, y + dy) for x, y in polygon)
+
     def _moved_polygon(self, drag: _ShapeDrag, scene_point: QPointF) -> Polygon:
         """The dragged polygon at this pointer position."""
         dx = scene_point.x() - drag.origin.x()
@@ -587,16 +630,7 @@ class PageCanvas(QGraphicsView):
             return tuple(
                 moved if index == drag.vertex else point for index, point in enumerate(drag.polygon)
             )
-
-        # Moving the whole shape clamps the offset, not each corner: clamping
-        # them one by one would flatten the polygon against the edge of the
-        # page instead of stopping it there.
-        rect = self._page_rect()
-        xs = [x for x, _ in drag.polygon]
-        ys = [y for _, y in drag.polygon]
-        dx = max(rect.left() - min(xs), min(rect.right() - 1 - max(xs), dx))
-        dy = max(rect.top() - min(ys), min(rect.bottom() - 1 - max(ys), dy))
-        return tuple(self._clamped(x + dx, y + dy) for x, y in drag.polygon)
+        return self._offset_polygon(drag.polygon, dx, dy)
 
     def _draw_polygon(self, region_id: str, polygon: Polygon) -> None:
         item = self._items.get(region_id)
@@ -604,6 +638,37 @@ class PageCanvas(QGraphicsView):
             return
         item.setPolygon(QPolygonF([QPointF(x, y) for x, y in polygon]))
         self._refresh_handles()
+
+    # -- moving -----------------------------------------------------------
+
+    def wants_move_cursor(self, view_pos: QPointF, modifiers: Qt.KeyboardModifier) -> bool:
+        """Whether the pointer is somewhere a modifier drag would move a region.
+
+        Exposed rather than buried in the move handler so the answer can be
+        asked for directly: it is the whole of what the cursor says.
+        """
+        if not modifiers & MOVE_MODIFIER or self._mode not in (
+            CanvasMode.SELECT,
+            CanvasMode.RESHAPE,
+        ):
+            return False
+        item = self._items.get(self._selected_id) if self._selected_id else None
+        if item is None:
+            return False
+        return bool(item.contains(item.mapFromScene(self.mapToScene(view_pos.toPoint()))))
+
+    def _nudge(self, dx: int, dy: int) -> bool:
+        """Move the selected region by whole pixels. False if there is none."""
+        region_id = self._selected_id
+        item = self._items.get(region_id) if region_id else None
+        if region_id is None or item is None:
+            return False
+        moved = self._offset_polygon(item.points(), dx, dy)
+        if moved == item.points():
+            return True  # against the edge of the page; still ours to swallow
+        self._draw_polygon(region_id, moved)
+        self.polygon_nudged.emit(region_id, moved)
+        return True
 
     def _begin_drag(self, view_pos: QPointF) -> bool:
         """Take hold of a corner, or of the whole shape. False if neither."""
@@ -758,6 +823,13 @@ class PageCanvas(QGraphicsView):
                 self._place_point(event.position())
                 event.accept()
                 return
+            if (
+                self._mode is CanvasMode.SELECT
+                and event.modifiers() & MOVE_MODIFIER
+                and self._begin_drag(event.position())
+            ):
+                event.accept()
+                return
             if self._mode is CanvasMode.RESHAPE:
                 if self._begin_drag(event.position()):
                     event.accept()
@@ -789,6 +861,14 @@ class PageCanvas(QGraphicsView):
             self._refresh_draft(event.position())
             event.accept()
             return
+        if self._mode in (CanvasMode.SELECT, CanvasMode.RESHAPE):
+            # Held over the selected region, the modifier turns the pan into a
+            # move; the cursor is where that is discoverable without reading.
+            self.viewport().setCursor(
+                Qt.CursorShape.SizeAllCursor
+                if self.wants_move_cursor(event.position(), event.modifiers())
+                else Qt.CursorShape.ArrowCursor
+            )
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
@@ -855,6 +935,25 @@ class PageCanvas(QGraphicsView):
         reached it yet.
         """
         key = event.key()
+        step = NUDGE_STRIDE if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else NUDGE_STEP
+        # Keyed by the int QKeyEvent reports, not by the enum member.
+        offsets: dict[int, tuple[int, int]] = {
+            Qt.Key.Key_Left.value: (-step, 0),
+            Qt.Key.Key_Right.value: (step, 0),
+            Qt.Key.Key_Up.value: (0, -step),
+            Qt.Key.Key_Down.value: (0, step),
+        }
+        if (
+            key in offsets
+            and self._drag is None
+            and self._mode in (CanvasMode.SELECT, CanvasMode.RESHAPE)
+            and self._nudge(*offsets[key])
+        ):
+            # Swallowed even when the region is already against the edge of
+            # the page, so a held key cannot start scrolling the view out
+            # from under the region it stopped moving.
+            event.accept()
+            return
         if key == Qt.Key.Key_Escape and self._drag is not None:
             self._cancel_drag()
             event.accept()

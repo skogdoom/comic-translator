@@ -151,6 +151,7 @@ class MainWindow(QMainWindow):
         self._canvas.region_selected.connect(self._on_region_selected)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._canvas.polygon_edited.connect(self._on_polygon_edited)
+        self._canvas.polygon_nudged.connect(self._on_polygon_nudged)
         self._canvas.region_drawn.connect(self._on_region_drawn)
         self._canvas.point_picked.connect(self._on_point_picked)
         self._canvas.region_picked.connect(self._on_region_picked)
@@ -693,6 +694,10 @@ class MainWindow(QMainWindow):
         look like someone clicking it.
         """
         self._hint.set_hint(MODE_HINTS[CanvasMode(mode)])
+        # Entering a mode is a deliberate act, so it breaks a run of nudges
+        # the way moving the selection does.
+        if self.document is not None:
+            self.document.end_edit_run()
         for action, value in (
             (self._edit_shape_action, CanvasMode.RESHAPE),
             (self._add_region_action, CanvasMode.DRAW),
@@ -841,7 +846,28 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{field} colour taken from the page: {color.to_hex()}", 5000)
 
     def _on_polygon_edited(self, region_id: str, polygon: Polygon) -> None:
-        """A dragged outline, on its way to the document if the reader will take it.
+        """A finished gesture: a drag, or a corner added or removed."""
+        # One gesture, one undo step, whatever came before it: the run is
+        # broken at both ends so a drag can neither join the run of nudges in
+        # front of it nor collect the one behind.
+        if self.document is not None:
+            self.document.end_edit_run()
+        self._apply_polygon(region_id, polygon)
+        if self.document is not None:
+            self.document.end_edit_run()
+
+    def _on_polygon_nudged(self, region_id: str, polygon: Polygon) -> None:
+        """A step in a run: arrow keys, held down or tapped in a row.
+
+        The run is left open, so consecutive nudges coalesce into one undo
+        step the way typing into a field does. It breaks where the typing
+        runs break — a different region selected, a mode entered, a gesture
+        finished.
+        """
+        self._apply_polygon(region_id, polygon)
+
+    def _apply_polygon(self, region_id: str, polygon: Polygon) -> None:
+        """Put an edited outline into the document, if the reader will take it.
 
         The canvas has already drawn it. This is the one place that decides
         whether it is a shape a plan file can hold — and puts the old one
@@ -858,9 +884,6 @@ class MainWindow(QMainWindow):
                 _appearance_for(self.document.region(region_id), self.document)
             )
             return
-        # One drag, one undo step: without this the next drag on the same
-        # region would coalesce into this one, the way typing does.
-        self.document.end_edit_run()
         self._refresh_page_visuals()
         self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()

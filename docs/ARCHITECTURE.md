@@ -772,6 +772,17 @@ still a strategy. A region drawn in `review` is written with `erase: polygon`,
 because a person outlining an area means all of it, and because the colours
 sampled for it would otherwise reach nothing.
 
+**A gesture is an undo step; a run of keys is one too.** A drag or a
+double-click ends the edit run on both sides of itself, so it can neither
+join what came before nor collect what comes after: one gesture, one step.
+Arrow-key nudges deliberately do not, so consecutive taps coalesce on the
+`(region_id, "polygon")` run key the way typing into a field does — forty
+taps are one thing done. The run then breaks where typing runs break: a
+different region selected, a mode entered, a gesture finished. This is the
+one place where two routes to the same `set_polygon` call are meant to
+record differently, which is why the canvas reports them on two signals
+rather than one.
+
 **Editing a polygon makes it `manual`.** The value describes how the outline
 was arrived at, and once someone has dragged it, "traced from a contour" and
 "a padded box around the OCR" are both false. It is also the useful thing to
