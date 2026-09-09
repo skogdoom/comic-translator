@@ -78,8 +78,8 @@ Edit a region's polygon, add a region, delete a region, merge two.
 
 The largest milestone on the list and the one that changes what the GUI is.
 Four passes: model and schema, then move and reshape, then add and delete,
-then merge. **The first two passes are done** — what they settled is
-recorded below as done, not as a plan.
+then merge. **The first three passes are done** — what they settled is
+recorded below as done, not as a plan. Merge is what is left.
 
 ### Done: model and schema
 
@@ -111,30 +111,35 @@ geometry `manual`; a refused shape is put back on screen from the document.
 Vertex editing did not need a colour of its own, but `manual` did: violet,
 beside green for traced and orange for approximate.
 
+### Done: add and delete
+
+**Edit > Add Region** (`Ctrl+Shift+A`) draws an outline corner by corner —
+click the first corner again, double-click or Enter to close it, Backspace
+to take one back, `Esc` to abandon. **Edit > Delete Region**
+(`Ctrl+Backspace`) removes the selected one, with no confirmation dialog:
+undo is the safety net every other edit here gets, and the status bar says
+what went and how to get it back. Both are one undo step.
+
+No OCR, as settled: a drawn region's `source_text` is typed in beside its
+translation, and until then the region reads as held back. Its colours are
+measured off the page by `gui/sampling.py`, through the same
+`detect.color.sample_colors` extract uses; both colours are editable on any
+region from the inspector, with the standard lettering values, a colour
+dialog, and an eyedropper that takes the next click on the page.
+`ARCHITECTURE.md` carries the measurements behind the ink-box heuristic.
+
+The two questions this pass opened are answered in the code. Ids are
+numbered past the highest a page has used, with a session high-water mark so
+a deleted region's name is not handed on. A hand-drawn region records
+`confidence: 1.0`: the field is not optional, `0.0` would flag it as a
+doubtful reading forever, and read beside `geometry: manual` the pair says
+what it is — nothing measured this, so there is no measurement to doubt.
+
 ### Settled, not yet built
 
-**A new region is drawn by hand, and gets no OCR.** The user draws the
-outline; `source_text` and `translation` are both typed in. Nothing in
-`review` re-reads the page for text, so an added region has no OCR
-confidence to report and `confidence` should say so rather than claim a
-measurement that was never made.
-
-**Colours come from the page or from a swatch.** A new region needs
-`fill_color` and `text_color`. Sampling inside the drawn polygon through
-`detect.color` is the default; clicking a pixel to sample it and picking
-from a small set of standard colours are the two overrides. Sampling pulls
-numpy and OpenCV in, which is fine for `review` — the invariant is that
-*`apply`* runs no detection — but it belongs in a new module and **never**
-in `gui/document.py`, which is deliberately free of both.
-
-**A delete is a delete.** Not a `skip: true` in disguise. Undo covers it
-within the session; after a save it is gone, the same as deleting the
-region's block by hand in the YAML.
-
-**Every one of these is undoable and redoable.** 4.4's snapshot stack
-already gives this for free: an add, a delete, a merge or a moved vertex is
-a new `Plan` pushed through the same `_record`, with no undo code of its
-own.
+**A merge is undoable like everything else.** 4.4's snapshot stack gives it
+for free, as it did the three passes above: a merged plan is a new `Plan`
+pushed through the same `_record`, with no undo code of its own.
 
 **Merging is refused unless the polygons genuinely overlap.** With that
 gate, the merged polygon is the convex hull of both. This covers the case
@@ -155,12 +160,12 @@ document layer.
 
 ### Open
 
-- **Ids and order.** The reader enforces unique ids. Do not reuse the
-  suffix of a deleted region; take `max + 1` per page. Merging two regions
-  has to pick an order. Reordering by hand is out of scope here.
-- **What a hand-drawn region records for confidence.** `0.0` reads as a
-  terrible OCR result and would flag the region as low confidence forever;
-  the field is not optional. Decide during the add-and-delete pass.
+- **What a merged region keeps.** Two regions have two ids, two orders, two
+  source texts and two translations, and the merge has to pick. The id and
+  order of the earlier one is the obvious answer; the texts joined with a
+  newline is a guess worth checking against a real double-traced balloon.
+  Colours can be re-sampled from the merged outline, which is what the add
+  pass built.
 
 ### The correctness trap, closed
 

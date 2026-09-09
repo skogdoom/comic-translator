@@ -215,13 +215,15 @@ window. Without it, `review` fails with a clear message rather than an
 import error.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
-contour, orange for approximate, violet for a shape edited here by hand. A
-region with something worth checking —
-approximate geometry, low confidence, held back with no translation, still
-identical to its source text, or overlapping another region — is outlined
-dashed red instead, regardless of its geometry colour, and the reason is
-named in the inspector. Click a region to select it; its fields are on the
-right, editable in place, written straight into the plan as you type.
+contour, orange for approximate, violet for a shape drawn or edited here by
+hand. A region with something worth checking — approximate geometry, low
+confidence, held back with no translation, still identical to its source
+text, or overlapping another region — is outlined dashed red instead,
+regardless of its geometry colour, and the reason is named in the inspector.
+Click a region to select it; its fields are on the right, editable in place,
+written straight into the plan as you type — the source text among them,
+since a region you drew by hand has no OCR reading, and the plan file has
+always been hand-editable anyway.
 
 **Edit > Edit Region Shape** (`Ctrl+E`) puts a handle on every corner of the
 selected region. Drag a corner to move it, drag anywhere inside the outline
@@ -238,6 +240,27 @@ how the page is panned. A region you reshape is recorded as `geometry:
 manual`: what it says about itself is no longer that detection traced or
 guessed it, and the "check this" flag an approximate region carries clears,
 because checking it is exactly what you have just done.
+
+**Edit > Add Region** (`Ctrl+Shift+A`) draws one by hand, for a balloon
+detection missed entirely. Click to place each corner; click the first corner
+again, double-click, or press Enter to close the outline; Backspace takes a
+corner back and `Esc` abandons it. Nothing in `review` reads a page for text,
+so a region drawn here has no OCR reading: its **source text** is typed in
+along with the translation, and until it is, the region is flagged as held
+back. It records `geometry: manual` and `confidence: 1.0` — there is no
+recogniser's score to report, and the reading is your own.
+
+Its **fill colour** and **text colour** are measured from the page inside the
+outline you drew, the same way `extract` measures a detected region's. Both
+are editable on any region: the swatch opens a menu with the standard
+lettering colours, a full colour dialog, and **Sample from the page…**, which
+takes the next click on the page as the colour. That last one is the answer
+when an outline strays onto artwork and drags a colour with it.
+
+**Edit > Delete Region** (`Ctrl+Backspace`) removes the selected region. A
+delete is a delete, not a `skip: true` in disguise — the region is gone from
+the file the next time you save. `Ctrl+Z` puts it back while the session
+lasts, the same as every other edit here.
 
 **Render Preview** (`Ctrl+R`) calls the exact `render_page` function `apply`
 itself uses, on the plan as it currently stands, unsaved edits included. What
@@ -370,8 +393,10 @@ regions:
   past it.
 - `geometry: approximate` means no clean balloon contour was found and the
   polygon is a padded box around the text. Check those regions. `geometry:
-  manual` is a polygon shaped by hand in `review`, which is neither of the
-  other two: nothing traced it and no OCR box bounded it.
+  manual` is a polygon shaped or drawn by hand in `review`, which is neither
+  of the other two: nothing traced it and no OCR box bounded it. A region
+  drawn by hand carries `confidence: 1.0` beside it — not a measurement, but
+  the absence of one: nothing read it, so there is no score to doubt.
 - Regions are found by tracing a contour on a luminance threshold. When that
   finds nothing — a caption box the same brightness as the art behind it, a
   white balloon over near-white art — a second pass seeds a region from the

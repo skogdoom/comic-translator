@@ -513,7 +513,9 @@ preview.py     render_page called on the current document — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 qimage.py      the one function that turns a Pillow image into a QPixmap
 canvas.py      the page: a pixmap, and clickable region outlines over it
+sampling.py    colours read off the page for a region drawn by hand
 inspector.py   one region's fields, writing straight through to the document
+color_box.py    a colour field: a swatch, the standard values, the eyedropper
 page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
 header_dialog.py the settings every region is drawn under
@@ -523,7 +525,8 @@ main_window.py wires the four widgets together; the only module that
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py` and `about.py` need no display and import no Qt;
+`document.py`, `preview.py`, `sampling.py` and `about.py` need no display and
+import no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that imports more than one of the others,
 which is what keeps an edit's ripple effects (the window title's dirty
@@ -682,6 +685,42 @@ moment a polygon can move: a self-intersecting outline would save fine and
 fail to load, taking the rest of the file's translations with it. The rules
 live in `planfile.schema` where both the reader and `gui.document` can reach
 them, rather than being written out twice and drifting.
+
+**One canvas mode at a time.** A click on the page means different things —
+select a region, take hold of a corner, place a corner, take a colour — and
+they contradict each other, so the canvas holds a single `CanvasMode` rather
+than a set of switches that could be on together. The window's two checkable
+actions follow the canvas through `mode_changed` rather than driving it,
+because the canvas leaves a mode on its own: an outline that closes and a
+pixel that is picked both end the mode that produced them.
+
+**`review` may measure the page; `apply` may not.** The invariant is about
+the second pass: everything `apply` needs is in the plan file, which is what
+makes it deterministic. A region drawn by hand needs a `fill_color` and a
+`text_color` before it can be in that file at all, and measuring them beats
+guessing — a white-on-black caption is a page turn away. `gui/sampling.py`
+is where that dependency lives, kept out of `gui/document.py` so the
+view-model stays free of numpy and OpenCV.
+
+It calls the same `detect.color.sample_colors` extract calls. Detection hands
+it the OCR line boxes to find ink in; a hand-drawn region has none, so the
+middle 60% of the outline's bounding box stands in for them — lettering sits
+in the middle of a balloon, and the edges of a hand-drawn outline are where
+it strays onto the artwork. Measured: offering the *whole* bounding box of a
+rectangle drawn around the synthetic ellipse fixture returns the dark art in
+its corners (90, 90, 90) as the text colour instead of the lettering's
+(20, 20, 20). With the middle box, re-sampling all 21 detected regions across
+four real fixture pages reproduces exactly what extract recorded in 20 of
+them; the twenty-first differs by a near-white tint on a whisper balloon
+(#ebf8f4 against #ffffff).
+
+**Region ids go forward, never back.** A new region is numbered past the
+highest its page has used, and the document keeps that high-water mark for
+the session so that deleting the last region on a page and drawing another
+does not hand the old one's name to the new one. An id is how a region is
+named in a report, in a note, in a commit message; reusing one makes those
+quietly wrong. The mark cannot outlive the session, because a plan file has
+no way to record the ids that are no longer in it.
 
 **Editing a polygon makes it `manual`.** The value describes how the outline
 was arrived at, and once someone has dragged it, "traced from a contour" and

@@ -38,7 +38,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..model import Region
+from ..model import Color, Region
+from .color_box import ColorBox
 from .document import PlanDocument, RegionFlags
 from .font_box import FontBox
 
@@ -148,6 +149,11 @@ class FlagList(QListWidget):
 class RegionInspector(QWidget):
     edited = Signal()
 
+    sample_requested = Signal(str)
+    """A colour field wants one taken off the page: ``"fill"`` or ``"text"``.
+    The canvas is not reachable from here; the window arranges the picking
+    and writes the answer back through :meth:`set_region`."""
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._document: PlanDocument | None = None
@@ -155,9 +161,16 @@ class RegionInspector(QWidget):
 
         self._id_label = QLabel("—")
         self._flags = FlagList()
+        # Typeable, not just readable. A region drawn by hand has no OCR
+        # reading and no other way to get one — nothing in review reads a
+        # page for text — and for a detected region this is a field in a file
+        # that has been hand-editable since milestone 1. What apply reports
+        # as "same as source" is measured against whatever is in the plan,
+        # here or in the YAML.
         self._source_text = QPlainTextEdit()
-        self._source_text.setReadOnly(True)
         self._source_text.setMaximumHeight(100)
+        self._source_text.setUndoRedoEnabled(False)
+        self._source_text.setPlaceholderText("what the lettering on the page says")
         self._translation = QPlainTextEdit()
         self._translation.setMaximumHeight(100)
         self._notes = QPlainTextEdit()
@@ -170,6 +183,8 @@ class RegionInspector(QWidget):
         for prose in (self._translation, self._notes):
             prose.setUndoRedoEnabled(False)
         self._skip = QCheckBox("skip: leave this region untouched")
+        self._fill_color = ColorBox()
+        self._text_color = ColorBox()
         self._font = FontBox(allow_default=True)
         self._font_size = QSpinBox()
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
@@ -183,6 +198,8 @@ class RegionInspector(QWidget):
         form.addRow("translation", self._translation)
         form.addRow("notes", self._notes)
         form.addRow("", self._skip)
+        form.addRow("fill colour", self._fill_color)
+        form.addRow("text colour", self._text_color)
         form.addRow("font override", self._font)
         form.addRow("font size", self._font_size)
 
@@ -190,11 +207,16 @@ class RegionInspector(QWidget):
         layout.addLayout(form)
         layout.addStretch(1)
 
+        self._source_text.textChanged.connect(self._on_source_text_changed)
         self._translation.textChanged.connect(self._on_translation_changed)
         self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
         self._font.currentTextChanged.connect(self._on_font_changed)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
+        self._fill_color.picked.connect(self._on_fill_color_picked)
+        self._text_color.picked.connect(self._on_text_color_picked)
+        self._fill_color.sample_requested.connect(lambda: self.sample_requested.emit("fill"))
+        self._text_color.sample_requested.connect(lambda: self.sample_requested.emit("text"))
 
         self.set_region(None, None)
 
@@ -211,25 +233,30 @@ class RegionInspector(QWidget):
         region = document.region(region_id) if document is not None and region_id else None
 
         with ExitStack() as blockers:
-            for widget in (
-                self._translation,
-                self._notes,
-                self._skip,
-                self._font,
-                self._font_size,
-            ):
+            for widget in self._fields():
                 blockers.enter_context(QSignalBlocker(widget))
             self._populate(document, region)
 
         enabled = region is not None
-        for widget in (
+        for widget in self._fields():
+            widget.setEnabled(enabled)
+
+    def focus_source_text(self) -> None:
+        """Put the cursor where a newly drawn region needs typing first."""
+        self._source_text.setFocus()
+
+    def _fields(self) -> tuple[QWidget, ...]:
+        """Every widget that writes to the document when it changes."""
+        return (
+            self._source_text,
             self._translation,
             self._notes,
             self._skip,
+            self._fill_color,
+            self._text_color,
             self._font,
             self._font_size,
-        ):
-            widget.setEnabled(enabled)
+        )
 
     def _populate(self, document: PlanDocument | None, region: Region | None) -> None:
         if document is None or region is None:
@@ -239,6 +266,8 @@ class RegionInspector(QWidget):
             self._translation.setPlainText("")
             self._notes.setPlainText("")
             self._skip.setChecked(False)
+            self._fill_color.set_color(Color(255, 255, 255))
+            self._text_color.set_color(Color(0, 0, 0))
             self._font.set_value(None)
             self._font_size.setValue(_FONT_SIZE_AUTO)
             return
@@ -249,6 +278,8 @@ class RegionInspector(QWidget):
         self._translation.setPlainText(region.translation)
         self._notes.setPlainText(region.notes)
         self._skip.setChecked(region.skip)
+        self._fill_color.set_color(region.fill_color)
+        self._text_color.set_color(region.text_color)
         self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
 
@@ -258,6 +289,21 @@ class RegionInspector(QWidget):
             # so the label needs refreshing even though nothing else does.
             self._flags.set_flags(self._document.flags(self._region_id))
         self.edited.emit()
+
+    def _on_source_text_changed(self) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_source_text(self._region_id, self._source_text.toPlainText())
+        self._commit()
+
+    def _on_fill_color_picked(self, color: Color) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_fill_color(self._region_id, color)
+        self._commit()
+
+    def _on_text_color_picked(self, color: Color) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_text_color(self._region_id, color)
+        self._commit()
 
     def _on_translation_changed(self) -> None:
         if self._document is not None and self._region_id is not None:

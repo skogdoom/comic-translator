@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -18,6 +19,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QNativeGestureEvent,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
     QPolygonF,
@@ -27,6 +29,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QGraphicsItem,
+    QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsPolygonItem,
     QGraphicsRectItem,
@@ -35,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..model import Polygon
+from ..model import Point, Polygon
 from ..planfile.schema import MIN_POLYGON_POINTS
 
 COLOR_EXACT = QColor(40, 170, 70)
@@ -112,6 +115,28 @@ class ViewState:
 
     centre: tuple[float, float]
     """The scene point at the middle of the viewport. Ignored when fitting."""
+
+
+class CanvasMode(StrEnum):
+    """What a click on the page does.
+
+    One mode at a time rather than a set of independent switches: they
+    contradict each other — a click cannot both place a corner and take hold
+    of one — and a canvas that could be in two of them at once would be a
+    canvas nobody could predict.
+    """
+
+    SELECT = "select"
+    """Click a region to select it, drag to pan. The default."""
+
+    RESHAPE = "reshape"
+    """The selected region's corners can be dragged, added and removed."""
+
+    DRAW = "draw"
+    """Clicks place the corners of a new region until the outline closes."""
+
+    PICK = "pick"
+    """The next click reports the page pixel under it, then this ends."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +229,20 @@ class PageCanvas(QGraphicsView):
     actually changed. Whoever receives it decides whether it is legal; the
     canvas draws shapes, it does not know what a plan file will accept."""
 
+    region_drawn = Signal(object)
+    """An outline drawn by hand closed: a polygon of whole-pixel points. What
+    becomes of it — a region, with what colours and what id — is not the
+    canvas's business."""
+
+    point_picked = Signal(object)
+    """A page pixel was clicked in pick mode: an ``(x, y)`` point. The page
+    itself is not here, so reading the colour there is for whoever has it."""
+
+    mode_changed = Signal(str)
+    """The canvas changed mode, including when it left one of its own accord
+    — an outline that closed, a pixel that was picked. Whoever shows the mode
+    follows this rather than assuming it is still where they put it."""
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
@@ -217,9 +256,12 @@ class PageCanvas(QGraphicsView):
         self._appearances: dict[str, RegionAppearance] = {}
         self._selected_id: str | None = None
         self._fit_to_window = True
-        self._edit_mode = False
+        self._mode = CanvasMode.SELECT
         self._handles: list[VertexHandle] = []
         self._drag: _ShapeDrag | None = None
+        self._draft: list[Point] = []
+        self._draft_item: QGraphicsPathItem | None = None
+        self._draft_handles: list[VertexHandle] = []
 
     def show_page(self, pixmap: QPixmap, regions: Sequence[RegionAppearance] = ()) -> None:
         """Replace the page and its overlay, fitted to the window.
@@ -232,6 +274,9 @@ class PageCanvas(QGraphicsView):
         self._items.clear()
         self._appearances.clear()
         self._handles.clear()
+        self._draft.clear()
+        self._draft_handles.clear()
+        self._draft_item = None
         self._drag = None
         self._selected_id = None
 
@@ -239,14 +284,38 @@ class PageCanvas(QGraphicsView):
         self._scene.setSceneRect(QRectF(pixmap.rect()))
 
         for appearance in regions:
-            polygon = QPolygonF([QPointF(x, y) for x, y in appearance.polygon])
-            item = RegionItem(appearance.region_id, polygon)
-            item.setPen(_pen_for(appearance.color, flagged=appearance.flagged, selected=False))
-            self._scene.addItem(item)
-            self._items[appearance.region_id] = item
-            self._appearances[appearance.region_id] = appearance
+            self._add_region_item(appearance)
 
         self.fit()
+
+    def region_ids(self) -> frozenset[str]:
+        """Which regions are currently drawn over the page."""
+        return frozenset(self._items)
+
+    def set_regions(self, regions: Sequence[RegionAppearance]) -> None:
+        """Replace the outlines, keeping the page, the zoom and the selection.
+
+        For when the set of regions has changed rather than one of them: a
+        region added, deleted, or brought back by undo. Reloading the page
+        would do it too, and would also throw away where you were looking.
+        """
+        selected = self._selected_id
+        for item in self._items.values():
+            self._scene.removeItem(item)
+        self._items.clear()
+        self._appearances.clear()
+        self._selected_id = None
+        for appearance in regions:
+            self._add_region_item(appearance)
+        self.set_selected(selected if selected in self._items else None)
+
+    def _add_region_item(self, appearance: RegionAppearance) -> None:
+        polygon = QPolygonF([QPointF(x, y) for x, y in appearance.polygon])
+        item = RegionItem(appearance.region_id, polygon)
+        item.setPen(_pen_for(appearance.color, flagged=appearance.flagged, selected=False))
+        self._scene.addItem(item)
+        self._items[appearance.region_id] = item
+        self._appearances[appearance.region_id] = appearance
 
     def set_appearance(self, appearance: RegionAppearance) -> None:
         """Restyle one region in place, without touching the pixmap, pan, or zoom.
@@ -283,25 +352,124 @@ class PageCanvas(QGraphicsView):
                 )
         self._refresh_handles()
 
-    # -- reshaping --------------------------------------------------------
+    # -- modes ------------------------------------------------------------
 
     @property
-    def edit_mode(self) -> bool:
-        """Whether the selected region's outline can be dragged about."""
-        return self._edit_mode
+    def mode(self) -> CanvasMode:
+        """What a click on the page does right now."""
+        return self._mode
 
-    def set_edit_mode(self, on: bool) -> None:
-        """Turn corner handles on the selected region on or off.
+    def set_mode(self, mode: CanvasMode) -> None:
+        """Change what a click does, abandoning anything half-done first.
 
-        A mode rather than always-on, because dragging inside a region is
-        also how you pan the page: without the mode, reaching for the page
-        would sometimes move a balloon instead, and quietly.
+        Modes rather than always-on behaviour, because a click means
+        different things: dragging inside a region is also how you pan the
+        page, so without a mode to be in, reaching for the page would
+        sometimes move a balloon instead, and quietly.
         """
-        if on == self._edit_mode:
+        if mode == self._mode:
             return
-        self._edit_mode = on
         self._cancel_drag()
+        self._clear_draft()
+        self._mode = mode
         self._refresh_handles()
+        self.setDragMode(
+            QGraphicsView.DragMode.ScrollHandDrag
+            if mode in (CanvasMode.SELECT, CanvasMode.RESHAPE)
+            else QGraphicsView.DragMode.NoDrag
+        )
+        self.viewport().setCursor(
+            Qt.CursorShape.CrossCursor
+            if mode in (CanvasMode.DRAW, CanvasMode.PICK)
+            else Qt.CursorShape.ArrowCursor
+        )
+        self.mode_changed.emit(str(mode))
+
+    # -- drawing a new region ---------------------------------------------
+
+    @property
+    def draft(self) -> Polygon:
+        """The corners placed so far in draw mode. Empty when not drawing."""
+        return tuple(self._draft)
+
+    def _place_point(self, view_pos: QPointF) -> None:
+        """Add a corner, or close the outline if this lands on the first one."""
+        point = self._clamped(*self._scene_xy(view_pos))
+        if len(self._draft) >= MIN_POLYGON_POINTS and self._near_first(view_pos):
+            self._finish_drawing()
+            return
+        if self._draft and point == self._draft[-1]:
+            return  # a double-click's second press, or a stutter
+        self._draft.append(point)
+        self._refresh_draft(view_pos)
+
+    def _near_first(self, view_pos: QPointF) -> bool:
+        if not self._draft:
+            return False
+        offset = self.mapFromScene(QPointF(*self._draft[0])) - view_pos.toPoint()
+        return float((offset.x() ** 2 + offset.y() ** 2) ** 0.5) <= HANDLE_GRAB
+
+    def _refresh_draft(self, cursor: QPointF | None = None) -> None:
+        """Redraw the outline so far, with a rubber band out to the pointer."""
+        for handle in self._draft_handles:
+            self._scene.removeItem(handle)
+        self._draft_handles.clear()
+        if self._draft_item is not None:
+            self._scene.removeItem(self._draft_item)
+            self._draft_item = None
+        if not self._draft:
+            return
+
+        path = QPainterPath(QPointF(*self._draft[0]))
+        for point in self._draft[1:]:
+            path.lineTo(QPointF(*point))
+        if cursor is not None:
+            path.lineTo(self.mapToScene(cursor.toPoint()))
+        if len(self._draft) >= MIN_POLYGON_POINTS:
+            # Shown closed from three corners on, because from there it is a
+            # region: what you are looking at is what clicking the first
+            # corner would give you.
+            path.lineTo(QPointF(*self._draft[0]))
+
+        item = QGraphicsPathItem(path)
+        pen = QPen(COLOR_MANUAL)
+        pen.setWidthF(_WIDTH_SELECTED)
+        pen.setCosmetic(True)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        item.setPen(pen)
+        item.setZValue(3.0)
+        self._scene.addItem(item)
+        self._draft_item = item
+        for index, (x, y) in enumerate(self._draft):
+            handle = VertexHandle(index, QPointF(x, y))
+            self._scene.addItem(handle)
+            self._draft_handles.append(handle)
+
+    def _finish_drawing(self) -> None:
+        """Close the outline and report it, if there is enough of one."""
+        if len(self._draft) < MIN_POLYGON_POINTS:
+            return
+        polygon = tuple(self._draft)
+        self._clear_draft()
+        self.set_mode(CanvasMode.SELECT)
+        self.region_drawn.emit(polygon)
+
+    def _clear_draft(self) -> None:
+        """Take the half-drawn outline off the page. Nothing is reported."""
+        self._draft.clear()
+        self._refresh_draft()
+
+    def _pick(self, view_pos: QPointF) -> None:
+        # Reported before the mode changes, so that whoever asked for the
+        # pixel still knows it was them who asked when it arrives.
+        self.point_picked.emit(self._clamped(*self._scene_xy(view_pos)))
+        self.set_mode(CanvasMode.SELECT)
+
+    def _scene_xy(self, view_pos: QPointF) -> tuple[float, float]:
+        scene_point = self.mapToScene(view_pos.toPoint())
+        return scene_point.x(), scene_point.y()
+
+    # -- reshaping --------------------------------------------------------
 
     def polygon_of(self, region_id: str) -> Polygon | None:
         """The outline as it is drawn right now, mid-drag included."""
@@ -346,7 +514,7 @@ class PageCanvas(QGraphicsView):
         for handle in self._handles:
             self._scene.removeItem(handle)
         self._handles.clear()
-        if not self._edit_mode or self._selected_id is None:
+        if self._mode is not CanvasMode.RESHAPE or self._selected_id is None:
             return
         item = self._items.get(self._selected_id)
         if item is None:
@@ -535,13 +703,18 @@ class PageCanvas(QGraphicsView):
         return bool(super().event(event))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
-        if (
-            self._edit_mode
-            and event.button() == Qt.MouseButton.LeftButton
-            and self._begin_drag(event.position())
-        ):
-            event.accept()
-            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._mode is CanvasMode.PICK:
+                self._pick(event.position())
+                event.accept()
+                return
+            if self._mode is CanvasMode.DRAW:
+                self._place_point(event.position())
+                event.accept()
+                return
+            if self._mode is CanvasMode.RESHAPE and self._begin_drag(event.position()):
+                event.accept()
+                return
         region_id = self.region_at(event.position())
         if region_id is not None:
             self.region_selected.emit(region_id)
@@ -551,6 +724,12 @@ class PageCanvas(QGraphicsView):
         if self._drag is not None:
             scene_point = self.mapToScene(event.position().toPoint())
             self._draw_polygon(self._drag.region_id, self._moved_polygon(self._drag, scene_point))
+            event.accept()
+            return
+        if self._mode is CanvasMode.DRAW and self._draft:
+            # The rubber band out to the pointer, so the corner you are about
+            # to place is visible before you place it.
+            self._refresh_draft(event.position())
             event.accept()
             return
         super().mouseMoveEvent(event)
@@ -576,7 +755,14 @@ class PageCanvas(QGraphicsView):
         enough to trace a balloon, so adding and removing them is part of
         reshaping rather than a refinement of it.
         """
-        if not self._edit_mode or event.button() != Qt.MouseButton.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mouseDoubleClickEvent(event)
+            return
+        if self._mode is CanvasMode.DRAW:
+            self._finish_drawing()  # the press before this placed the corner
+            event.accept()
+            return
+        if self._mode is not CanvasMode.RESHAPE:
             super().mouseDoubleClickEvent(event)
             return
         region_id = self._selected_id
@@ -605,9 +791,29 @@ class PageCanvas(QGraphicsView):
         event.accept()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
-        """Escape abandons a drag in progress, leaving the shape as it was."""
-        if event.key() == Qt.Key.Key_Escape and self._drag is not None:
+        """Escape abandons what is half-done; drawing also takes Enter and Backspace.
+
+        Escape leaves a dragged shape as it was and throws away a half-drawn
+        outline — in both cases the plan is untouched, because neither has
+        reached it yet.
+        """
+        key = event.key()
+        if key == Qt.Key.Key_Escape and self._drag is not None:
             self._cancel_drag()
             event.accept()
             return
+        if self._mode is CanvasMode.DRAW:
+            if key == Qt.Key.Key_Escape:
+                self._clear_draft()
+                event.accept()
+                return
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._finish_drawing()
+                event.accept()
+                return
+            if key == Qt.Key.Key_Backspace and self._draft:
+                self._draft.pop()
+                self._refresh_draft()
+                event.accept()
+                return
         super().keyPressEvent(event)

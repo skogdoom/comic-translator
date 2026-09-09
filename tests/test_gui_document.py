@@ -6,6 +6,7 @@ import pytest
 
 from comictrans.errors import InputError, PlanError
 from comictrans.gui.document import (
+    MANUAL_CONFIDENCE,
     UNDO_LIMIT,
     PlanDocument,
     overlapping_region_ids,
@@ -258,9 +259,9 @@ def _document(*regions: Region) -> PlanDocument:
 def _apart(index: int, **overrides: object) -> Region:
     """A clean region whose polygon overlaps no other one built this way."""
     left = index * 200
+    overrides.setdefault("id", f"r{index}")
     return _region(
         "page-001.png",
-        id=f"r{index}",
         order=index,
         polygon=Box(left, 0, left + 100, 100).as_polygon(),
         **overrides,
@@ -599,3 +600,161 @@ def test_a_reshaped_region_saves_and_reopens(project: Path) -> None:
 
     assert reopened.region("page-001-001").polygon == ((5, 5), (60, 5), (60, 60), (5, 60))
     assert reopened.region("page-001-001").geometry is Geometry.MANUAL
+
+
+# -- adding and deleting ------------------------------------------------------
+
+WHITE = Color(255, 255, 255)
+BLACK = Color(0, 0, 0)
+
+
+def _added(doc: PlanDocument, image: str = "page-001.png", **overrides: object) -> Region:
+    return doc.add_region(
+        image,
+        overrides.pop("polygon", SQUARE),  # type: ignore[arg-type]
+        fill_color=WHITE,
+        text_color=BLACK,
+        **overrides,  # type: ignore[arg-type]
+    )
+
+
+def test_a_drawn_region_joins_the_plan_as_hand_drawn_and_unfilled() -> None:
+    doc = _document(_apart(1))
+
+    region = _added(doc)
+
+    assert region.geometry is Geometry.MANUAL
+    assert region.polygon == SQUARE
+    assert (region.source_text, region.translation) == ("", "")
+    assert doc.flags(region.id).held_back, "nothing to render until it is typed in"
+    assert not doc.flags(region.id).low_confidence
+    assert region.confidence == MANUAL_CONFIDENCE
+    assert doc.dirty
+
+
+def test_a_drawn_region_is_numbered_and_ordered_after_the_page_it_joins() -> None:
+    doc = _document(_apart(1, id="page-001-001"), _apart(2, id="page-001-002"))
+
+    region = _added(doc)
+
+    assert region.id == "page-001-003", "the page's stem, then past its highest"
+    assert region.order == 3
+    assert doc.ordered_ids() == ("page-001-001", "page-001-002", "page-001-003")
+
+
+def test_a_deleted_regions_number_is_not_handed_to_the_next_one() -> None:
+    # An id is how a region is named in a report or a note. Reusing one makes
+    # those quietly wrong, so the count goes forward even over a gap.
+    doc = _document(_apart(1, id="page-001-001"), _apart(2, id="page-001-002"))
+    doc.delete_region("page-001-002")
+
+    region = _added(doc)
+
+    assert region.id == "page-001-003"
+
+    doc.delete_region("page-001-003")
+
+    assert _added(doc).id == "page-001-004", "not back over the one just deleted"
+
+
+def test_a_drawn_region_lands_with_its_own_page_not_at_the_end_of_the_plan() -> None:
+    doc = _document(
+        _apart(1),
+        _region("page-002.png", id="r2", polygon=Box(0, 0, 100, 100).as_polygon()),
+    )
+
+    region = _added(doc, "page-001.png")
+
+    assert doc.ordered_ids() == ("r1", region.id, "r2"), "reading order, not arrival order"
+
+
+def test_a_page_with_no_regions_can_be_drawn_on() -> None:
+    # What the images list in the plan is for: a page detection found nothing
+    # on is still a page, and this is the region it never got.
+    blank = PlanImage(name="page-002.png", sha256="0" * 64)
+    doc = PlanDocument(
+        make_plan(_header(), (_apart(1),), extra_images=(blank,)), Path("comic-plan.yaml")
+    )
+
+    region = _added(doc, "page-002.png")
+
+    assert region.id == "page-002-001"
+    assert region.order == 1
+    assert doc.regions_for("page-002.png") == (region,)
+
+
+def test_a_region_cannot_be_added_to_a_page_the_plan_does_not_have() -> None:
+    doc = _document(_apart(1))
+
+    with pytest.raises(ValueError, match="not a page in this plan"):
+        _added(doc, "page-404.png")
+
+    assert not doc.dirty
+
+
+def test_a_drawn_region_is_validated_like_a_dragged_one() -> None:
+    doc = _document(_apart(1))
+
+    with pytest.raises(ValueError, match="crosses or folds"):
+        _added(doc, polygon=((10, 10), (110, 110), (110, 10), (10, 110)))
+
+    assert len(doc.plan.regions) == 1
+
+
+def test_deleting_a_region_removes_it_and_undo_puts_it_back_where_it_was() -> None:
+    doc = _document(_apart(1), _apart(2), _apart(3))
+
+    removed = doc.delete_region("r2")
+
+    assert removed.id == "r2"
+    assert doc.ordered_ids() == ("r1", "r3")
+    with pytest.raises(KeyError):
+        doc.region("r2")
+
+    assert doc.undo()
+    assert doc.ordered_ids() == ("r1", "r2", "r3"), "back in its own place, not on the end"
+    assert not doc.dirty
+
+
+def test_adding_and_deleting_are_one_undo_step_each() -> None:
+    doc = _document(_apart(1))
+    added = _added(doc)
+    doc.delete_region("r1")
+
+    doc.undo()
+    assert doc.ordered_ids() == ("r1", added.id)
+    doc.undo()
+    assert doc.ordered_ids() == ("r1",)
+    assert not doc.can_undo
+
+
+def test_the_source_text_and_the_colours_are_editable_fields_like_any_other() -> None:
+    doc = _document(_apart(1))
+
+    doc.set_source_text("r1", "CIAO A TUTTI")
+    doc.set_fill_color("r1", Color(10, 20, 30))
+    doc.set_text_color("r1", Color(200, 210, 220))
+
+    assert doc.region("r1").source_text == "CIAO A TUTTI"
+    assert doc.region("r1").fill_color == Color(10, 20, 30)
+    assert doc.region("r1").text_color == Color(200, 210, 220)
+
+    doc.undo()
+    assert doc.region("r1").text_color != Color(200, 210, 220)
+
+
+def test_a_drawn_region_saves_and_reopens(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    added = doc.add_region(
+        "page-001.png", SQUARE, fill_color=Color(1, 2, 3), text_color=Color(250, 251, 252)
+    )
+    doc.set_source_text(added.id, "CIAO")
+    doc.save()
+
+    reopened = PlanDocument.open(project).region(added.id)
+
+    assert reopened.geometry is Geometry.MANUAL
+    assert reopened.polygon == SQUARE
+    assert (reopened.fill_color, reopened.text_color) == (Color(1, 2, 3), Color(250, 251, 252))
+    assert reopened.source_text == "CIAO"
+    assert reopened.confidence == MANUAL_CONFIDENCE

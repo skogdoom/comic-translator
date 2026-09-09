@@ -17,13 +17,23 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ..model import Geometry, Plan, PlanHeader, Polygon, Region, TextCase, polygon_is_simple
+from ..model import (
+    Color,
+    Geometry,
+    Plan,
+    PlanHeader,
+    Polygon,
+    Region,
+    TextCase,
+    polygon_is_simple,
+)
 from ..planfile import load_plan, write_plan
 from ..planfile.schema import (
     CONDENSE_MIN_RANGE,
     FONT_SIZE_MIN_RATIO_RANGE,
     MIN_POLYGON_POINTS,
 )
+from ..util import slugify
 
 _NON_EMPTY_HEADER_FIELDS = frozenset({"font", "source_language", "target_language"})
 
@@ -42,6 +52,18 @@ session rather than about memory being tight. Coalescing means an entry is one
 act of typing, not one keystroke, so 500 is a long way back.
 """
 
+
+MANUAL_CONFIDENCE = 1.0
+"""What a hand-drawn region records where OCR would have put a score.
+
+It is not a claim about a measurement: nothing measured this region, which
+is what ``geometry: manual`` beside it says. The number has to be something
+— the reader requires it and takes 0.0 to 1.0 — and 0.0 would mean the
+opposite of the truth, flagging the region as a doubtful reading for as long
+as it exists, when the reading is a person's own and there is nothing to
+doubt. Read the pair together: manual geometry, so the confidence is the
+person's, not the recogniser's.
+"""
 
 OVERLAP_BBOX_RATIO = 0.15
 """Share of the smaller region's bounding box that counts as an overlap.
@@ -70,6 +92,16 @@ def validated_polygon(polygon: Polygon) -> Polygon:
         # both leave edges touching, and neither is a shape apply could fill.
         raise ValueError("that shape crosses or folds over itself")
     return points
+
+
+def _numbers_used(plan: Plan) -> dict[str, int]:
+    """Highest ``page-001-004`` style number per page stem in a plan."""
+    highest: dict[str, int] = {}
+    for region in plan.regions:
+        stem, _, suffix = region.id.rpartition("-")
+        if stem and suffix.isdigit():
+            highest[stem] = max(highest.get(stem, 0), int(suffix))
+    return highest
 
 
 def overlapping_region_ids(regions: Sequence[Region]) -> frozenset[str]:
@@ -172,6 +204,14 @@ class PlanDocument:
         self._undo: list[Plan] = []
         self._redo: list[Plan] = []
         self._run: tuple[str | None, str] | None = None
+        self._allocated = _numbers_used(plan)
+        """Highest region number seen per page since this was opened.
+
+        Seeded from the file and only ever raised, so that deleting the last
+        region on a page and drawing another does not hand the old one's name
+        to the new one. Session-scoped, because a plan file cannot record the
+        ids that are no longer in it: reopen the file and the number is free
+        again."""
 
     @property
     def dirty(self) -> bool:
@@ -381,6 +421,115 @@ class PlanDocument:
         says "check this" — which is precisely what has just been done.
         """
         return self._update(region_id, polygon=validated_polygon(polygon), geometry=Geometry.MANUAL)
+
+    def set_source_text(self, region_id: str, source_text: str) -> Region:
+        """The text as it stands on the page.
+
+        For a detected region this is what OCR read; for a hand-drawn one
+        there was no reading and this is the only way it gets any. Either
+        way it is what ``apply`` measures "same as source" against, and the
+        plan file has been hand-editable since milestone 1 — the inspector
+        offering the same field is not a new licence, just a nearer one.
+        """
+        return self._update(region_id, source_text=source_text)
+
+    def set_fill_color(self, region_id: str, color: Color) -> Region:
+        """What erase paints the region with before the translation goes on."""
+        return self._update(region_id, fill_color=color)
+
+    def set_text_color(self, region_id: str, color: Color) -> Region:
+        return self._update(region_id, text_color=color)
+
+    # -- adding and deleting ---------------------------------------------
+
+    def _next_region_id(self, image: str) -> str:
+        """A fresh id for a page, in the shape extract writes: ``page-001-004``.
+
+        Numbered past the highest the page has ever reached rather than into
+        the first gap: an id is how a region is named in a report, in a note
+        to yourself, in a commit message. Handing a deleted region's name to
+        a different one makes those quietly wrong.
+        """
+        stem = slugify(Path(image).stem)
+        highest = self._allocated.get(stem, 0)
+        for region in self.plan.regions:
+            prefix, _, suffix = region.id.rpartition("-")
+            if prefix == stem and suffix.isdigit():
+                highest = max(highest, int(suffix))
+        taken = {region.id for region in self.plan.regions}
+        while True:
+            highest += 1
+            candidate = f"{stem}-{highest:03d}"
+            if candidate not in taken:
+                self._allocated[stem] = highest
+                return candidate
+
+    def _insertion_index(self, image: str) -> int:
+        """Where a new region on ``image`` goes: last on its page, pages in order.
+
+        The plan's order is reading order — ``apply`` and every "next region"
+        step walk it straight through — so a region added to page 3 belongs
+        with page 3's, not at the end of the chapter behind page 40's.
+        """
+        rank = {name: index for index, name in enumerate(self.plan.image_names())}
+        here = rank[image]
+        for index, region in enumerate(self.plan.regions):
+            if rank[region.image] > here:
+                return index
+        return len(self.plan.regions)
+
+    def add_region(
+        self,
+        image: str,
+        polygon: Polygon,
+        *,
+        fill_color: Color,
+        text_color: Color,
+        source_text: str = "",
+        translation: str = "",
+    ) -> Region:
+        """Put a new region on a page, drawn by hand rather than detected.
+
+        No OCR: ``review`` never reads a page for text, so ``source_text``
+        is whatever the person typed, and empty until they do. That leaves
+        the region held back — no translation, not skipped — which is exactly
+        what it is until it has been filled in.
+        """
+        if image not in self.plan.image_names():
+            raise ValueError(f"{image} is not a page in this plan")
+        region = Region(
+            id=self._next_region_id(image),
+            image=image,
+            order=max((r.order for r in self.regions_for(image)), default=0) + 1,
+            geometry=Geometry.MANUAL,
+            polygon=validated_polygon(polygon),
+            fill_color=fill_color,
+            text_color=text_color,
+            confidence=MANUAL_CONFIDENCE,
+            source_text=source_text,
+            translation=translation,
+        )
+        index = self._insertion_index(image)
+        regions = self.plan.regions
+        self._record(
+            replace(self.plan, regions=(*regions[:index], region, *regions[index:])), run=None
+        )
+        return region
+
+    def delete_region(self, region_id: str) -> Region:
+        """Remove a region from the plan, and hand it back.
+
+        A delete is a delete, not a ``skip: true`` in disguise: the region is
+        gone from the file the next time it is saved, the same as deleting
+        its block by hand. Undo covers it while the session lasts, which is
+        the same safety net every other edit here gets.
+        """
+        region = self.region(region_id)
+        self._record(
+            replace(self.plan, regions=tuple(r for r in self.plan.regions if r.id != region_id)),
+            run=None,
+        )
+        return region
 
     # -- the header ------------------------------------------------------
 

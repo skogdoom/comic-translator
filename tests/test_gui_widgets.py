@@ -36,7 +36,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox
 
-from comictrans.gui.canvas import COLOR_MANUAL
+from comictrans.gui.canvas import COLOR_MANUAL, CanvasMode
 from comictrans.gui.main_window import MainWindow
 
 BALLOON_A = Box(60, 60, 260, 200)
@@ -1474,7 +1474,7 @@ def test_edit_mode_puts_a_handle_on_every_corner(qapp: object, two_page_plan: Pa
 
     window._edit_shape_action.setChecked(True)
 
-    assert canvas.edit_mode
+    assert canvas.mode is CanvasMode.RESHAPE
     assert len(canvas._handles) == corners
 
     window._edit_shape_action.setChecked(False)
@@ -1632,7 +1632,7 @@ def test_a_rendered_preview_leaves_edit_mode(
 
     window._on_render_preview()
 
-    assert not window._canvas.edit_mode
+    assert window._canvas.mode is CanvasMode.SELECT
     assert not window._edit_shape_action.isChecked()
     assert not window._edit_shape_action.isEnabled()
 
@@ -1676,7 +1676,241 @@ def test_edit_mode_survives_a_page_change(qapp: object, two_page_plan: Path) -> 
     window._pages.select_image("page-002.png")
 
     assert window._edit_shape_action.isChecked()
-    assert window._canvas.edit_mode
+    assert window._canvas.mode is CanvasMode.RESHAPE
     assert len(window._canvas._handles) == len(
         window.document.region("page-002-001").polygon  # type: ignore[union-attr]
     )
+
+
+# -- adding and deleting ------------------------------------------------------
+
+
+AROUND_BALLOON_B = ((310, 70), (490, 70), (490, 190), (310, 190))
+"""A hand-drawn outline that hugs the second balloon rather than the art."""
+
+
+def _near(polygon: object, expected: tuple[tuple[int, int], ...], slack: int = 2) -> bool:
+    """Whether a polygon is where the clicks that drew it meant to put it."""
+    points = tuple(polygon)  # type: ignore[call-overload]
+    return len(points) == len(expected) and all(
+        abs(ax - bx) <= slack and abs(ay - by) <= slack
+        for (ax, ay), (bx, by) in zip(points, expected, strict=True)
+    )
+
+
+def _click_scene(canvas: object, x: float, y: float) -> None:
+    """Click a page coordinate, wherever the view currently puts it."""
+    QTest.mouseClick(
+        canvas.viewport(),  # type: ignore[attr-defined]
+        Qt.MouseButton.LeftButton,
+        pos=canvas.mapFromScene(QPointF(x, y)),  # type: ignore[attr-defined]
+    )
+
+
+def test_drawing_an_outline_adds_a_region_with_colours_off_the_page(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    assert window._canvas.mode is CanvasMode.DRAW
+
+    # Around the second balloon, which the fixture draws white with black
+    # lettering on dark art — so the colours have somewhere to come from.
+    for point in AROUND_BALLOON_B:
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    assert added.geometry is Geometry.MANUAL
+    # Within a pixel of where the clicks landed: a click is a view coordinate
+    # and the page is fitted to the window, so the round trip through the
+    # view transform is not exact at every zoom.
+    assert _near(added.polygon, AROUND_BALLOON_B)
+    assert added.source_text == "", "review never reads a page for text"
+    assert added.fill_color.as_tuple() == BALLOON_WHITE, "measured, not assumed"
+    assert added.text_color.as_tuple() == INK_BLACK
+    assert window._current_region == added.id, "and it is what you are now editing"
+    assert window._canvas.mode is CanvasMode.SELECT, "drawing is over"
+    assert not window._add_region_action.isChecked()
+    assert window.isWindowModified()
+
+
+def test_an_outline_closes_by_clicking_its_first_corner(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+
+    for point in ((320, 60), (560, 60), (560, 200)):
+        _click_scene(window._canvas, *point)
+    assert _near(window._canvas.draft, ((320, 60), (560, 60), (560, 200)))
+
+    _click_scene(window._canvas, 320, 60)
+
+    assert window._canvas.draft == (), "the outline closed rather than gaining a corner"
+    assert len(window.document.regions_for("page-001.png")) == 3  # type: ignore[union-attr]
+
+
+def test_a_half_drawn_outline_can_be_taken_back_a_corner_at_a_time(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._add_region_action.setChecked(True)
+
+    for point in ((320, 60), (560, 60), (560, 200)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Backspace)
+
+    assert _near(window._canvas.draft, ((320, 60), (560, 60)))
+
+    QTest.keyClick(window._canvas, Qt.Key.Key_Escape)
+
+    assert window._canvas.draft == ()
+    assert len(window.document.plan.regions) == before, "nothing reached the plan"  # type: ignore[union-attr]
+    assert not window.isWindowModified()
+
+
+def test_two_corners_are_not_a_region(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._add_region_action.setChecked(True)
+
+    for point in ((320, 60), (560, 60)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    assert len(window.document.plan.regions) == before  # type: ignore[union-attr]
+    assert len(window._canvas.draft) == 2, "still drawing"
+
+
+def test_the_two_shape_modes_are_not_both_on_at_once(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._edit_shape_action.setChecked(True)
+
+    window._add_region_action.setChecked(True)
+
+    assert not window._edit_shape_action.isChecked(), "the toolbar follows the canvas"
+    assert window._canvas.mode is CanvasMode.DRAW
+    assert window._canvas._handles == [], "and the corner handles went with it"
+
+
+def test_deleting_a_region_takes_it_off_the_page_and_out_of_the_plan(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+
+    window._on_delete_region()
+
+    assert [r.id for r in window.document.regions_for("page-001.png")] == ["page-001-001"]  # type: ignore[union-attr]
+    assert "page-001-002" not in window._canvas._items
+    assert window._current_region == "page-001-001", "somewhere to stand afterwards"
+    assert "1 region" in window._pages.item(0).text()
+    assert "Ctrl+Z" in window.statusBar().currentMessage()
+
+    window._on_undo()
+
+    assert len(window.document.regions_for("page-001.png")) == 2  # type: ignore[union-attr]
+    assert "page-001-002" in window._canvas._items, "back on the page, not just in the plan"
+
+
+def test_a_colour_can_be_taken_off_the_page_by_clicking_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    window._inspector._fill_color.sample_requested.emit()
+
+    assert window._canvas.mode is CanvasMode.PICK
+
+    _click_scene(window._canvas, 20, 20)  # artwork, well outside any balloon
+
+    assert window.document.region("page-001-001").fill_color.as_tuple() == ART_DARK  # type: ignore[union-attr]
+    assert window._inspector._fill_color.value().as_tuple() == ART_DARK
+    assert window._canvas.mode is CanvasMode.SELECT
+
+
+def test_a_standard_colour_can_be_chosen_from_the_field(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    action = next(a for a in window._inspector._text_color.menu().actions() if a.text() == "Red")
+    action.trigger()
+
+    assert window.document.region("page-001-001").text_color == Color(208, 32, 32)  # type: ignore[union-attr]
+
+
+def test_the_source_text_of_a_drawn_region_is_typed_in(qapp: object, two_page_plan: Path) -> None:
+    # A hand-drawn region has no OCR reading and no way to get one: nothing
+    # in review reads a page for text.
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    for point in ((320, 60), (560, 60), (560, 200)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+    drawn = window._current_region
+    assert drawn is not None
+
+    assert window._inspector._source_text.toPlainText() == ""
+    assert not window._inspector._source_text.isReadOnly()
+
+    window._inspector._source_text.setPlainText("CIAO")
+    window._inspector._translation.setPlainText("HELLO")
+
+    assert window.document.region(drawn).source_text == "CIAO"  # type: ignore[union-attr]
+    assert window.document.region(drawn).translation == "HELLO"  # type: ignore[union-attr]
+    assert not window.document.flags(drawn).held_back  # type: ignore[union-attr]
+
+
+def test_undoing_a_drawn_region_takes_its_outline_off_the_page(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._add_region_action.setChecked(True)
+    for point in AROUND_BALLOON_B:
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+    drawn = window._current_region
+    assert drawn in window._canvas.region_ids()
+
+    window._on_undo()
+
+    assert drawn not in window._canvas.region_ids()
+    assert not window.isWindowModified()
+    assert "2 regions" in window._pages.item(0).text()
+
+
+def test_a_region_can_be_drawn_on_a_page_with_nothing_on_it(
+    qapp: object, plan_with_a_blank_page: Path
+) -> None:
+    # What the plan's images list is for: the page detection found nothing on
+    # is in the file, so it can be opened and drawn on.
+    window = _shown_window(plan_with_a_blank_page)
+    window._pages.select_image("page-003.png")
+    assert window._current_region is None
+
+    window._add_region_action.setChecked(True)
+    for point in ((60, 60), (260, 60), (260, 200)):
+        _click_scene(window._canvas, *point)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Return)
+
+    drawn = window.document.regions_for("page-003.png")  # type: ignore[union-attr]
+    assert [region.id for region in drawn] == ["page-003-001"]
+    assert window._current_region == "page-003-001"
+    assert "1 region" in window._pages.item(2).text()
+
+
+def test_the_outline_being_drawn_follows_the_pointer(qapp: object, two_page_plan: Path) -> None:
+    # The rubber band needs move events with no button held, which the view's
+    # viewport tracks by default — this is the test that says so.
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._add_region_action.setChecked(True)
+    _click_scene(canvas, 310, 70)
+    reach = canvas._draft_item.path().boundingRect().right()  # type: ignore[union-attr]
+
+    QTest.mouseMove(canvas.viewport(), canvas.mapFromScene(QPointF(490, 70)))
+
+    assert canvas._draft_item is not None
+    assert canvas._draft_item.path().boundingRect().right() > reach, "no rubber band"
+    assert len(canvas.draft) == 1, "and moving is not placing"
