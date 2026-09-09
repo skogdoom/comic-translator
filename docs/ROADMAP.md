@@ -77,26 +77,60 @@ the time it landed, the harness was a base class and one `work()` method.
 Go over what the window does when something goes wrong, and give it a log
 file, because right now a failure has nowhere to be seen.
 
-**First, find out what "crash" means here.** It is three different things and
-they need telling apart before anything is fixed. Measured on PySide6 6.11.2:
+**"Crash" is three different things, and the one being hit is the hard one.**
+Measured on PySide6 6.11.2:
 
+- **The process dies.** A segfault or an abort: the window vanishes outright
+  with nothing on screen and, launched without a terminal, nothing anywhere
+  else either. This is the reported symptom, so it is what this milestone
+  leads with. `qFatal` — Qt's own way of giving up, on a `QThread` destroyed
+  while running among other things — takes this route too, so "segfault" and
+  "Qt refused to continue" look identical from outside.
 - **A swallowed exception.** An exception raised in a slot — a menu action, a
   signal handler, a mouse event — is printed to stderr and the event loop
-  carries on. The application does *not* abort. So the window survives with
-  its state half-updated, and what you see is a button that did nothing.
-  Probably the most common of the three, and the least like a crash.
-- **A real segfault.** The C++ side, which no Python handler catches. One is
-  already recorded in `ARCHITECTURE.md`: a synthetic drag reaching
-  `QGraphicsView`'s `ScrollHandDrag` under the offscreen platform. Others
-  would come from a Qt object used after deletion.
+  carries on. The application does *not* abort. The window survives with its
+  state half-updated, and what you see is a button that did nothing. Not the
+  reported symptom, but almost certainly also present and unnoticed.
 - **An exception outside a slot.** Everything `gui.app.run` does before
   `app.exec()` — building the window, opening a plan named on the command
   line. That propagates to `cli.main`, which catches only `ComictransError`,
-  so anything else exits with a raw traceback.
+  so anything else exits with a raw traceback. The window vanishes here too,
+  but stderr says why.
 
-The first task is a session with the reproductions, sorting the ones seen
-into those three. They want different fixes and only one of them is a bug in
-the usual sense.
+**So `faulthandler` comes first, before any fixing.** It is stdlib, one line,
+and it is the only thing that gets a trace out of the first case:
+`faulthandler.enable(file=…, all_threads=True)` writes a Python traceback
+naming the exact line on `SIGSEGV` and `SIGABRT` alike — measured at exit 139
+and exit 134, both caught, both into a file rather than a terminal. Without
+it there is nothing to work from; with it the next crash names itself.
+`all_threads` matters, because the newest code in the window runs on one.
+
+**Where a hard crash would come from here**, in the order worth checking:
+
+- **Apple Vision on a `QThread`.** The newest thing in the window and the
+  least proven: 4.6's autorelease pool shipped as an argument, and Vision has
+  only been seen working on a Mac once. The specific hazard beyond the pool is
+  that Cocoa's internal locking historically stays off until the process
+  "becomes multithreaded", which means an `NSThread` has been detached — and a
+  `QThread` is a pthread Qt made, not an `NSThread`. Check
+  `NSThread.isMultiThreaded()` from the worker; if it answers false, detaching
+  one no-op `NSThread` at startup is the whole fix. Verify before believing:
+  this is a hypothesis with a one-line test, not a diagnosis.
+- **A `QThread` destroyed while running**, which is `qFatal` and therefore
+  abort. `closeEvent` guards it today, so the question is which paths reach
+  teardown without `closeEvent`.
+- **A Qt object used after deletion.** `_finish_run` calls `deleteLater` and
+  then reads the job; nothing spins an event loop in between today, but
+  `_on_extract_finished` goes on to `open_plan`, which can open a modal, and a
+  modal is a nested event loop.
+- **`QGraphicsView`'s `ScrollHandDrag`**, already recorded in
+  `ARCHITECTURE.md` as segfaulting under the offscreen platform with synthetic
+  events. Real events on a real Mac are a different case, but it is the one
+  place in this codebase already known to be able to do this.
+
+The first task is therefore not a fix at all: turn `faulthandler` on, get the
+next crash to write down where it happened, and let that pick which of the
+above is real.
 
 **The log file.** `review` configures logging exactly as the CLI does —
 `basicConfig` onto stderr — and a window launched from Finder, or from a
@@ -114,9 +148,15 @@ grow without bound on a machine nobody tidies.
 
 **A log record survives a segfault.** `logging.FileHandler` flushes on every
 record, measured: a process that logs a line and then dereferences null exits
-139 with the line on disk. That makes the only workable trace for the second
-kind of crash cheap — log the risky thing *before* doing it, at debug level,
-so a log that ends mid-page names the page.
+139 with the line on disk. So the ordinary log is a second, independent trace
+for a hard crash — log the risky thing *before* doing it, at debug level, and
+a log that ends mid-page names the page even when `faulthandler` cannot say
+why. The two answer different halves: `faulthandler` says where the process
+was, the log says what it was trying to do.
+
+Give `faulthandler` its own file rather than the log's. It writes from a
+signal handler and must not contend with the logging module's locks, and a
+crash file that exists at all is itself the signal that there was a crash.
 
 **Nothing is ever sent anywhere.** "Crash report" normally means telemetry;
 here it means a file on your own disk that you may choose to attach to
