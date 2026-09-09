@@ -451,6 +451,19 @@ for OCR, the source image's own format, whatever font `extract` finds for
 itself. The window also remembers which directory you last opened a plan or
 read pages from, and starts the file dialogs there.
 
+**If the window vanishes**, look in `~/Library/Logs/comictrans/review-crash.log`
+(`~/.local/state/comictrans/` off macOS, or wherever `COMICTRANS_LOG_DIR`
+points). A segfault, or the abort Qt raises when it gives up, kills the
+process outright — no dialog, no message, and no stderr at all when the window
+was not started from a terminal. That file gets a line every time `review`
+starts and a Python traceback naming the exact line if the process dies, on
+every thread. It is written to your own disk and sent nowhere; this tool makes
+no network calls, and a stack trace is not an exception to that.
+
+A wider look at the window's error handling, and a proper application log, is
+milestone 4.17 in `docs/ROADMAP.md`. This much exists now because a crash you
+cannot see is a crash you cannot fix.
+
 **Help > About** reports the version, the author, the licence, and every
 declared dependency that is actually installed, with its version — read from
 the installed package at the time you open it, not written down anywhere. It

@@ -97,13 +97,13 @@ Measured on PySide6 6.11.2:
   so anything else exits with a raw traceback. The window vanishes here too,
   but stderr says why.
 
-**So `faulthandler` comes first, before any fixing.** It is stdlib, one line,
-and it is the only thing that gets a trace out of the first case:
-`faulthandler.enable(file=…, all_threads=True)` writes a Python traceback
-naming the exact line on `SIGSEGV` and `SIGABRT` alike — measured at exit 139
-and exit 134, both caught, both into a file rather than a terminal. Without
-it there is nothing to work from; with it the next crash names itself.
-`all_threads` matters, because the newest code in the window runs on one.
+**`faulthandler` came first, and has already shipped.** It was pulled out of
+this milestone and done on its own, because nothing else here could start
+without it: `gui.crash` turns it on before the `QApplication` exists and
+writes a Python traceback — the exact line, on every thread — to
+`~/Library/Logs/comictrans/review-crash.log`. `SIGSEGV` and `SIGABRT` are both
+caught, measured at exit 139 and exit 134. So the next crash names itself, and
+what is left below is the work that trace makes possible.
 
 **What is known so far.** It was seen during **preview**, which eliminates
 more than it implicates: `render_preview` is synchronous on the main thread
@@ -147,10 +147,10 @@ positive one when the next person starts here.
   one looks handled — but it is the other classic, and preview is the code
   path that calls it most.
 
-The first task is therefore still not a fix: turn `faulthandler` on, get the
-next crash to name its own line, and let that pick from the list rather than
-picking by argument. The attempt above is why — an afternoon of plausible
-reasoning narrowed this less than one captured trace would.
+The first task is therefore still not a fix: read the trace the next crash
+leaves, and let that pick from the list rather than picking by argument. The
+failed reproduction above is why — an afternoon of plausible reasoning
+narrowed this less than one captured trace will.
 
 **The log file.** `review` configures logging exactly as the CLI does —
 `basicConfig` onto stderr — and a window launched from Finder, or from a
@@ -174,9 +174,10 @@ a log that ends mid-page names the page even when `faulthandler` cannot say
 why. The two answer different halves: `faulthandler` says where the process
 was, the log says what it was trying to do.
 
-Give `faulthandler` its own file rather than the log's. It writes from a
-signal handler and must not contend with the logging module's locks, and a
-crash file that exists at all is itself the signal that there was a crash.
+`faulthandler` already has its own file and keeps it: it writes from a signal
+handler and must not contend with the logging module's locks. The application
+log is the second, wider half — every `log.warning` about a skipped page, and
+the tracebacks of exceptions that did *not* kill the process.
 
 **Nothing is ever sent anywhere.** "Crash report" normally means telemetry;
 here it means a file on your own disk that you may choose to attach to

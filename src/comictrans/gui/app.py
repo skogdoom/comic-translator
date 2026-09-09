@@ -18,10 +18,13 @@ inside :func:`run`, after :func:`available` has already been checked.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
 from ..errors import GuiUnavailableError
+
+log = logging.getLogger(__name__)
 
 _ORGANIZATION = "comictrans"
 _APPLICATION = "review"
@@ -61,6 +64,11 @@ def run(plan_path: Path | None = None) -> int:
     two things, and a modal dialog in front of one of them is in the way of
     the other. The status bar names both.
 
+    Fatal-signal traces are turned on first — see :mod:`comictrans.gui.crash`.
+    A segfault or a ``qFatal`` abort kills the process outright, and a window
+    launched from Finder has no stderr for it to be reported on, so the trace
+    goes to a file instead.
+
     Raises :class:`GuiUnavailableError` rather than letting an import error or
     a platform-plugin failure escape as something unreadable — both are things
     a user can plausibly fix (install the extra; install the missing system
@@ -71,6 +79,15 @@ def run(plan_path: Path | None = None) -> int:
             "the review GUI needs PySide6, which is not installed "
             f"({unavailable_reason()}). Install it with: uv sync --extra gui"
         )
+
+    # Before the QApplication, so a fatal signal raised while Qt is starting
+    # up has somewhere to go too. Never raises; returns None if it could not
+    # open the file, and the window opens either way.
+    from .crash import enable as enable_crash_traces
+
+    traces = enable_crash_traces()
+    if traces is not None:
+        log.info("crash traces: %s", traces)
 
     from PySide6.QtWidgets import QApplication
 
