@@ -247,7 +247,11 @@ refused with a message and the region left as it was, rather than saved and
 discovered the next time the file is opened.
 
 It is a mode rather than always on, because dragging inside a region is also
-how the page is panned. A region you reshape is recorded as `geometry:
+how the page is panned. The mode stays on the region you chose it for: while
+it is on, clicking another region says so rather than switching to it, so a
+stray click cannot quietly move the handles onto a balloon you did not mean
+to edit. To work on another one, turn the mode off, select it, and turn the
+mode back on. Dragging the page around still works throughout. A region you reshape is recorded as `geometry:
 manual`: what it says about itself is no longer that detection traced or
 guessed it, and the "check this" flag an approximate region carries clears,
 because checking it is exactly what you have just done.

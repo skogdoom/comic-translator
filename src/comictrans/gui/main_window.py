@@ -137,6 +137,7 @@ class MainWindow(QMainWindow):
         self._canvas.region_drawn.connect(self._on_region_drawn)
         self._canvas.point_picked.connect(self._on_point_picked)
         self._canvas.region_picked.connect(self._on_region_picked)
+        self._canvas.selection_refused.connect(self._on_selection_refused)
         self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
@@ -717,6 +718,14 @@ class MainWindow(QMainWindow):
         self._inspector.focus_source_text()
         self.statusBar().showMessage(
             f"added {region.id} — type the text on the page, then its translation"
+        )
+
+    def _on_selection_refused(self, region_id: str) -> None:
+        """Say why a click on another region did nothing, rather than nothing."""
+        self.statusBar().showMessage(
+            f"still reshaping {self._current_region} — "
+            f"turn Edit Region Shape off to select {region_id}",
+            5000,
         )
 
     def _on_merge_toggled(self, on: bool) -> None:

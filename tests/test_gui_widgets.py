@@ -1610,25 +1610,26 @@ def test_a_triangle_keeps_its_last_three_corners(qapp: object, two_page_plan: Pa
     assert len(window.document.region("page-001-001").polygon) == 3  # type: ignore[union-attr]
 
 
-def test_another_region_can_still_be_selected_while_reshaping(
-    qapp: object, two_page_plan: Path
-) -> None:
+def test_reshaping_stays_on_the_region_it_was_chosen_for(qapp: object, two_page_plan: Path) -> None:
+    """A stray click near another balloon must not move the handles to it."""
     window = _shown_window(two_page_plan)
     canvas = window._canvas
+    window._go_to_region("page-001-001")
     window._edit_shape_action.setChecked(True)
+    corners = [handle.pos() for handle in canvas._handles]
 
     other = canvas._items["page-001-002"]
-    QTest.mouseClick(
-        canvas.viewport(),
-        Qt.MouseButton.LeftButton,
-        pos=canvas.mapFromScene(other.polygon().boundingRect().center()),
-    )
+    elsewhere = canvas.mapFromScene(other.polygon().boundingRect().center())
+    QTest.mouseClick(canvas.viewport(), Qt.MouseButton.LeftButton, pos=elsewhere)
 
-    assert window._current_region == "page-001-002"
-    assert canvas._handles, "the handles followed the selection"
-    assert canvas.mapFromScene(canvas._handles[0].pos()) == canvas.mapFromScene(
-        QPointF(*other.points()[0])
-    )
+    assert window._current_region == "page-001-001"
+    assert [handle.pos() for handle in canvas._handles] == corners, "the handles stayed put"
+    assert "page-001-002" in window.statusBar().currentMessage(), "and it said why"
+
+    window._edit_shape_action.setChecked(False)
+    QTest.mouseClick(canvas.viewport(), Qt.MouseButton.LeftButton, pos=elsewhere)
+
+    assert window._current_region == "page-001-002", "the mode was the only thing in the way"
 
 
 def test_a_rendered_preview_leaves_edit_mode(

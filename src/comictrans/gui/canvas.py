@@ -246,6 +246,11 @@ class PageCanvas(QGraphicsView):
     into. Reported rather than selected, because the selection is the other
     half of the pair."""
 
+    selection_refused = Signal(str)
+    """A click landed on a region the mode will not switch to: its id, so
+    that whoever can explain why can say so. Reshaping stays on the region it
+    was chosen for; nothing else here refuses a click."""
+
     mode_changed = Signal(str)
     """The canvas changed mode, including when it left one of its own accord
     — an outline that closed, a pixel that was picked. Whoever shows the mode
@@ -731,8 +736,19 @@ class PageCanvas(QGraphicsView):
                 self._place_point(event.position())
                 event.accept()
                 return
-            if self._mode is CanvasMode.RESHAPE and self._begin_drag(event.position()):
-                event.accept()
+            if self._mode is CanvasMode.RESHAPE:
+                if self._begin_drag(event.position()):
+                    event.accept()
+                    return
+                # A click that misses the handles does not retarget the
+                # mode. Reshaping applies to the region it was chosen for,
+                # and a stray click near another balloon quietly moving the
+                # handles onto it is the surprise a mode exists to prevent.
+                # Panning still works, so the press goes on to the view.
+                landed = self.region_at(event.position())
+                if landed is not None and landed != self._selected_id:
+                    self.selection_refused.emit(landed)
+                super().mousePressEvent(event)
                 return
         region_id = self.region_at(event.position())
         if region_id is not None:
