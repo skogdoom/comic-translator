@@ -8,3 +8,6 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# Personal Claude Code overrides; the shared ones are in settings.json
+.claude/settings.local.json
