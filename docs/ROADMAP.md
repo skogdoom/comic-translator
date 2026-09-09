@@ -25,8 +25,8 @@ one section can refer to another without ambiguity.
 | # | Milestone | Size |
 |---|-----------|------|
 | 4.17 | Error handling, and somewhere for a crash to go | M |
-| 4.7 | Help instructions | S–M |
 | 4.8 | macOS look and feel | M |
+| 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
 | 3 | CBZ and PDF input | L |
@@ -45,7 +45,8 @@ review, and waiting on nothing, as was moving a region after them.
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Help text describes the UI, so it goes
-after the UI stops moving.
+after the UI stops moving — which means after 4.8, since replacing a text
+toolbar with icons changes what there is to describe.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -236,17 +237,6 @@ text did not. The audit is testable one guarded site at a time, by making the
 thing under it raise. What is not testable is the segfault, which is why the
 log matters.
 
-## 4.7 Help instructions
-
-A short in-application guide to reviewing a plan: what the badge colours
-mean, what each flag means, what preview does and does not tell you.
-
-After the milestones that change the UI, because it documents them. A
-dialog with a `QTextBrowser` over a bundled document, rather than strings
-in the source, keeps 4.9 to one file per language.
-
-`README.md` is not a substitute; it is written for the command line.
-
 ## 4.8 macOS look and feel
 
 Qt already supplies the native style, the native menu bar, and Cmd for Ctrl
@@ -275,6 +265,29 @@ under the offscreen platform on whatever machine is to hand; menu bar
 placement, the About role and dark mode only exist on a real Mac. This is
 the one milestone the four checks cannot defend, and it has to be looked at
 by hand on the target machine.
+
+## 4.7 Help instructions
+
+A short in-application guide to reviewing a plan: what the badge colours
+mean, what each flag means, what preview does and does not tell you.
+
+After the milestones that change the UI, because it documents them, and
+after 4.8 in particular. That one collides with this one directly rather
+than vaguely: toolbar icons replace the text labels help would otherwise
+name, About moves into the application menu so "Help > About" stops being
+where it is, and dark mode is explicitly about whether the canvas overlay
+colours still read — which is the first thing on the list above.
+
+A dialog with a `QTextBrowser` over a bundled document, rather than strings
+in the source, keeps 4.9 to one file per language.
+
+**One caveat on the order.** 4.8 is the milestone the test suite cannot
+defend and the only one that needs hands on a Mac, so it is the one most
+able to sit. If it does, do not hold help behind it — the numbers are names,
+not positions, and most of what help has to say is about the plan and the
+canvas rather than the chrome.
+
+`README.md` is not a substitute; it is written for the command line.
 
 ## 4.9 Localisation
 
