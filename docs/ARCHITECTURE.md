@@ -554,13 +554,14 @@ extract_dialog.py what to read, where the plan goes, in what languages
 run_panel.py    the dock a run reports into, whose rows go where they name
 preferences.py  what a new run starts from — no Qt
 preferences_dialog.py  those defaults, and a reminder of what they are not
+crash.py        fatal-signal traces to a file — no Qt
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py`, `sampling.py`, `about.py`, `run_report.py` and
-`preferences.py` need no display and import no Qt;
+`document.py`, `preview.py`, `sampling.py`, `about.py`, `run_report.py`,
+`preferences.py` and `crash.py` need no display and import no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that knows about more than one other
 widget, which is what keeps an edit's ripple effects (the window title's
@@ -992,6 +993,30 @@ both and a row knows whether there is anywhere to go. An extract does *not*
 list the regions that merely need checking: the plan it just wrote flags every
 one of them, the page list counts them, and Next Flagged Region walks them, so
 a second copy in a panel would go stale the moment one was fixed.
+
+**A hard crash gets a file, because it gets nothing else.** An exception in a
+Qt slot is printed and the event loop carries on — survivable. A segfault, or
+the abort `qFatal` raises when Qt gives up, is not: the process dies, and a
+window launched from Finder has no stderr for any of it to have gone to.
+`gui.crash` turns `faulthandler` on before the `QApplication` exists, so the
+fatal signals write a Python traceback — the exact line, on every thread —
+into `~/Library/Logs/comictrans/` on macOS. Measured: `SIGSEGV` (exit 139)
+and `SIGABRT` (exit 134) both caught, and there is a test that segfaults a
+subprocess and reads the function name back out of the file.
+
+Three deliberate choices. The path is worked out by hand rather than from
+`QStandardPaths`, whose `AppDataLocation` is `Application Support` — the wrong
+answer on the one platform this tool targets, where logs live in
+`~/Library/Logs` and Console.app reads them. The file object is held for the
+life of the process, because `faulthandler` writes to the *descriptor* and
+letting the object be collected would close it out from under a handler that
+only runs when things are already bad. And `enable` never raises: an
+unwritable home costs the traces and nothing else, since a diagnostic that
+stops the window from opening is worse than no diagnostic.
+
+It is not the application log, and 4.17 will not make it one. This file is
+written from a signal handler and must not contend with the logging module's
+locks; it holds a banner per launch and the last thing the process did.
 
 **A preference never overrides a plan value.** It fills in a blank when
 something is created, and does that only. This is the whole of milestone

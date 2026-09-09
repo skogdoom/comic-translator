@@ -230,7 +230,12 @@ def qapp(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QApplication
 
+    from comictrans.gui.crash import LOG_DIR_ENV
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # gui.app.run turns fatal-signal traces on, and the one test that calls
+    # it must not write into the log directory of whoever runs the suite.
+    os.environ.setdefault(LOG_DIR_ENV, str(tmp_path_factory.mktemp("crash-logs")))
     try:
         app = QApplication.instance() or QApplication(["comictrans-tests"])
     except Exception as exc:  # Qt's platform-plugin failures are not typed
