@@ -12,7 +12,6 @@ inside it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,30 +20,11 @@ from .errors import ComictransError, FontError, InputError
 from .fonts import FontFace, resolve
 from .imaging import check_writable, load_page, output_path, save_page
 from .model import Plan, Region
+from .progress import CancelCheck, PageProgress, ProgressCallback
 from .render import RegionOutcome, RegionStyle, render_page
 from .util import is_within
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class PageProgress:
-    """Where a run has got to, handed over just before a page is rendered.
-
-    Reported before rather than after, so a caller showing it has the name of
-    the page currently being worked on rather than the last one that finished
-    — which is the one a slow page makes you want to know.
-    """
-
-    index: int
-    """Position in the run, counting from zero."""
-    total: int
-    image: str
-
-
-ProgressCallback = Callable[[PageProgress], None]
-CancelCheck = Callable[[], bool]
-"""Asked between pages whether to stop. See ``apply_plan``."""
 
 
 @dataclass(slots=True)

@@ -220,10 +220,10 @@ uv run comictrans review pages/comic-plan.yaml
 
 Opens a plan file in a window: pages on the left, the current page in the
 middle with its region polygons overlaid, one region's fields on the right.
-Run it without a path and it asks for a plan file to open. Needs PySide6, a
-separate extra like tesseract — most work on this repository never opens a
-window. Without it, `review` fails with a clear message rather than an
-import error.
+Run it without a path and it opens empty, ready to open a plan or extract
+one. Needs PySide6, a separate extra like tesseract — most work on this
+repository never opens a window. Without it, `review` fails with a clear
+message rather than an import error.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
 contour, orange for approximate, violet for a shape drawn or edited here by
@@ -317,6 +317,45 @@ here before you run `apply` for real. The same command becomes **Back to
 Overlay** while the rendered page is up: one button, and its label says which
 way it goes. Your place is kept across the swap in both directions — the zoom,
 the position, and the region you had selected.
+
+**File > Extract Pages…** (`Ctrl+Shift+E`) runs the `extract` pass without
+leaving the window, and opens the plan it wrote. It is the only thing here
+that works with no plan open, because it is how you get one — which is why
+`review` with no argument now opens an empty window rather than an Open
+dialog. Point **Open…** at a folder of pages or, with the radio button
+beside it, at a single image; say where the plan goes — prefilled with the
+same path `extract` picks with no `--plan` — and give it the language pair
+and the recogniser. The radio steers that button and nothing else: a path of
+either kind typed into the field is accepted whichever one is checked.
+
+Those four are the whole dialog. `extract` has around fifteen
+detection-tuning flags, and they stay on the command line: they exist for the
+page that came out wrong, which is a thing you iterate on in a terminal
+against `--debug-dir`. The font is not asked for either — with no `--font`,
+extract walks its fallback chain and records what it found, and the header
+font is editable here the moment the plan opens.
+
+Reading a page is detection and OCR, 0.1 to 2.8 seconds of it, so this runs
+on a worker thread like a render: the panel names the page being read, and
+**Cancel** stops after it. **A cancelled extract writes nothing at all.**
+That is the opposite of a cancelled render, and for a reason: a render stopped
+part-way leaves whole pages, each exactly what a complete run would have
+written, while a plan file names the images it covers, so half of one is a
+file claiming a chapter it never read. There is no partial form of it that is
+still true.
+
+When it finishes, the plan opens in this window and the panel lists what the
+plan itself cannot tell you: a page that could not be read, a page with
+nothing detected on it, an input that was not an image. Regions that merely
+need checking are not listed — the page list counts them and `Ctrl+Shift+Down`
+walks them, and a second copy in a panel would go stale the moment you fixed
+one.
+
+**There is no `--merge` here.** Re-extracting over a plan you have worked on
+is the merge case, with its own reporting for hand work that has nowhere to
+go, and it stays on the command line. Now that regions can be drawn, reshaped
+and merged by hand, re-detecting a page is destructive against exactly that
+work. Extract to a new plan, and open it.
 
 **File > Render Pages…** (`Ctrl+Shift+R`) runs the whole `apply` pass without
 leaving the window. The dialog asks the three things the command line asks

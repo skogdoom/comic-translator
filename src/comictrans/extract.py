@@ -33,6 +33,7 @@ from .ocr.grouping import (
     utterance_text,
 )
 from .planfile.schema import PLAN_VERSION
+from .progress import CancelCheck, PageProgress, ProgressCallback
 from .util import relative_posix, slugify
 
 log = logging.getLogger(__name__)
@@ -53,11 +54,17 @@ class ExtractReport:
     empty_pages: list[Path] = field(default_factory=list)
     skipped_inputs: list[tuple[Path, str]] = field(default_factory=list)
     failures: list[tuple[Path, str]] = field(default_factory=list)
+    cancelled: bool = False
+    """Whether the run was stopped part-way rather than reaching the last page."""
 
     @property
     def ok(self) -> bool:
-        """False when anything needs your attention before you start translating."""
-        return not self.failures and not self.empty_pages
+        """False when anything needs your attention before you start translating.
+
+        A cancelled run is not ok either: the plan it would describe covers
+        only the pages it got to, which is not the chapter it was asked for.
+        """
+        return not self.cancelled and not self.failures and not self.empty_pages
 
 
 def default_plan_path(target: Path) -> Path:
@@ -180,8 +187,21 @@ def extract(
     source_language: str = DEFAULT_SOURCE_LANGUAGE,
     target_language: str = DEFAULT_TARGET_LANGUAGE,
     debug_dir: Path | None = None,
+    progress: ProgressCallback | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> tuple[Plan, ExtractReport]:
-    """Run the extract pass over a file or directory."""
+    """Run the extract pass over a file or directory.
+
+    ``progress`` is called once per page, before it is read, and
+    ``should_cancel`` is asked at the same moment; see
+    :mod:`comictrans.progress`. Neither changes what is detected.
+
+    A cancelled run still returns a plan, because this function does not
+    write one — the caller does, and the report says not to. Half a chapter
+    written as a whole plan file would be a plan that lies about what it
+    covers, and unlike a page of output there is no partial form of it that
+    is still true.
+    """
     images, skipped = collect_inputs(target)
     report = ExtractReport(skipped_inputs=list(skipped))
     for path, reason in skipped:
@@ -190,7 +210,14 @@ def extract(
     plan_dir = plan_path.parent
     pages: list[PlanImage] = []
     regions: list[Region] = []
-    for path in images:
+    for index, path in enumerate(images):
+        if should_cancel is not None and should_cancel():
+            report.cancelled = True
+            log.warning("cancelled after %d page(s)", report.pages_read)
+            break
+        if progress is not None:
+            progress(PageProgress(index=index, total=len(images), image=path.name))
+
         try:
             identity, page_regions = extract_page(path, recognizer, config, plan_dir, debug_dir)
         except ComictransError as exc:

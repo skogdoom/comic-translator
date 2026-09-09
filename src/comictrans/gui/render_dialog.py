@@ -44,7 +44,7 @@ from ..errors import ComictransError
 from ..model import Plan
 from .document import PlanDocument
 from .preview import apply_config_for
-from .render_job import RenderRequest
+from .run_job import RenderRequest
 
 FORMAT_CHOICES: tuple[tuple[str, str | None], ...] = (
     ("same as the source", None),

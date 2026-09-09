@@ -76,7 +76,7 @@ ignore_missing_imports = true
 # their imports keeps them Any on both, so the type check does not depend on
 # which machine it runs on.
 [[tool.mypy.overrides]]
-module = ["pytesseract.*", "Vision.*", "Quartz.*", "Foundation.*"]
+module = ["pytesseract.*", "Vision.*", "Quartz.*", "Foundation.*", "objc.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 

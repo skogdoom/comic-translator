@@ -6,6 +6,16 @@ top-left origin before returning, and that convention holds everywhere after.
 
 The whole module is import-guarded so the package remains importable — and the
 test suite runnable — on machines without pyobjc.
+
+**Off the main thread.** ``review`` runs extract on a worker thread, so this
+adapter is called from one. ``performRequests_error_`` is synchronous and
+Apple's own guidance is to run it off the main queue, so the request side is
+fine; what a Python thread does not get for free is an autorelease pool.
+PyObjC does not install one per thread, and without it every Objective-C
+object autoreleased in here leaks for the life of the process — forty pages
+of CGImages and Vision observations. :func:`recognize` therefore opens one
+around each page, which is the right granularity anyway: the pool drains when
+the page is done rather than when the chapter is.
 """
 
 from __future__ import annotations
@@ -27,10 +37,12 @@ log = logging.getLogger(__name__)
 _IMPORT_ERROR: str | None = None
 
 try:  # pragma: no cover - platform dependent
+    import objc
     import Quartz
     import Vision
     from Foundation import NSData
 except ImportError as exc:  # pragma: no cover - platform dependent
+    objc = None
     Quartz = None
     Vision = None
     NSData = None
@@ -39,7 +51,7 @@ except ImportError as exc:  # pragma: no cover - platform dependent
 
 def available() -> bool:
     """True when Vision can actually be used on this machine."""
-    return Vision is not None and Quartz is not None
+    return Vision is not None and Quartz is not None and objc is not None
 
 
 def unavailable_reason() -> str:
@@ -91,7 +103,11 @@ class VisionRecognizer:
     def recognize(self, page: PageImage, config: OcrConfig) -> list[OcrLine]:
         if not available():
             raise OcrUnavailableError(f"Apple Vision unavailable: {unavailable_reason()}")
+        # One pool per page — see the note on threads in the module docstring.
+        with objc.autorelease_pool():
+            return self._recognize(page, config)
 
+    def _recognize(self, page: PageImage, config: OcrConfig) -> list[OcrLine]:
         request = Vision.VNRecognizeTextRequest.alloc().init()
         request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
         request.setRecognitionLanguages_(list(config.languages))

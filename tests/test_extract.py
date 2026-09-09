@@ -10,6 +10,7 @@ from comictrans.errors import InputError
 from comictrans.extract import default_plan_path, extract
 from comictrans.model import Box, Geometry, TextCase
 from comictrans.planfile import load_plan, write_plan
+from comictrans.progress import PageProgress
 from comictrans.util import sha256_file
 
 from .conftest import (
@@ -486,3 +487,105 @@ def test_a_one_word_balloon_is_not_mistaken_for_an_artefact(tmp_path: Path) -> N
 
     assert plan.regions[0].translation == "BASTA!"
     assert report.artefacts == 0
+
+
+# -- progress and cancelling -------------------------------------------
+#
+# Both exist for the review window, which runs this loop on a worker thread
+# and has to say where it has got to and be able to stop. They are tested
+# here rather than through the window because they are properties of the
+# loop, not of Qt.
+
+
+def test_progress_names_each_page_in_natural_order_before_it_is_read(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    seen: list[tuple[int, int, str, int]] = []
+
+    def note(progress: PageProgress) -> None:
+        # How many pages the recogniser has actually been handed by now: the
+        # page being announced is not one of them yet.
+        seen.append((progress.index, progress.total, progress.image, len(recognizer.calls)))
+
+    _, report = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        ExtractConfig(),
+        progress=note,
+    )
+
+    assert report.pages_read == 3
+    assert seen == [
+        (0, 3, "page1.png", 0),
+        (1, 3, "page2.png", 1),
+        (2, 3, "page10.png", 2),
+    ], "announced before it is read, and in the order the run visits them"
+
+
+def test_a_run_nobody_stops_is_not_marked_cancelled(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+
+    _, report = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        ExtractConfig(),
+        should_cancel=lambda: False,
+    )
+
+    assert not report.cancelled
+    assert report.pages_read == 3
+
+
+def test_cancelling_stops_between_pages_and_fails_the_run(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+
+    plan, report = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        ExtractConfig(),
+        # Asked before each page, so answering true once one has been read
+        # stops the run with exactly that page in hand.
+        should_cancel=lambda: len(recognizer.calls) >= 1,
+    )
+
+    assert report.cancelled
+    assert report.pages_read == 1
+    assert not report.ok, "a plan covering one page of three is not the chapter asked for"
+    assert [image.name for image in plan.images] == ["page1.png"]
+
+
+def test_a_cancelled_run_still_returns_a_plan_for_the_caller_to_refuse(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    """Writing it is the caller's decision, and the report says not to.
+
+    ``extract`` never writes; the CLI and the review window both do it
+    themselves, which is what lets the window drop a half-read chapter on
+    the floor rather than leave a plan file claiming pages it never opened.
+    """
+    directory, recognizer, _ = pages
+    plan_path = default_plan_path(directory)
+
+    plan, report = extract(
+        directory,
+        plan_path,
+        recognizer,
+        "Comic Sans MS",
+        ExtractConfig(),
+        should_cancel=lambda: True,
+    )
+
+    assert report.cancelled
+    assert plan.images == () and plan.regions == ()
+    assert not plan_path.exists()
