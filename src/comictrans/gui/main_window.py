@@ -15,9 +15,10 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 from pathlib import Path
+from typing import ClassVar
 
 from PIL import Image
-from PySide6.QtCore import QByteArray, QSettings, QSignalBlocker, Qt, QUrl
+from PySide6.QtCore import QByteArray, QEvent, QSettings, QSignalBlocker, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
@@ -37,6 +38,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
+from . import about, icons
 from .about_dialog import AboutDialog
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -410,20 +412,52 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self._open_logs_action)
         help_menu.addSeparator()
 
-        self._about_action = QAction("&About comictrans review", self)
+        self._about_action = QAction(f"&About {about.NAME}", self)
+        # macOS keeps About in the application menu, not in Help. The role is
+        # what moves it; Preferences already carries its own. Neither has
+        # been seen doing it — there is no Mac here to look at.
+        self._about_action.setMenuRole(QAction.MenuRole.AboutRole)
         self._about_action.triggered.connect(self._on_about)
         help_menu.addAction(self._about_action)
+
+    TOOLBAR_ICONS: ClassVar[dict[str, str]] = {
+        "_open_action": "open",
+        "_save_action": "save",
+        "_undo_action": "undo",
+        "_redo_action": "redo",
+        "_edit_shape_action": "edit-shape",
+        "_add_region_action": "add-region",
+        "_merge_action": "merge-region",
+        "_delete_region_action": "delete-region",
+        "_previous_region_action": "previous-region",
+        "_next_region_action": "next-region",
+        "_next_flagged_action": "next-flagged",
+        "_extract_action": "extract",
+        "_render_action": "render",
+    }
+    """Which drawing goes on which action. The preview action has two, since
+    it is two halves of one thing and its label already says which."""
 
     def _build_toolbar(self) -> None:
         """The same actions the menus hold, not a second set of them.
 
-        Text rather than icons: half of these have no standard pixmap in any
-        Qt style, and a toolbar of four icons and three words reads worse
-        than seven words.
+        Icons rather than words, now that there are icons: text-only cost
+        1138px of a 1200px window for twelve commands, which is why Extract
+        and Render Pages had to stay off it. All fourteen fit in 513px as
+        icons — measured, against 1344px for the same set as words — so the
+        two whole-chapter commands are on it after all.
+
+        A word is still one hover away. Every action here has a tooltip from
+        its own text, and the menus keep the words permanently.
         """
         self._toolbar = QToolBar("Main", self)
         self._toolbar.setObjectName("main_toolbar")
-        self._toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        # The toolbar drawn into the title bar, which is what a Mac window
+        # looks like. Qt ignores it everywhere else, so it costs nothing to
+        # ask for unconditionally.
+        self.setUnifiedTitleAndToolBarOnMac(True)
+        self._apply_toolbar_icons()
         self.addToolBar(self._toolbar)
 
         self._toolbar.addAction(self._open_action)
@@ -442,15 +476,32 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._next_flagged_action)
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._preview_action)
+        self._toolbar.addSeparator()
+        self._toolbar.addAction(self._extract_action)
+        self._toolbar.addAction(self._render_action)
 
-        # Neither Extract Pages nor Render Pages is here, and that is a
-        # measurement rather than an oversight: these twelve labels already
-        # want 1138px of a window that opens at 1200, and a thirteenth pushes
-        # the bar into its overflow menu — taking Render Preview, which is
-        # used on every page, with it. Running a whole chapter through either
-        # pass is a once-a-sitting command with a menu item and a shortcut;
-        # the toolbar holds the ones used every few seconds. Worth revisiting
-        # when 4.8 replaces these words with icons.
+    def _apply_toolbar_icons(self) -> None:
+        """Give every toolbar action its drawing, tinted to this palette.
+
+        Re-run on a palette change, which is how the set follows a window
+        switched between light and dark without a second set of files.
+        """
+        icons.forget()
+        for attribute, name in self.TOOLBAR_ICONS.items():
+            getattr(self, attribute).setIcon(icons.icon(name))
+        self._preview_action.setIcon(icons.icon("overlay" if self._showing_preview else "preview"))
+        # An icon-only button has nothing to read, so the word the menu shows
+        # becomes the tooltip rather than being lost.
+        for attribute in (*self.TOOLBAR_ICONS, "_preview_action"):
+            action = getattr(self, attribute)
+            if not action.toolTip() or action.toolTip() == action.text():
+                action.setToolTip(action.text().replace("&", ""))
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802 - Qt override
+        """Re-tint when the platform switches between light and dark."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            self._apply_toolbar_icons()
 
     # -- layout ----------------------------------------------------------
 
@@ -463,6 +514,22 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
         if isinstance(state, QByteArray):
             self.restoreState(state)
+        self._close_run_dock()
+
+    def _close_run_dock(self) -> None:
+        """Shut it whatever the saved layout said, because nothing has run yet.
+
+        ``restoreState`` brings a dock back exactly as it was left, which for
+        this one means any session that rendered a chapter reopens holding
+        the bottom of the window for a panel reading "Nothing has been run
+        yet." It is a place to work through a report, not part of reviewing a
+        page, so it opens when there is one and not before.
+
+        Only the visibility is overruled: a dock dragged to another edge is
+        still there when a run opens it, because where it belongs is the
+        saved state's answer and this is only about whether it is showing.
+        """
+        self._run_dock.setVisible(False)
 
     def _save_layout(self) -> None:
         if self._settings is None:
@@ -482,7 +549,7 @@ class MainWindow(QMainWindow):
             dock.setVisible(True)
         # Not the run dock: it starts closed, and a layout reset should put
         # it back to closed rather than open one holding an old report.
-        self._run_dock.setVisible(False)
+        self._close_run_dock()
         self.resize(1200, 800)
 
     def _update_actions_enabled(self) -> None:
@@ -510,6 +577,8 @@ class MainWindow(QMainWindow):
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
         self._preview_action.setText(OVERLAY_TEXT if self._showing_preview else PREVIEW_TEXT)
+        self._preview_action.setIcon(icons.icon("overlay" if self._showing_preview else "preview"))
+        self._preview_action.setToolTip(self._preview_action.text().replace("&", ""))
         for action in (
             self._zoom_in_action,
             self._zoom_out_action,
@@ -563,10 +632,10 @@ class MainWindow(QMainWindow):
         placeholder whatever the state.
         """
         if self.document is None:
-            self.setWindowTitle("comictrans review")
+            self.setWindowTitle(about.NAME)
             self.setWindowModified(False)
             return
-        self.setWindowTitle(f"{self.document.path.name}[*] — comictrans review")
+        self.setWindowTitle(f"{self.document.path.name}[*] — {about.NAME}")
         self.setWindowModified(self.document.dirty)
 
     # -- opening, saving -----------------------------------------------

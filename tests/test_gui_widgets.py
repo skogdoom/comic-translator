@@ -271,6 +271,37 @@ def test_editing_the_translation_marks_the_document_dirty(
     assert window.document.region("page-001-001").translation == "HELLO THERE"  # type: ignore[union-attr]
 
 
+def test_the_window_is_called_comictrans_everywhere_it_names_itself(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """One name, from one place. ``comictrans review`` is the command.
+
+    That is what the CLI is invoked as and what opens this window; it is not
+    what the window is called, and the title bar, the Help menu and the
+    About box all have to agree on which is which.
+    """
+    from comictrans.gui import about
+    from comictrans.gui.about_dialog import AboutDialog
+
+    window = MainWindow()
+    assert window.windowTitle() == about.NAME
+    assert window._about_action.text() == f"&About {about.NAME}"
+
+    window.open_plan(two_page_plan)
+    assert window.windowTitle() == f"{two_page_plan.name}[*] — {about.NAME}"
+
+    dialog = AboutDialog()
+    assert dialog.windowTitle() == f"About {about.NAME}"
+
+    named = (
+        window.windowTitle(),
+        window._about_action.text(),
+        dialog.windowTitle(),
+    )
+    for shown in named:
+        assert "review" not in shown.lower(), f"{shown!r} names the command, not the window"
+
+
 def test_editing_an_empty_translation_clears_the_held_back_flag_in_the_page_list(
     qapp: object, two_page_plan: Path
 ) -> None:
@@ -630,6 +661,44 @@ def test_the_layout_is_remembered_for_the_next_window(qapp: object, tmp_path: Pa
     assert MainWindow(settings=settings)._pages_dock.isHidden()
     # A window opened without settings is unaffected by any of that.
     assert not MainWindow()._pages_dock.isHidden()
+
+
+def test_the_run_dock_stays_closed_however_the_last_session_left_it(
+    qapp: object, tmp_path: Path
+) -> None:
+    """It opens when there is a report, and a new session has none.
+
+    ``restoreState`` brings a dock back exactly as it was left, so before
+    this every session that rendered a chapter reopened holding the bottom
+    of the window for a panel reading "Nothing has been run yet."
+    """
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings(str(tmp_path / "layout.ini"), QSettings.Format.IniFormat)
+
+    first = MainWindow(settings=settings)
+    first._run_dock.setVisible(True)
+    first._save_layout()
+
+    assert MainWindow(settings=settings)._run_dock.isHidden()
+
+
+def test_the_run_dock_reopens_where_it_was_dragged_to(qapp: object, tmp_path: Path) -> None:
+    """Closed is not the same as forgotten: only the visibility is overruled."""
+    from PySide6.QtCore import QSettings, Qt
+
+    settings = QSettings(str(tmp_path / "layout.ini"), QSettings.Format.IniFormat)
+
+    first = MainWindow(settings=settings)
+    first._run_dock.setVisible(True)
+    first.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, first._run_dock)
+    first._save_layout()
+
+    second = MainWindow(settings=settings)
+    assert second._run_dock.isHidden()
+
+    second._run_dock.setVisible(True)
+    assert second.dockWidgetArea(second._run_dock) == Qt.DockWidgetArea.LeftDockWidgetArea
 
 
 def test_next_region_carries_on_to_the_following_page(qapp: object, two_page_plan: Path) -> None:
@@ -1354,6 +1423,51 @@ def test_a_font_the_machine_does_not_have_is_kept_and_marked(qapp: object, font_
     box.set_value("Comic Sans MS")
     assert box.resolvable()
     assert box.toolTip() == ""
+
+
+def _relative_luminance(color: object) -> float:
+    """WCAG 2.1 relative luminance, so the contrast below is the real ratio."""
+    channels = []
+    for value in (color.redF(), color.greenF(), color.blueF()):  # type: ignore[attr-defined]
+        channels.append(value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4)
+    red, green, blue = channels
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def _contrast(one: object, other: object) -> float:
+    darker, lighter = sorted((_relative_luminance(one), _relative_luminance(other)))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+@pytest.mark.parametrize("base", [(255, 255, 255), (30, 30, 30)])
+def test_the_unresolvable_mark_reads_on_a_dark_window_too(
+    qapp: object, font_dir: Path, base: tuple[int, int, int]
+) -> None:
+    """A warning nobody can see is not a warning.
+
+    Qt's ``darkRed``, which this used to be, measures 1.5:1 against a dark
+    base — invisible on a Mac in dark mode, which is where this tool is
+    meant to run. Both ways round the mark has to clear the 4.5:1 that
+    ordinary text is held to, and still be a red rather than just a colour.
+    """
+    from PySide6.QtGui import QColor, QPalette
+
+    from comictrans.gui.font_box import FontBox
+
+    box = FontBox(allow_default=True)
+    line_edit = box.lineEdit()
+    assert line_edit is not None
+    palette = line_edit.palette()
+    palette.setColor(QPalette.ColorRole.Base, QColor(*base))
+    line_edit.setPalette(palette)
+
+    box.set_value("A Font From Another Mac")
+    assert not box.resolvable(), "the test needs the mark to be showing"
+
+    mark = line_edit.palette().color(QPalette.ColorRole.Text)
+    ratio = _contrast(mark, QColor(*base))
+    assert ratio >= 4.5, f"{ratio:.2f}:1 against {base} is not readable"
+    assert mark.red() > mark.green() and mark.red() > mark.blue(), "a warning is red"
 
 
 def test_the_font_box_stays_editable_so_a_name_can_be_typed(qapp: object, font_dir: Path) -> None:

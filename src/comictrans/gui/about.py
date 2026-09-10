@@ -19,6 +19,15 @@ from .. import __version__
 
 DISTRIBUTION = "comictrans"
 
+NAME = "comictrans"
+"""What the application calls itself: the window title, the About box.
+
+The same string as ``DISTRIBUTION`` today and a different fact from it — one
+is what the UI is called, the other is what to ask the package metadata
+about. ``comictrans review`` is neither: that is the command that opens this
+window, and the CLI keeps it.
+"""
+
 _REQUIREMENT_NAME = re.compile(r"^[A-Za-z0-9._-]+")
 """The name at the head of a requirement, before any version or marker.
 

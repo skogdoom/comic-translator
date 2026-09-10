@@ -15,7 +15,7 @@ from __future__ import annotations
 import platform
 
 import PySide6
-from PySide6.QtCore import qVersion
+from PySide6.QtCore import Qt, qVersion
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QDialog,
@@ -27,9 +27,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import about
+from . import about, icons
 
 _TEXT_HEIGHT = 160
+_ICON_SIZE = 96
+"""How big the dog is here.
+
+Large enough to be the drawing it is rather than a decoration, and small
+enough that the version under it is still the first thing read.
+"""
 
 
 def library_lines() -> tuple[str, ...]:
@@ -54,15 +60,25 @@ def _read_only_text(lines: tuple[str, ...]) -> QPlainTextEdit:
 class AboutDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("About comictrans review")
+        self.setWindowTitle(f"About {about.NAME}")
 
-        heading = QLabel(f"comictrans review {about.package_version()}")
+        heading = QLabel(f"{about.NAME} {about.package_version()}")
         font = heading.font()
         font.setBold(True)
         heading.setFont(font)
 
         blurb = QLabel(about.summary())
         blurb.setWordWrap(True)
+
+        # Centred above the words rather than beside them. The icon is a
+        # decoration, and a missing one leaves no gap where a picture was
+        # going to be: the row is left out rather than kept as an empty
+        # label holding everything below it down.
+        picture = icons.app_icon().pixmap(_ICON_SIZE, _ICON_SIZE)
+        stamp: QLabel | None = None
+        if not picture.isNull():
+            stamp = QLabel()
+            stamp.setPixmap(picture)
 
         facts = QFormLayout()
         facts.addRow("author", QLabel(about.author()))
@@ -79,6 +95,8 @@ class AboutDialog(QDialog):
         buttons.accepted.connect(self.accept)
 
         layout = QVBoxLayout(self)
+        if stamp is not None:
+            layout.addWidget(stamp, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(heading)
         layout.addWidget(blurb)
         layout.addLayout(facts)

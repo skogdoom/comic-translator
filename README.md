@@ -225,6 +225,13 @@ one. Needs PySide6, a separate extra like tesseract — most work on this
 repository never opens a window. Without it, `review` fails with a clear
 message rather than an import error.
 
+The toolbar carries the commands you reach for while reading a chapter —
+open and save, undo and redo, the four region tools, the three ways to step
+between regions, the preview toggle, and both whole-chapter runs — as icons
+rather than words, because as words they came to more than the window is
+wide. Hover any of them for its name; the menus keep the words permanently,
+with the shortcuts beside them.
+
 The overlay uses the same colours as `--debug-dir`: green for a traced
 contour, orange for approximate, violet for a shape drawn or edited here by
 hand. A region with something worth checking — approximate geometry, low
@@ -384,8 +391,8 @@ images have changed, so a render started from an open plan has already passed
 the check that flag exists to skip. **Reload** checks again.
 
 The run happens on a worker thread, so the window stays usable while a
-chapter renders: a panel along the bottom names the page being worked on and
-how far along the run is. **Cancel** stops it after that page rather than
+chapter renders: a panel opens along the bottom, naming the page being
+worked on and how far along the run is. **Cancel** stops it after that page rather than
 part-way through one, so what is on disk is always whole pages and re-running
 finishes the job.
 
@@ -421,9 +428,12 @@ A line under the canvas says what a click does in whatever mode the window is
 in — placing corners, reshaping, merging, taking a colour — and stays there
 for as long as the mode does, rather than scrolling past in the status bar.
 
-The **Window** menu closes and reopens the two panels, and **Reset Layout**
-puts them back where they started. The layout is remembered between
-sessions — the only thing this tool stores outside a plan file.
+The **Window** menu closes and reopens the three panels, and **Reset
+Layout** puts them back where they started. The layout is remembered between
+sessions — the only thing this tool stores outside a plan file — with one
+exception: the Run panel always starts closed, because a new session has
+nothing to report yet. A run opens it, and it comes back wherever you left
+it.
 
 **Edit > Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere) sets what a
 new run starts from: the language pair, OCR languages and recogniser a new
@@ -683,6 +693,19 @@ Three groups of tests skip rather than fail when the host cannot run them:
 should see none of these skip except the empty fixtures directory.
 
 Fixture images go in `tests/fixtures/`; see the README there.
+
+**The application icon is derived, not drawn twice.**
+`src/comictrans/gui/resources/appicon/` holds a 1024 master, the 512 icon,
+and the script that makes the second from the first — the same drawing with
+its finest detail hidden and a heavier line, so it still reads at 16px. Edit
+the master, then:
+
+```
+src/comictrans/gui/resources/appicon/recreate-icons.py
+```
+
+The suite runs that script's `--check` mode, so a master edited without
+regenerating fails `pytest` rather than shipping a stale icon.
 
 ## Licence
 

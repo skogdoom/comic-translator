@@ -17,7 +17,7 @@ render rather than after.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics, QGuiApplication, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
 from .. import fonts
@@ -32,6 +32,21 @@ and this is only its default.
 """
 
 _TEXT_ROLE = QPalette.ColorRole.Text
+
+
+def _unresolvable_color(palette: QPalette) -> QColor:
+    """A red that reads on this window's own background.
+
+    Dark red on a dark window is a warning nobody can see: measured, Qt's
+    ``darkRed`` manages 10.9:1 against white and 1.5:1 against a dark base,
+    which is invisible. The palette says which way round the window is, so
+    the mark is dark on light chrome and light on dark — 8.1:1 and 6.9:1,
+    both past the 4.5:1 that ordinary text is held to.
+    """
+    background = palette.color(QPalette.ColorRole.Base)
+    dark_chrome = background.lightness() < 128
+    return QColor(255, 130, 120) if dark_chrome else QColor(160, 20, 20)
+
 
 _MIN_CHARS = 16
 _MAX_CHARS = 24
@@ -186,7 +201,7 @@ class FontBox(QComboBox):
             palette.setColor(_TEXT_ROLE, QApplication.palette().color(_TEXT_ROLE))
             self.setToolTip(self._name_if_clipped())
         else:
-            palette.setColor(_TEXT_ROLE, Qt.GlobalColor.darkRed)
+            palette.setColor(_TEXT_ROLE, _unresolvable_color(palette))
             self.setToolTip(
                 f"{self.value()!r} is not installed here, or has no bold face. "
                 "apply will refuse it rather than substitute another font."
