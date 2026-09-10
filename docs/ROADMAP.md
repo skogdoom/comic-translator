@@ -35,6 +35,7 @@ one section can refer to another without ambiguity.
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
 | 3 | CBZ, PDF and CBR input | L |
+| 8 | CBZ and CBR output | M |
 | 4.22 | Preview off the main thread | M |
 | 6 | PDF output | L |
 | 7 | Security audit | M |
@@ -164,15 +165,17 @@ Reorder a plan's pages by dragging rows in the page list.
 
 **One order, not two.** The plan's `images` list is already a sequence;
 this makes that sequence mean something and makes it editable. Review
-follows it, and so does anything that later writes pages into a single file
-— 6 below. A separate reading order and writing order would be two things
-to keep in step for a case nobody has asked for.
+follows it, and so does anything that writes pages into a single file — 8
+and 6 below. A separate reading order and writing order would be two
+things to keep in step for a case nobody has asked for.
 
-**Today it is half a feature, and that is the honest half.** `apply` writes
-one file per source image, named after the source, so the order decides the
-sequence pages are worked in and nothing about what lands on disk. The half
-that works now — reviewing a chapter in reading order instead of in
-whatever order the filenames happen to sort — is worth having on its own.
+**Until 8 lands it is half a feature, and that is the honest half.**
+`apply` writes one file per source image, named after the source, so on its
+own the order decides the sequence pages are worked in and nothing about
+what ends up on disk. The half that works immediately — reviewing a chapter
+in reading order instead of in whatever order the filenames happen to sort
+— is worth having by itself. Once an archive is being written, the same
+list becomes the reading order of the thing someone else opens.
 
 **One rule needs writing down.** `extract` builds its image list from the
 directory scan, so re-extracting over a plan whose pages have been
@@ -326,15 +329,66 @@ unchanged, including the invariant that source images are never written to
 Reading from the archive on demand means an abstraction across three
 modules for no gain that anyone has asked for.
 
-**CBR too, and reading only.** RAR has no free writer: creating one needs
-the proprietary `rar` binary, so `.cbr` is an input format here and never
-an output. Reading it needs `rarfile` plus an external `unrar` or
+**CBR too.** Reading it needs `rarfile` plus an external `unrar` or
 `bsdtar` — the first dependency this tool has had that is not a Python
 package, so it cannot be declared in `pyproject.toml`, and 4.10 has to
 decide whether to bundle it or require it and degrade politely when it is
 absent. Bundling is the awkward half: the unrar licence is not OSI-free,
 which is a real question for an MIT project. Behind the sidecar decision
-above, a CBR reader is one more unpacker and nothing else.
+above, a CBR reader is one more unpacker and nothing else. Writing one is
+a different matter, and 8 covers it.
+
+## 8 CBZ and CBR output
+
+Write a chapter as a single archive rather than a directory of images.
+
+**CBZ is a zip and needs nothing.** Rendered pages, stored or deflated,
+and the format is done. It is the one every reader on every platform
+opens.
+
+**CBR needs a compressor this project cannot ship, which is not the same
+as cannot use.** RAR compression is proprietary: `unrar` only reads, and
+its licence explicitly forbids using it to create archives, so the only
+thing that writes a `.rar` is the `rar` binary from WinRAR, which is paid
+and not redistributable. What that licence restricts is *redistributing*
+the compressor — it says nothing about someone driving the copy they have
+already licensed. So the shape here is: look for `rar` on `PATH`, offer
+CBR when it is there, and when it is not, say that it is missing and what
+would provide it rather than silently omitting the option. Never bundle
+it. That keeps this an MIT project and still gives anyone with a licence
+the format they asked for.
+
+**Naming inside the archive carries the reading order, not the source
+filenames.** A reader sorts entries by name, so the order 4.23 lets someone
+set has to survive into the archive as a zero-padded prefix or equivalent.
+Source names that happen to sort correctly today are luck, not a
+guarantee, and a reordered chapter would silently come out in the old
+order if the entry names were copied straight through.
+
+**It collides with how cancel works, and that has to be decided.** Today a
+cancelled render leaves whole pages on disk and re-running finishes the
+job — `README.md` says so, and that is the reason cancel stops after a page
+rather than during one. An archive has no half-way state worth keeping: the
+honest equivalent is to render into a temporary directory, cancel there,
+and only build the archive once every page is done, so a cancelled run
+leaves no archive at all rather than a truncated one. That is a different
+promise from the directory case and both should be written down, not left
+to whichever one the code happens to implement.
+
+The invariant is unchanged and matters more here: a region that cannot be
+rendered is left alone and named in the report. With a directory output the
+page is right there to look at; inside an archive it is one step further
+away, so the report is the only thing that will tell someone a page came
+out untouched.
+
+Where it plugs in: `render_dialog`'s format choice becomes two questions
+rather than one — what each page is encoded as, and what contains them —
+and `apply.output_path` assumes one output file per source image
+throughout.
+
+One thing left open: whether to write a `ComicInfo.xml` alongside the
+pages. Readers use it for series, volume and language, and the plan header
+already knows the language pair. Worth deciding when this is picked up.
 
 ## 4.22 Preview off the main thread
 
@@ -371,7 +425,7 @@ today. And it is what makes 4.23's page order mean something on disk.
 
 A pass over this code and over the dependency surface: Pillow, NumPy,
 OpenCV, ruamel.yaml, pyphen, pytesseract, PySide6 and pyobjc-Vision, plus
-whatever 3 adds.
+`rarfile` and the external `unrar`/`rar` binaries that 3 and 8 bring in.
 
 **Two halves worth keeping apart.** Dependency CVEs are a tooling question
 — `pip-audit` or equivalent, run on a schedule, reporting versions against
@@ -381,10 +435,13 @@ invariant in `CLAUDE.md` and is enforced nowhere in the suite. An audit is
 where that stops being a rule people remember and starts being something
 that fails a check.
 
-**After 3.** Reading an archive means handing an untrusted file to an
-unpacker, and for CBR that unpacker is an external binary. That is
-genuinely new attack surface and it is worth being in scope the first time
-round rather than the second.
+**After 3 and 8.** Reading an archive means handing an untrusted file to an
+unpacker, and for CBR that unpacker is an external binary; writing one
+means invoking a second external binary with paths someone else chose.
+Both are genuinely new attack surface — the first this tool has had that is
+not a Python library — and worth being in scope the first time round rather
+than the second. Whatever shells out to `unrar` or `rar` is where argument
+handling wants reading closely.
 
 Last on the list, and the only item here that is a recurring activity
 rather than something that ships once and is deleted from this file.
