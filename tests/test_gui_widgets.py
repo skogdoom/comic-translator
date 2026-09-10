@@ -73,7 +73,12 @@ from comictrans.gui.canvas import (
 )
 from comictrans.gui.extract_dialog import ExtractDialog
 from comictrans.gui.inspector import ERASE_CHOICES
-from comictrans.gui.main_window import OVERLAY_TEXT, PREVIEW_TEXT, MainWindow
+from comictrans.gui.main_window import (
+    CLEAR_RECENT_TEXT,
+    OVERLAY_TEXT,
+    PREVIEW_TEXT,
+    MainWindow,
+)
 from comictrans.gui.preferences import Preferences
 from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
 from comictrans.gui.render_dialog import (
@@ -857,6 +862,103 @@ def test_the_layout_is_remembered_for_the_next_window(qapp: object, tmp_path: Pa
     assert MainWindow(settings=settings)._pages_dock.isHidden()
     # A window opened without settings is unaffected by any of that.
     assert not MainWindow()._pages_dock.isHidden()
+
+
+def _recent_labels(window: MainWindow) -> list[str]:
+    return [action.text() for action in window._recent_menu.actions() if not action.isSeparator()]
+
+
+def _settings_in(tmp_path: Path) -> object:
+    from PySide6.QtCore import QSettings
+
+    return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+
+def test_open_recent_is_empty_and_greyed_out_until_something_is_opened(
+    qapp: object, tmp_path: Path
+) -> None:
+    window = MainWindow(settings=_settings_in(tmp_path))
+
+    assert _recent_labels(window) == []
+    assert not window._recent_menu.isEnabled(), "an empty submenu that opens is a dead end"
+
+
+def test_opening_a_plan_puts_it_on_the_recent_menu(
+    qapp: object, tmp_path: Path, two_page_plan: Path
+) -> None:
+    """The label carries the directory because the filenames do not differ.
+
+    Plans written by ``extract`` are all called ``comic-plan.yaml``, so a
+    menu of bare filenames would be a column of identical rows. The parent
+    is the chapter, and the whole path is on the tooltip for the case where
+    two chapters are named alike too.
+    """
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window.open_plan(two_page_plan)
+
+    labels = _recent_labels(window)
+    assert labels[0] == f"{two_page_plan.parent.name}/{two_page_plan.name}"
+    assert CLEAR_RECENT_TEXT in labels
+    assert window._recent_menu.isEnabled()
+    assert window._recent_menu.actions()[0].toolTip() == str(two_page_plan)
+
+
+def test_a_window_without_settings_remembers_nothing(qapp: object, two_page_plan: Path) -> None:
+    """The rule the layout already follows: no settings, no trace anywhere.
+
+    Every window the suite builds is one of these, which is what keeps one
+    test's history out of the next one and out of the config of whoever is
+    running it.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    assert _recent_labels(window) == []
+
+
+def test_a_plan_that_has_gone_is_dropped_when_it_is_chosen(
+    qapp: object, tmp_path: Path, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Checked on the click, not while the menu is being built.
+
+    A stat per entry every time File opens would put the cost on every
+    glance at the menu, and an entry on a network volume that is not
+    answering would hang the menu rather than the click.
+    """
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window.open_plan(two_page_plan)
+    assert _recent_labels(window)[0].endswith(two_page_plan.name)
+
+    said: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", staticmethod(lambda *a, **k: said.append(a[2]) or None)
+    )
+    two_page_plan.unlink()
+    window._on_open_recent(two_page_plan)
+
+    assert _recent_labels(window) == [], "the entry goes when the file is not there"
+    assert said and str(two_page_plan) in said[0], "and it says which one"
+
+
+def test_clear_menu_empties_the_list(qapp: object, tmp_path: Path, two_page_plan: Path) -> None:
+    """It is a privacy control, so it has to leave nothing listed."""
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window.open_plan(two_page_plan)
+    assert _recent_labels(window)
+
+    window._on_clear_recent()
+
+    assert _recent_labels(window) == []
+    assert not window._recent_menu.isEnabled()
+
+
+def test_the_recent_list_outlives_the_window_that_made_it(
+    qapp: object, tmp_path: Path, two_page_plan: Path
+) -> None:
+    settings = _settings_in(tmp_path)
+    MainWindow(settings=settings).open_plan(two_page_plan)
+
+    assert _recent_labels(MainWindow(settings=settings))[0].endswith(two_page_plan.name)
 
 
 def test_the_run_dock_stays_closed_however_the_last_session_left_it(

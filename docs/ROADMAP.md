@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.20 | Recently opened files | S |
 | 4.21 | Preview says it is working | S |
 | 4.23 | Page order | S–M |
 | 5 | Validate a plan file | S |
@@ -73,28 +72,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.20 Recently opened files
-
-A **File > Open Recent** submenu, with **Clear Menu** at the bottom of it
-the way macOS applications have one.
-
-**It makes an existing claim false in three places, and all three have to be
-fixed in the same change.** `README.md`, `docs/ARCHITECTURE.md` and
-`gui/app.py` each say the window layout is the only thing this tool stores
-outside a plan file. That stopped being true when 4.13 shipped, since
-preferences write to the same `QSettings`; a recent-files list makes it a
-third. The documents are wrong now rather than because of this milestone —
-this is just the milestone that cannot avoid noticing.
-
-**A recent list is a small privacy surface**, which is what Clear Menu is
-for. It remembers the paths of everything opened, and for this tool that is
-a list of which comics someone has been working on. Its own key rather than
-being folded in with the layout, so clearing it clears it.
-
-Two rules to settle before writing it: what an entry does when its file has
-moved or been deleted — offered and reported, or dropped silently as the
-menu is built — and how many entries to keep.
 
 ## 4.21 Preview says it is working
 

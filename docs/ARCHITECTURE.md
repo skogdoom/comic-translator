@@ -554,6 +554,7 @@ render_dialog.py where to write, in what format, erasing how
 extract_dialog.py what to read, where the plan goes, in what languages
 run_panel.py    the dock a run reports into, whose rows go where they name
 preferences.py  what a new run starts from — no Qt
+recent.py       the plans opened lately, and their order — no Qt
 preferences_dialog.py  those defaults, and a reminder of what they are not
 logfile.py      the application log, and the hooks that fill it — no Qt
 crash.py        fatal-signal traces to a second file — no Qt
@@ -563,8 +564,8 @@ app.py         available() / run() — the CLI's entry point
 ```
 
 `document.py`, `preview.py`, `sampling.py`, `about.py`, `run_report.py`,
-`preferences.py`, `logfile.py` and `crash.py` need no display and import
-no Qt;
+`preferences.py`, `recent.py`, `logfile.py` and `crash.py` need no display
+and import no Qt;
 they are tested directly, the same as any other module. The widget modules do
 — `main_window.py` is the only one that knows about more than one other
 widget, which is what keeps an edit's ripple effects (the window title's
@@ -670,13 +671,29 @@ there means it is tested without a display like everything else in that
 layer — and that walking off the end of a page continues onto the next one
 falls out of the plan order rather than being a rule the window enforces.
 
-**Why the window is handed its `QSettings` instead of making one.** The
-layout is the only thing this tool remembers outside a plan file, and a
-window built without settings — which is every window the tests build —
-reads and writes nothing. That keeps the suite from depending on, or
+**Why the window is handed its `QSettings` instead of making one.** Three
+things are remembered outside a plan file — the window layout, the
+preferences a new run starts from, and the plans opened lately — and a
+window built without settings, which is every window the tests build, reads
+and writes none of them. That keeps the suite from depending on, or
 writing into, the configuration of whoever runs it, and keeps one test's
 dragged-about docks out of the next one. `gui.app` is the single place that
 decides a real session should persist anything.
+
+**Why the recent list is history and the other two are settings.** It is
+the only thing stored here that records what someone has been reading
+rather than how they like the tool set up, which is why it has its own key
+and its own way to be emptied. Clearing it has to clear it, not leave the
+paths folded in with the geometry of the docks.
+
+Its entries are never checked against the disk while the menu is being
+built. That would be a `stat` per entry every time File is opened, and one
+entry on a network volume that is not answering would hang the menu rather
+than the click. The check happens when a particular plan is chosen, where
+someone is already waiting on that file; a plan that has gone says so and
+drops off the list. Paths are canonicalised without touching the disk
+either — `normpath`, not `resolve`, so a symlink is never followed to
+decide whether two entries are the same file.
 
 **Why the overlay and the preview are two different things, not one.** The
 overlay — polygons over the original page — is recomputed from the document
