@@ -13,6 +13,8 @@ at the others' state.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -20,7 +22,13 @@ from typing import ClassVar
 
 from PIL import Image
 from PySide6.QtCore import QByteArray, QEvent, QSettings, QSignalBlocker, Qt, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QGuiApplication,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
@@ -68,6 +76,9 @@ from .run_panel import RunPanel
 from .sampling import color_at, sample_region_colors
 
 log = logging.getLogger(__name__)
+
+PREVIEW_WORKING = "rendering preview…"
+"""Shown while the render blocks the window, and replaced by its result."""
 
 PREVIEW_TEXT = "&Render Preview"
 OVERLAY_TEXT = "Back to &Overlay"
@@ -1111,12 +1122,39 @@ class MainWindow(QMainWindow):
         else:
             self._on_render_preview()
 
+    @contextmanager
+    def _busy(self, message: str) -> Iterator[None]:
+        """Say that something slow is running, before it starts running.
+
+        ``showMessage`` only posts: the paint happens the next time the
+        event loop turns, and the whole problem here is that the next thing
+        this thread does is not turn the event loop for several seconds. So
+        the status bar is repainted on the spot. ``repaint`` rather than
+        ``processEvents`` deliberately — it paints without also delivering
+        input, so a second Ctrl+R arriving mid-render cannot re-enter this.
+
+        The cursor is restored on the way out however that happens, which is
+        what puts it back before a failure's message box rather than showing
+        that box under a spinning wait cursor.
+        """
+        self.statusBar().showMessage(message)
+        self.statusBar().repaint()
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            yield
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
     def _on_render_preview(self) -> None:
         if self.document is None or self._current_image is None:
             return
         try:
-            preview = render_preview(self.document, self._current_image)
+            with self._busy(PREVIEW_WORKING):
+                preview = render_preview(self.document, self._current_image)
         except ComictransError as exc:
+            # The working message would otherwise sit there claiming a render
+            # is still going, behind the box saying it is not.
+            self.statusBar().clearMessage()
             QMessageBox.critical(self, "Could not render preview", str(exc))
             return
         # The same page, rendered: hold the reader's place across the swap,

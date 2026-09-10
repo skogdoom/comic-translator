@@ -513,6 +513,77 @@ def test_opening_a_broken_plan_shows_an_error_and_keeps_the_old_document(
     assert window.document is original_document
 
 
+def test_the_preview_says_it_is_working_while_it_is_working(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both signals have to be *set* before the render, not after it.
+
+    The render blocks this thread, so anything raised afterwards arrives
+    once it is over and pointless. The spy reads the status bar and the
+    cursor from inside the call, which is the only moment that can tell the
+    difference.
+
+    What this cannot check is the other half. ``currentMessage`` is the
+    status bar's state, not its pixels, so it reads back the same whether or
+    not the bar was actually repainted — measured: dropping the ``repaint``
+    leaves this test green. That call is there for the screen, and only a
+    screen can show it.
+    """
+    from PySide6.QtGui import QGuiApplication
+
+    from comictrans.gui import main_window as mw
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    during: dict[str, object] = {}
+    render = mw.render_preview
+
+    def spy(document: object, image: str) -> object:
+        during["message"] = window.statusBar().currentMessage()
+        cursor = QGuiApplication.overrideCursor()
+        during["shape"] = cursor.shape() if cursor is not None else None
+        return render(document, image)
+
+    monkeypatch.setattr(mw, "render_preview", spy)
+    window._on_render_preview()
+
+    assert during["message"] == mw.PREVIEW_WORKING
+    assert during["shape"] == Qt.CursorShape.WaitCursor
+    assert QGuiApplication.overrideCursor() is None, "the cursor is put back afterwards"
+    assert window.statusBar().currentMessage() != mw.PREVIEW_WORKING, (
+        "the working message is replaced by what the preview found"
+    )
+
+
+def test_a_preview_that_fails_puts_the_cursor_back_and_stops_saying_it_is_working(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Otherwise the box saying it failed sits over a status bar saying it has not."""
+    from PySide6.QtGui import QGuiApplication
+
+    from comictrans.gui import main_window as mw
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    def refuse(document: object, image: str) -> object:
+        raise InputError("no font for that")
+
+    said: list[str] = []
+    monkeypatch.setattr(mw, "render_preview", refuse)
+    monkeypatch.setattr(
+        QMessageBox, "critical", staticmethod(lambda *a, **k: said.append(a[2]) or None)
+    )
+
+    window._on_render_preview()
+
+    assert said, "the failure is reported"
+    assert QGuiApplication.overrideCursor() is None, "and the cursor is not left spinning"
+    assert window.statusBar().currentMessage() == ""
+    assert not window._showing_preview, "a failed preview leaves the overlay up"
+
+
 def test_render_preview_shows_a_different_image_and_can_return_to_the_overlay(
     qapp: object, two_page_plan: Path, font_dir: Path
 ) -> None:

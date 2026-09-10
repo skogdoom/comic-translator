@@ -327,6 +327,10 @@ Overlay** while the rendered page is up: one button, and its label says which
 way it goes. Your place is kept across the swap in both directions — the zoom,
 the position, and the region you had selected.
 
+Rendering a large page takes a moment, and the window does not answer while
+it does. It says so: a wait cursor, and `rendering preview…` in the status
+bar, replaced by what the preview found once it is done.
+
 **File > Extract Pages…** (`Ctrl+Shift+E`) runs the `extract` pass without
 leaving the window, and opens the plan it wrote. It is the only thing here
 that works with no plan open, because it is how you get one — which is why

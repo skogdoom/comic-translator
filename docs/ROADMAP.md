@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.21 | Preview says it is working | S |
 | 4.23 | Page order | S–M |
 | 5 | Validate a plan file | S |
 | 4.8 | macOS look and feel | S — mostly shipped |
@@ -72,24 +71,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.21 Preview says it is working
-
-`render_preview` runs synchronously on the main thread —
-`_on_render_preview` calls it directly — so on a large page the window is
-frozen for the duration and nothing on screen says why. A wait cursor and a
-line in the status bar while it runs.
-
-**Deliberately the cheap version.** Doing it properly is 4.22, and that is
-a separate milestone rather than the obvious way to write this one because
-of what it would cost: entry 5 in `known-bugs.md` rules out every
-thread-related explanation for the vanishing window on the grounds that
-preview is synchronous and touches no worker thread. This milestone leaves
-that elimination standing.
-
-It also does nothing about the other suspect in that entry — three copies
-of an eleven-megapixel page per preview — which threading would not fix
-either.
 
 ## 4.23 Page order
 
@@ -334,19 +315,24 @@ already knows the language pair. Worth deciding when this is picked up.
 
 ## 4.22 Preview off the main thread
 
-What 4.21 papers over, done properly: `render_preview` on a `RunJob`, so
+What the wait cursor papers over, done properly: `render_preview` on a
+`RunJob`, so
 the window stays live while a page renders and the render can be called
 off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
 class and one `work()` method.
 
-**Gated on entry 5 in `known-bugs.md`, and it rewrites that entry.** The
-reasoning there rules out a `QThread` destroyed while running, Vision on a
-thread, and the job read after `deleteLater`, all on the grounds that
-preview is synchronous. Putting preview on a thread retires that reasoning,
-so the entry has to be rewritten in the same commit — `CLAUDE.md` does not
-allow a recorded behaviour to change quietly. Better done once that crash
-is understood or closed than while it is still an open hunt, since
-otherwise this widens the search space for a bug nobody has reproduced.
+**No longer gated.** This waited on entry 5 of `known-bugs.md` — the
+window seen vanishing during preview — because that entry ruled out every
+thread-related explanation on the grounds that preview was synchronous, and
+putting it on a thread would have retired the reasoning while the hunt was
+still open. The crash turned out to be a stale shiboken wrapper outliving
+`QGraphicsScene.clear()`, which is fixed and the entry deleted, so nothing
+is being disturbed by moving preview off the main thread now.
+
+What a wait cursor could not touch is still here: three copies of an
+eleven-megapixel page per preview, about 120MB of them. A thread makes the
+window answer while that happens; it does not make it less. Worth measuring
+before deciding this milestone is only about threading.
 
 ## 6 PDF output
 
