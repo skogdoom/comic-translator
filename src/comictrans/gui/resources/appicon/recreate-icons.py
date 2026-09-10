@@ -11,21 +11,21 @@ this. Geometry is never touched, so the two files stay in sync.
 ``--check`` is what `tests/test_gui_appicon.py` runs, so a master edited
 without regenerating fails the suite rather than shipping quietly.
 
-**On the C2PA metadata.** Both files carry a signed provenance manifest, and
-the two are different: each was signed for its own bytes. So the icon's
-manifest is kept on write rather than being overwritten with the master's,
-and comparisons ignore ``<metadata>`` entirely — otherwise ``--check`` could
-never pass, the manifests differing while the drawing agreed. Worth being
-plain about the limit: a manifest is a signature over a file, so once the
-geometry is regenerated the one carried here no longer validates against the
-bytes around it. It is kept as a record of where the drawing came from, not
-as a credential this script can keep true.
+**On provenance metadata.** Neither file carries any, and the derive strips
+``<metadata>`` so that neither starts to. The pair arrived with a signed
+C2PA manifest each — 63% of the bytes, and the two different, having been
+signed separately — which made ``--check`` impossible to pass: the derive
+carries the master's manifest forward, and that is never the icon's. The
+deeper problem is that a manifest signs a file's bytes, so regenerating the
+geometry invalidates whichever one is carried. A credential this script
+cannot keep true is worse than none, so there is none.
 """
 
 import argparse
 import re
 import sys
 import xml.etree.ElementTree as ElementTree
+from collections.abc import Iterator
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -90,13 +90,33 @@ def derive(master: str) -> str:
             f'<g id="{gid}"', f'<g id="{gid}" display="none"', svg, f"group id={gid!r}"
         )
 
-    return _substitute(
+    svg = _substitute(
         f'stroke-width="{STROKE_MASTER}"',
         f'stroke-width="{STROKE_ICON}"',
         svg,
         f'stroke-width="{STROKE_MASTER}"',
         regex=False,
     )
+
+    # The one edit allowed to match nothing, because the usual case is that
+    # there is nothing to strip. It is here so that a master re-exported by
+    # a tool that embeds provenance cannot quietly put a manifest into the
+    # icon — one that would not survive the next regeneration anyway.
+    return METADATA.sub("", svg)
+
+
+def _drawing(parent: ElementTree.Element) -> Iterator[ElementTree.Element]:
+    """Every element under ``parent`` that is part of the picture.
+
+    A ``<metadata>`` subtree is not, and is skipped whole: the derive strips
+    it, so comparing it would read that removal as the drawing changing and
+    refuse to write over a difference that was the point.
+    """
+    for child in parent:
+        if child.tag.rpartition("}")[2] == "metadata":
+            continue
+        yield child
+        yield from _drawing(child)
 
 
 def geometry_of(svg: str) -> list[tuple[str, tuple[tuple[str, str], ...]]]:
@@ -110,7 +130,6 @@ def geometry_of(svg: str) -> list[tuple[str, tuple[tuple[str, str], ...]]]:
     The root ``<svg>`` is skipped — its width and height are the one part of
     the transform that is meant to change.
     """
-    root = ElementTree.fromstring(svg)
     return [
         (
             element.tag,
@@ -122,29 +141,8 @@ def geometry_of(svg: str) -> list[tuple[str, tuple[tuple[str, str], ...]]]:
                 )
             ),
         )
-        for element in root.iter()
-        if element is not root
+        for element in _drawing(ElementTree.fromstring(svg))
     ]
-
-
-def without_metadata(svg: str) -> str:
-    """The file as a drawing, with the provenance manifest normalised away."""
-    return METADATA.sub("<metadata/>", svg)
-
-
-def keeping_manifest_of(derived: str, current: str | None) -> str:
-    """The derived icon, carrying the icon's own manifest rather than the master's.
-
-    With no icon yet there is nothing to carry, and the master's comes
-    through — which is the honest answer for a file that has just been made
-    from it.
-    """
-    if current is None:
-        return derived
-    existing = METADATA.search(current)
-    if existing is None:
-        return derived
-    return METADATA.sub(lambda _match: existing.group(0), derived, count=1)
 
 
 def main() -> int:
@@ -161,16 +159,15 @@ def main() -> int:
     if geometry_of(master) != geometry_of(icon):
         sys.exit("error: geometry drifted during derive — refusing to write")
 
-    current = ICON.read_text() if ICON.exists() else None
-
     if args.check:
-        if current is not None and without_metadata(current) == without_metadata(icon):
+        current = ICON.read_text() if ICON.exists() else None
+        if current == icon:
             print(f"{ICON.name} is up to date")
             return 0
         print(f"{ICON.name} is out of date — run without --check", file=sys.stderr)
         return 1
 
-    ICON.write_text(keeping_manifest_of(icon, current))
+    ICON.write_text(icon)
     shapes = len(geometry_of(icon))
     print(f"wrote {ICON.name} ({shapes} elements, {len(HIDE_GROUPS)} detail groups hidden)")
     return 0

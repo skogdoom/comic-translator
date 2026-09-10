@@ -29,6 +29,22 @@ def test_the_master_the_icon_and_the_script_all_ship() -> None:
         assert path.is_file(), f"{path.name} is missing from {APPICON_DIR}"
 
 
+def test_neither_drawing_carries_provenance_metadata() -> None:
+    """Stripped deliberately, and the derive keeps it that way.
+
+    Both arrived with a signed C2PA manifest, 63% of the bytes and
+    different from each other, which made ``--check`` impossible to pass. A
+    manifest signs a file's bytes, so regenerating the geometry invalidates
+    it either way — a credential that cannot be kept true is worse than
+    none. This is here so that a master re-exported by a tool that embeds
+    one cannot bring it back unnoticed.
+    """
+    for path in (MASTER, icons.APPICON):
+        body = path.read_text()
+        assert "<metadata" not in body, f"{path.name} carries metadata again"
+        assert "c2pa" not in body.lower(), f"{path.name} carries a provenance manifest again"
+
+
 def test_the_icon_is_still_what_the_master_says_it_should_be() -> None:
     """``--check`` in the suite, so a regeneration cannot be forgotten.
 

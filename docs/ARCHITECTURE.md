@@ -751,14 +751,23 @@ though a pupil is a `<circle>` with no path data. Every substitution it
 makes is counted, because `re.sub` and `str.replace` both answer "not
 found" by handing back what they were given — a master re-saved with its
 stroke width spelled `4.50` would otherwise have produced a hairline icon,
-reported as written. Both SVGs carry their own signed provenance manifest,
-which is why comparisons ignore `<metadata>` and a write keeps the icon's
-own: the two manifests differ by construction, and comparing them would
-mean `--check` could never pass. A manifest is a signature over a file, so
-once geometry is regenerated the one carried is a record of where the
-drawing came from rather than a credential the script can keep true.
-`tests/test_gui_appicon.py` runs `--check` as part of the suite, so
-forgetting to regenerate is a test failure and not a shipped stale icon.
+reported as written. Neither SVG carries provenance metadata, and the
+derive strips `<metadata>` so that neither starts to. The pair arrived with
+a signed C2PA manifest each — 63% of the bytes, and the two different,
+having been signed separately — which made `--check` impossible to pass,
+since the derive carries the master's forward and that is never the icon's.
+The deeper problem is that a manifest signs a file's bytes, so regenerating
+the geometry invalidates whichever one is carried: a credential the script
+cannot keep true is worse than none. Stripping both cost nothing visible —
+the rendered pixels are identical at every size — and took each file from
+12KB to 4.6KB.
+
+Two different guards, which is worth keeping straight. The parsed
+comparison above is about the *script*: the derive must not alter the
+drawing on its way through. `--check`, which `tests/test_gui_appicon.py`
+runs as part of the suite, is about the *files*: the committed icon must
+still be what the current master derives to, so forgetting to regenerate is
+a test failure rather than a shipped stale icon.
 
 **Reshaping: the canvas drags, the window decides, the document validates.**
 Dragging a corner changes only what is drawn; the polygon reaches the
