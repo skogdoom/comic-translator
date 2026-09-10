@@ -11,7 +11,9 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+import subprocess
 import sys
+import textwrap
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
@@ -271,10 +273,122 @@ def test_editing_the_translation_marks_the_document_dirty(
     assert window.document.region("page-001-001").translation == "HELLO THERE"  # type: ignore[union-attr]
 
 
-def test_the_window_is_called_comictrans_everywhere_it_names_itself(
+def test_review_tells_the_platform_what_the_application_is_called(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two names Qt itself reads, which are not the ones macOS reads.
+
+    ``applicationDisplayName`` titles windows that do not title themselves;
+    ``applicationName`` is the fallback key for a ``QSettings`` built
+    without explicit ones. The macOS application menu takes neither — that
+    comes from ``argv[0]``, and has its own test.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import about
+    from comictrans.gui import app as gui_app
+
+    was_display = QApplication.applicationDisplayName()
+    was_name = QApplication.applicationName()
+    monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
+    try:
+        assert gui_app.run() == 0
+        assert QApplication.applicationName() == about.NAME
+        assert QApplication.applicationDisplayName() == about.NAME
+    finally:
+        QApplication.setApplicationDisplayName(was_display)
+        QApplication.setApplicationName(was_name)
+
+
+def test_the_name_macos_reads_is_the_one_handed_to_qt(tmp_path: Path) -> None:
+    """macOS titles "About X", "Hide X" and "Quit X" from argv[0], not from us.
+
+    ``qt_mac_applicationName`` reads ``CFBundleName`` out of a bundle's
+    ``Info.plist`` and otherwise falls back to the basename of ``argv[0]``;
+    ``QCoreApplicationPrivate::appName`` does the same. Neither consults
+    ``setApplicationName``, which is why setting that moved nothing and why
+    this asserts what the constructor is *given* rather than what Qt reports
+    afterwards. Launched from ``.venv/bin/comictrans`` those three items read
+    "comictrans", because that is the basename and there is nothing else.
+
+    In a subprocess because the suite already holds a ``QApplication``, so
+    in-process the constructor never runs.
+    """
+    source = Path(__file__).resolve().parents[1] / "src"
+    script = tmp_path / "named.py"
+    script.write_text(
+        textwrap.dedent(f"""
+            import os, sys
+            sys.path.insert(0, {str(source)!r})
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+            os.environ["COMICTRANS_LOG_DIR"] = {str(tmp_path)!r}
+
+            from PySide6.QtWidgets import QApplication
+
+            QApplication.exec = lambda self: 0
+
+            from comictrans.gui import about
+            from comictrans.gui import app as gui_app
+
+            assert gui_app.run() == 0
+            print(QApplication.arguments()[0])
+            print(about.NAME)
+        """),
+        encoding="utf-8",
+    )
+
+    finished = subprocess.run(
+        [sys.executable, str(script)], capture_output=True, text=True, timeout=180, check=False
+    )
+    assert finished.returncode == 0, finished.stderr
+
+    handed, name = finished.stdout.strip().splitlines()[-2:]
+    assert handed == name, f"argv[0] was {handed!r}, so the macOS menu would say that"
+
+
+def test_naming_the_application_moves_neither_the_settings_nor_the_logs(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why setting ``applicationName`` is safe here, measured rather than assumed.
+
+    Qt falls back to it for a ``QSettings`` built without explicit keys, and
+    for ``QStandardPaths``. Neither is how this project asks: the one real
+    ``QSettings`` names its organisation and application outright, and the
+    log directory comes from ``logfile.APPLICATION``, a literal. Worth a
+    test rather than a comment, because getting it wrong would quietly
+    orphan someone's saved layout and hide their crash logs somewhere new.
+    """
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import about, logfile
+    from comictrans.gui.app import _APPLICATION, _ORGANIZATION
+
+    # The suite points the log directory at a temporary one; without that
+    # override this computes the real path, which is the one under test.
+    monkeypatch.delenv(logfile.LOG_DIR_ENV, raising=False)
+
+    def where() -> tuple[str, str]:
+        return QSettings(_ORGANIZATION, _APPLICATION).fileName(), str(logfile.log_directory())
+
+    was = QApplication.applicationName()
+    try:
+        QApplication.setApplicationName("something else entirely")
+        before = where()
+        QApplication.setApplicationName(about.NAME)
+        assert where() == before
+    finally:
+        QApplication.setApplicationName(was)
+
+
+def test_the_window_uses_one_name_everywhere_it_names_itself(
     qapp: object, two_page_plan: Path
 ) -> None:
     """One name, from one place. ``comictrans review`` is the command.
+
+    The assertions read the name from ``about.NAME`` rather than spelling
+    it out, so renaming the application is that constant and nothing else —
+    which is the point of the constant.
 
     That is what the CLI is invoked as and what opens this window; it is not
     what the window is called, and the title bar, the Help menu and the

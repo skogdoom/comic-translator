@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.18 | Application name | S |
 | 4.19 | Preferences: Done, not Close | XS |
 | 4.20 | Recently opened files | S |
 | 4.21 | Preview says it is working | S |
@@ -53,9 +52,9 @@ review, and waiting on nothing, as was moving a region after them.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
-whatever the application is by then. Both are why 4.18 is at the top rather
-than filed with the other small things: renaming the application after
-either one means doing that work a second time. Help text describes the UI, so it goes
+whatever the application is by then. Both are why the rename went first
+rather than being filed with the other small things: renaming after either
+one would have meant doing that work a second time. Help text describes the UI, so it goes
 after the UI stops moving — which meant after 4.8, since replacing a text
 toolbar with icons changed what there was to describe. That change has now
 landed, so nothing in 4.8's remainder holds help back.
@@ -75,34 +74,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.18 Application name
-
-The window calls itself `comictrans`; it should call itself **Comic
-Translator**. The command stays `comictrans` — that is what people type,
-what every example in `README.md` shows, and what the distribution is
-called — so this is a change to what the application is named, not to how
-it is run.
-
-`gui/about.py` already separates the two ideas. `NAME` is what the UI calls
-itself and `DISTRIBUTION` is what to ask the package metadata about; they
-hold the same string today and are separate fields precisely so that this
-milestone is one line plus its tests, which hold the title bar, the Help
-menu item and the About box to whatever `NAME` says.
-
-**What stays technical, deliberately.** The `QSettings` organisation and
-application keys in `app.py`, because changing them orphans every saved
-window layout and every preference. The log directory
-`~/Library/Logs/comictrans`, because renaming it breaks the trail
-Console.app shows and the path `known-bugs.md` points at. The distribution
-name on PyPI. None of those is text anyone reads as the product's name.
-
-**This has to go before 4.9 and 4.10**, which is why it is at the top.
-Localisation freezes every user-visible string and packaging bakes the name
-into the bundle, its identifier and its `.icns`.
-
-Worth settling at the same time: `pyproject.toml`'s `description`, which
-the About box prints verbatim as the summary and which names the tool.
 
 ## 4.19 Preferences: Done, not Close
 
@@ -297,6 +268,16 @@ Gatekeeper on any machine but the one that built it, and signing means a
 paid Developer ID and notarisation. Given the disclaimer in `README.md`,
 the honest target is an unsigned local build, documented as such, not a
 release artifact.
+
+**`CFBundleName` has to be "Comic Translator", and it is not optional.**
+macOS titles its application menu — "About X", "Hide X", "Quit X" — from
+`qt_mac_applicationName()`, which reads `CFBundleName` out of the bundle's
+`Info.plist` and only falls back to the `argv[0]`-derived name when there
+is no bundle. `gui.app` sets the application name before Qt starts, which
+is what makes the unbundled case right; the moment a bundle exists,
+`Info.plist` outranks it and a bundle that omits the key would put
+`comictrans` back in that menu. Set it, and set `CFBundleDisplayName` with
+it.
 
 **The icon set is already two drawings, and an `.icns` wants both.** That
 format holds one image per size rather than one scalable drawing, which is
