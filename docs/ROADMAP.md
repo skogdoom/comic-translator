@@ -24,16 +24,22 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
+| 9 | Test suite speed | S |
 | 4.23 | Page order | S–M |
 | 5 | Validate a plan file | S |
+| 4.22 | Preview off the main thread | M |
+| 4.26 | Extract text for one region | M |
+| 4.27 | Lock a region | M |
+| 4.28 | Region context menu | S |
 | 4.8 | macOS look and feel | S — mostly shipped |
+| 4.24 | Interface review: conventions and wording | M |
 | 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
 | 3 | CBZ, PDF and CBR input | L |
 | 8 | CBZ and CBR output | M |
-| 4.22 | Preview off the main thread | M |
 | 6 | PDF output | L |
+| 10 | Code quality review | M |
 | 7 | Security audit | M |
 
 The 4.x numbering says these follow milestone 4, the review GUI. Milestone
@@ -51,10 +57,11 @@ review, and waiting on nothing, as was moving a region after them.
 string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Both are why the rename went first
 rather than being filed with the other small things: renaming after either
-one would have meant doing that work a second time. Help text describes the UI, so it goes
-after the UI stops moving — which meant after 4.8, since replacing a text
-toolbar with icons changed what there was to describe. That change has now
-landed, so nothing in 4.8's remainder holds help back.
+one would have meant doing that work a second time, and 4.24 is filed just
+ahead of them for exactly that reason — it decides what the labels say, and
+deciding that after they have been translated is the same mistake twice.
+Help text describes the UI, so it goes after the UI stops moving, which now
+means after the region tools and the review that follows them.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -62,6 +69,14 @@ shipped — stood on both: undo built for five text fields would have needed
 rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
+
+**Measurement comes before the thing it would justify.** 9 is at the top
+because the suite costs 70 seconds and every milestone below pays it, and
+because its saving was found by timing the suite rather than by guessing
+which tests looked slow. The same applies inside 4.26 and 4.22: what a
+crop does to recognition accuracy, and what a thread does and does not do
+about three copies of an eleven-megapixel page, are both numbers somebody
+has to produce before the design is settled.
 
 One ordering was a judgement call rather than a dependency, and it paid out:
 **rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
@@ -71,6 +86,31 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
+
+## 9 Test suite speed
+
+**Measured, not guessed.** The suite takes 70 seconds, and 53 of them are
+`test_fixtures.py`. Everything else put together is 17, of which the widget
+tests are 10 for 191 of them.
+
+OCR is already cached per fixture page — `_page_and_lines` does that and
+says so. Detection is not: `find_regions` runs four times per image, once
+for geometry, once for colours, and twice for the determinism check. Three
+of those four ask the same question of the same pixels.
+
+**The saving is in what the determinism test compares against.** One cached
+detection per image, and one fresh run in the determinism test to compare
+it to, is two runs instead of four. It is also a slightly stronger check
+than the present one: the two runs are separated by whatever else the
+session did in between, rather than being back to back in one function.
+
+No coverage changes. Every assertion still runs against every fixture.
+Measure before and after and put both numbers in the commit.
+
+**Not `pytest-xdist` first.** Parallelism would cut wall time further and is
+worth considering afterwards, but it adds a dependency and it hides
+ordering bugs — exactly the kind the stray-window fixture was added to stop
+hiding. Fix the arithmetic before adding processes.
 
 ## 4.23 Page order
 
@@ -120,6 +160,103 @@ about the file. `fonts.resolve_family` is the call `apply` makes, so what
 
 Exit non-zero on any failure, so it is usable from a script.
 
+## 4.22 Preview off the main thread
+
+What the wait cursor papers over, done properly: `render_preview` on a
+`RunJob`, so
+the window stays live while a page renders and the render can be called
+off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
+class and one `work()` method.
+
+**No longer gated.** This waited on entry 5 of `known-bugs.md` — the
+window seen vanishing during preview — because that entry ruled out every
+thread-related explanation on the grounds that preview was synchronous, and
+putting it on a thread would have retired the reasoning while the hunt was
+still open. The crash turned out to be a stale shiboken wrapper outliving
+`QGraphicsScene.clear()`, which is fixed and the entry deleted, so nothing
+is being disturbed by moving preview off the main thread now.
+
+What a wait cursor could not touch is still here: three copies of an
+eleven-megapixel page per preview, about 120MB of them. A thread makes the
+window answer while that happens; it does not make it less. Worth measuring
+before deciding this milestone is only about threading.
+
+**It moved up the list once it was ungated**, because 4.26 wants the same
+harness for the same reason and would otherwise either build it or freeze
+the window on every balloon.
+
+## 4.26 Extract text for one region
+
+Run the recogniser over a single region and put what it reads into
+`source_text`: for a region drawn by hand, which has no reading at all, and
+for one where detection read the lettering badly.
+
+**Two ways to do it, and the cheap one is wrong.** Recognising the whole
+page and keeping the lines inside the polygon needs almost no new code, but
+spends a full-page recognition on one balloon. Cropping to the region and
+recognising that is the one worth building, and its risk is accuracy rather
+than speed: recognisers do better with a margin around the text than with a
+tight crop. So the crop wants padding, and the result wants comparing
+against what full-page detection finds on the same fixtures before this is
+called done.
+
+**It writes over something a person may have typed**, which nothing else in
+the window does — every other edit replaces the reviewer's text with the
+reviewer's text. So it asks first when `source_text` is not what extract
+left there, and it is one undo step like any other edit.
+
+**It wants the worker thread, which is why it sits after 4.22.** A
+recogniser is seconds, not milliseconds, and unlike preview this is a
+per-balloon action rather than an occasional one; a wait cursor is the
+wrong answer at that frequency.
+
+`apply` is untouched and still runs no OCR. This is `review` doing what
+`extract` does, to one region.
+
+## 4.27 Lock a region
+
+Mark a region finished, so that changing it means deliberately unlocking it
+first.
+
+**It costs a plan version.** The reader rejects unknown keys on purpose, so
+that a typo is an error rather than a silent no-op — which means a plan
+carrying `locked:` cannot be read by a build that predates it. That is what
+`PLAN_VERSION` is for: 3 becomes 4. Worth spending that bump on every field
+the roadmap wants at once rather than twice; nothing else pending needs
+one, so today this is alone.
+
+**In the plan rather than in settings**, for the reason everything else is:
+the plan is the thing handed to someone else, and "these are final, leave
+them" is exactly the sort of thing worth handing over. In settings it would
+live on one machine and be lost on the next.
+
+**It is not `skip`, and the two will be confused unless the labels are
+careful.** `skip` means do not render this region; `locked` means do not
+edit it, and a locked region still renders. Saying which is which without
+the manual is as much 4.24's job as this one's.
+
+**What it has to reach**: every edit path. The inspector's fields,
+reshaping, the arrow keys, merge, delete — and re-extraction, where locked
+regions are the ones that should come through untouched, which is half the
+reason to want it.
+
+## 4.28 Region context menu
+
+Right-click — and Control-click, on macOS — on a region: extract its text,
+lock or unlock it, edit its shape, select it.
+
+**After the commands it lists.** A context menu is a shortcut to things
+that already exist; built before them it is a menu of two items.
+
+**It has to respect one-mode-at-a-time.** The canvas holds a single
+`CanvasMode` precisely because a click means different things in each, and
+a menu offering a command that contradicts the mode in progress is the
+wrong place to find that out.
+
+`contextMenuEvent` on the canvas, choosing the region under the cursor the
+same way a left-click chooses it, so the two cannot disagree about what was
+clicked.
+
 ## 4.8 macOS look and feel
 
 Qt supplies the native style, the native menu bar, and Cmd for Ctrl through
@@ -153,6 +290,36 @@ that a palette change repaints the set — all under the offscreen platform,
 on whatever machine is to hand. None of that is evidence about where macOS
 puts a menu item. That step needs hands on the target machine, and it is
 the only part of this milestone the four checks were never going to cover.
+
+## 4.24 Interface review: conventions and wording
+
+Two passes over one surface, together because they touch the same strings.
+They are listed as one milestone for that reason; split them if the
+conventions half turns out to be large.
+
+**Against Apple's Human Interface Guidelines.** Menu structure and where
+commands belong, standard shortcuts, dialog button order and roles, what
+belongs in a preferences window versus a document window. What remains of
+4.8 is adjacent to this and may as well be done with it.
+
+**Wording and casing, where the finding is a decision rather than a bug.**
+Sampled: buttons and menu items are title case — "Cancel", "Choose…",
+"Open Plan…", "Clear Menu" — which is what the HIG asks for. Form labels
+and section headings are deliberately all-lowercase — "fill colour",
+"source language", "a new plan starts as" — which is internally consistent
+and is not what the HIG asks for; Apple wants sentence case there. So the
+question is whether that lowercase style is kept on purpose or brought into
+line, and it should be answered once and written down rather than drifting.
+
+The same pass settles spelling. User-facing text is British — "colour",
+"licence" — while the plan format is American, `fill_color`. That split is
+defensible, since one is prose and the other is a data format that cannot
+change without a version bump, but it should be deliberate.
+
+**Before 4.7 and 4.9, and after the milestones that add strings.** Help
+describes this text and localisation freezes it; renaming a label after
+either means doing that work twice, which is the same trap 4.18 was moved
+up to avoid.
 
 ## 4.7 Help instructions
 
@@ -254,12 +421,19 @@ modules for no gain that anyone has asked for.
 
 **CBR too.** Reading it needs `rarfile` plus an external `unrar` or
 `bsdtar` — the first dependency this tool has had that is not a Python
-package, so it cannot be declared in `pyproject.toml`, and 4.10 has to
-decide whether to bundle it or require it and degrade politely when it is
-absent. Bundling is the awkward half: the unrar licence is not OSI-free,
-which is a real question for an MIT project. Behind the sidecar decision
-above, a CBR reader is one more unpacker and nothing else. Writing one is
-a different matter, and 8 covers it.
+package, so it cannot be declared in `pyproject.toml`.
+
+**It is never bundled — decided, not open.** The unrar licence is not
+OSI-free, and this is an MIT project; shipping the binary inside a `.app`
+would put someone else's terms on the whole thing. So the tool uses one the
+person running it already has: found on `PATH`, and when it is somewhere
+unusual, named in Preferences. That field is the same shape as the output
+directory already there, and it costs nothing when the binary is on `PATH`
+like everybody else's. Absent entirely, CBR input is unavailable and says
+so — it does not fail halfway through opening a chapter.
+
+Behind the sidecar decision above, a CBR reader is one more unpacker and
+nothing else. Writing one is a different matter, and 8 covers it.
 
 ## 8 CBZ and CBR output
 
@@ -275,11 +449,17 @@ its licence explicitly forbids using it to create archives, so the only
 thing that writes a `.rar` is the `rar` binary from WinRAR, which is paid
 and not redistributable. What that licence restricts is *redistributing*
 the compressor — it says nothing about someone driving the copy they have
-already licensed. So the shape here is: look for `rar` on `PATH`, offer
-CBR when it is there, and when it is not, say that it is missing and what
-would provide it rather than silently omitting the option. Never bundle
-it. That keeps this an MIT project and still gives anyone with a licence
-the format they asked for.
+already licensed. So: `rar` is never bundled. It is looked for on `PATH`,
+and Preferences can name it where it lives somewhere unusual, which is the
+same field 3 needs for `unrar` and probably the same one. Present, CBR is
+offered; absent, it is not, and the reason says which binary would provide
+it rather than the option quietly not being there.
+
+That keeps this an MIT project and still gives anyone holding a licence
+the format they asked for. It also puts a configurable path to an
+executable this tool then runs into the codebase, which 7 should look at
+closely — how it is validated, and what happens when it names something
+that is not `rar` at all.
 
 **Naming inside the archive carries the reading order, not the source
 filenames.** A reader sorts entries by name, so the order 4.23 lets someone
@@ -313,27 +493,6 @@ One thing left open: whether to write a `ComicInfo.xml` alongside the
 pages. Readers use it for series, volume and language, and the plan header
 already knows the language pair. Worth deciding when this is picked up.
 
-## 4.22 Preview off the main thread
-
-What the wait cursor papers over, done properly: `render_preview` on a
-`RunJob`, so
-the window stays live while a page renders and the render can be called
-off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
-class and one `work()` method.
-
-**No longer gated.** This waited on entry 5 of `known-bugs.md` — the
-window seen vanishing during preview — because that entry ruled out every
-thread-related explanation on the grounds that preview was synchronous, and
-putting it on a thread would have retired the reasoning while the hunt was
-still open. The crash turned out to be a stale shiboken wrapper outliving
-`QGraphicsScene.clear()`, which is fixed and the entry deleted, so nothing
-is being disturbed by moving preview off the main thread now.
-
-What a wait cursor could not touch is still here: three copies of an
-eleven-megapixel page per preview, about 120MB of them. A thread makes the
-window answer while that happens; it does not make it less. Worth measuring
-before deciding this milestone is only about threading.
-
 ## 6 PDF output
 
 Write a chapter as one PDF rather than a directory of images.
@@ -348,6 +507,23 @@ is picked up rather than guessing now.
 What is already known: it extends `render_dialog`'s format choice and
 `apply.output_path`, both of which assume one output file per source image
 today. And it is what makes 4.23's page order mean something on disk.
+
+## 10 Code quality review
+
+A reading of the whole codebase for the things tests do not catch:
+duplication that has crept in, modules that have grown past what their
+docstring claims, names that no longer match what they do, and comments
+that describe an earlier version of the code.
+
+**After the features, before the audit.** Reviewing while milestones are
+still landing means reviewing the same code twice; leaving it until after 7
+means the audit reads code nobody has tidied. Between them is the one place
+it pays for itself.
+
+Worth deciding in advance what it is allowed to change. A quality pass that
+also fixes behaviour is two changes wearing one commit message, and this
+repository has `known-bugs.md` precisely so that "while I was in there" is
+not how a decision gets reversed.
 
 ## 7 Security audit
 
