@@ -691,6 +691,19 @@ should see none of these skip except the empty fixtures directory.
 
 Fixture images go in `tests/fixtures/`; see the README there.
 
+**The application icon is derived, not drawn twice.**
+`src/comictrans/gui/resources/appicon/` holds a 1024 master, the 512 icon,
+and the script that makes the second from the first — the same drawing with
+its finest detail hidden and a heavier line, so it still reads at 16px. Edit
+the master, then:
+
+```
+src/comictrans/gui/resources/appicon/recreate-icons.py
+```
+
+The suite runs that script's `--check` mode, so a master edited without
+regenerating fails `pytest` rather than shipping a stale icon.
+
 ## Licence
 
 MIT. The full text is in [LICENSE](LICENSE), and `pyproject.toml` declares

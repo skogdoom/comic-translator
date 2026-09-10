@@ -69,18 +69,22 @@ the time it landed, the harness was a base class and one `work()` method.
 Qt supplies the native style, the native menu bar, and Cmd for Ctrl through
 `QKeySequence.StandardKey`, so less of this was missing than it appeared.
 Most of the rest has now shipped: the toolbar is icons, drawn for this tool
-and tinted to the palette; `AboutRole` puts About in the application menu
-and Preferences already carried `PreferencesRole` from 4.13; the unified
-title-and-toolbar look is asked for; and the one thing dark mode was
-actually breaking — the mark on a font name this machine cannot resolve,
-measured at 1.5:1 against a dark base — now picks its red from the palette
-and clears 4.5:1 both ways round.
+and tinted to the palette; the application has an icon of its own, set on
+the `QApplication` and shown in the About box; `AboutRole` puts About in the
+application menu and Preferences already carried `PreferencesRole` from
+4.13; the unified title-and-toolbar look is asked for; and the one thing
+dark mode was actually breaking — the mark on a font name this machine
+cannot resolve, measured at 1.5:1 against a dark base — now picks its red
+from the palette and clears 4.5:1 both ways round.
 
 Two things are left.
 
-- **An `.icns` icon and bundle identity.** Not started, and it overlaps
-  4.10 almost entirely: an icon file is worth having once there is a bundle
-  to put it in.
+- **An `.icns` icon and bundle identity.** The artwork exists now —
+  `resources/appicon/` holds the master and the derived icon, and Qt shows
+  it wherever it can — so what is left is the conversion and the bundle to
+  put it in, which is 4.10's. On macOS the Dock reads the bundle rather
+  than `setWindowIcon`, so until then the icon is visible everywhere except
+  the one place a Mac user looks first.
 - **Confirmation on a real Mac.** Everything above is set from code and
   none of it has been seen working: the menu bar placement and `AboutRole`,
   the unified toolbar, full screen, and the icons against real dark-mode
@@ -150,6 +154,13 @@ Gatekeeper on any machine but the one that built it, and signing means a
 paid Developer ID and notarisation. Given the disclaimer in `README.md`,
 the honest target is an unsigned local build, documented as such, not a
 release artifact.
+
+**The icon set is already two drawings, and an `.icns` wants both.** That
+format holds one image per size rather than one scalable drawing, which is
+exactly the distinction `resources/appicon/` was built around: render the
+1024 master into the large slots, where its fur lines and page edges read,
+and the derived 512 icon into the small ones, where they would turn to mud.
+Rendering one file into every slot throws away the reason there are two.
 
 The bundle needs Pillow, numpy and OpenCV whatever else happens: the review
 window renders previews through `render_page`, which erases and typesets

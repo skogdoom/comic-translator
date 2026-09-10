@@ -34,6 +34,15 @@ log = logging.getLogger(__name__)
 ICON_DIR = Path(__file__).parent / "resources" / "icons"
 SUFFIX = ".svg"
 
+APPICON = Path(__file__).parent / "resources" / "appicon" / "dog-book-icon-512.svg"
+"""The application's own icon, which is a different kind of thing.
+
+Full colour and drawn to be looked at, where the toolbar's are line art
+drawn to be tinted — so this one is never passed through :func:`_tinted`,
+and it does not follow the palette. It lives beside its 1024 master and the
+script that derives it; edit the master, not this.
+"""
+
 SIZES = (16, 20, 24, 32, 40, 48, 64)
 """Sizes to bake into each icon.
 
@@ -90,9 +99,27 @@ def icon(name: str, color: QColor | None = None) -> QIcon:
     return built
 
 
+def app_icon() -> QIcon:
+    """The dog on its book, for the window and the About box.
+
+    Rendered on demand rather than baked into a pixmap set: nothing tints
+    it, so Qt's SVG engine can answer any size asked for, including the
+    large ones an application icon gets asked for and the toolbar never is.
+
+    Missing, it costs the picture and nothing else — the same bargain
+    :func:`icon` strikes, and it matters more here: this is called while the
+    application is starting up, and a window that refused to open over a
+    decoration would be the worse failure by far.
+    """
+    if not APPICON.is_file():
+        log.warning("no application icon at %s", APPICON)
+        return QIcon()
+    return QIcon(str(APPICON))
+
+
 def forget() -> None:
     """Drop the cache, so the next call re-tints. For a palette change."""
     _cache.clear()
 
 
-__all__ = ["ICON_DIR", "SIZES", "available", "forget", "icon"]
+__all__ = ["APPICON", "ICON_DIR", "SIZES", "app_icon", "available", "forget", "icon"]

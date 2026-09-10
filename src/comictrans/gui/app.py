@@ -109,6 +109,17 @@ def run(plan_path: Path | None = None) -> int:
     # informative of the three hooks, and the only one that needs it running.
     logfile.install_qt_message_handler()
 
+    # Set on the application rather than the window, so every window and
+    # dialog this process opens inherits it. On macOS the Dock reads the
+    # bundle instead, which is milestone 4.10's business — this is what shows
+    # before there is a bundle, and everywhere that is not a Mac.
+    from . import icons
+
+    # Static on QGuiApplication rather than a call on the instance, which
+    # `QApplication.instance()` types as the QCoreApplication that has no
+    # window to put an icon on.
+    QApplication.setWindowIcon(icons.app_icon())
+
     from PySide6.QtCore import QSettings
 
     from .main_window import MainWindow

@@ -15,21 +15,28 @@ from __future__ import annotations
 import platform
 
 import PySide6
-from PySide6.QtCore import qVersion
+from PySide6.QtCore import Qt, qVersion
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from . import about
+from . import about, icons
 
 _TEXT_HEIGHT = 160
+_ICON_SIZE = 96
+"""How big the dog is here.
+
+Large enough to be the drawing it is rather than a decoration, and small
+enough that the version and summary beside it stay the first thing read.
+"""
 
 
 def library_lines() -> tuple[str, ...]:
@@ -64,6 +71,23 @@ class AboutDialog(QDialog):
         blurb = QLabel(about.summary())
         blurb.setWordWrap(True)
 
+        # The icon is a decoration, and a missing one leaves no gap where a
+        # picture was going to be: the row is built without it rather than
+        # with an empty label holding the words away from the edge.
+        titles = QVBoxLayout()
+        titles.addWidget(heading)
+        titles.addWidget(blurb)
+        titles.addStretch(1)
+
+        banner = QHBoxLayout()
+        picture = icons.app_icon().pixmap(_ICON_SIZE, _ICON_SIZE)
+        if not picture.isNull():
+            stamp = QLabel()
+            stamp.setPixmap(picture)
+            stamp.setAlignment(Qt.AlignmentFlag.AlignTop)
+            banner.addWidget(stamp)
+        banner.addLayout(titles, 1)
+
         facts = QFormLayout()
         facts.addRow("author", QLabel(about.author()))
         facts.addRow("licence", QLabel(f"{about.licence()} — full text in LICENSE"))
@@ -79,8 +103,7 @@ class AboutDialog(QDialog):
         buttons.accepted.connect(self.accept)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(heading)
-        layout.addWidget(blurb)
+        layout.addLayout(banner)
         layout.addLayout(facts)
         layout.addWidget(QLabel("libraries"))
         layout.addWidget(self._libraries)

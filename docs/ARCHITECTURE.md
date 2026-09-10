@@ -538,7 +538,7 @@ document.py   the loaded plan, its edits, and where they save — no Qt
 preview.py     render_page called on the current document — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 qimage.py      the one function that turns a Pillow image into a QPixmap
-icons.py       the toolbar's drawings, tinted to the palette in use
+icons.py       the toolbar's drawings, tinted; and the application's own
 canvas.py      the page: a pixmap, and clickable region outlines over it
 hint_line.py    the line under it: what a click does, elided to fit
 sampling.py    colours read off the page for a region drawn by hand
@@ -732,6 +732,33 @@ that keeps its text, its shortcut and its tooltip — because a window that
 refused to open over a missing asset would be the worse failure. Every
 icon-only button carries its menu label as a tooltip, since a picture on
 its own is not a word.
+
+**The application icon is a different kind of drawing, and is kept
+differently.** It is full colour and meant to be looked at, where the
+toolbar's are line art meant to be tinted, so it never goes through the
+tinting path and does not follow the palette. It lives in
+`resources/appicon/` as two files and a script: a 1024 master, a 512 icon,
+and `recreate-icons.py`, which derives the second from the first by hiding
+three detail groups and raising the stroke weight. That is what keeps a
+drawing that has to read at 16px from being a second drawing to maintain —
+the fur lines and page edges that make it at 512 are what turn it to mud at
+16, and they are removed by hiding groups rather than by redrawing.
+
+The script never touches geometry, and proves it rather than promising it:
+it parses both files and compares every element and every attribute except
+the two the derive is allowed to change, so a moved pupil is caught even
+though a pupil is a `<circle>` with no path data. Every substitution it
+makes is counted, because `re.sub` and `str.replace` both answer "not
+found" by handing back what they were given — a master re-saved with its
+stroke width spelled `4.50` would otherwise have produced a hairline icon,
+reported as written. Both SVGs carry their own signed provenance manifest,
+which is why comparisons ignore `<metadata>` and a write keeps the icon's
+own: the two manifests differ by construction, and comparing them would
+mean `--check` could never pass. A manifest is a signature over a file, so
+once geometry is regenerated the one carried is a record of where the
+drawing came from rather than a credential the script can keep true.
+`tests/test_gui_appicon.py` runs `--check` as part of the suite, so
+forgetting to regenerate is a test failure and not a shipped stale icon.
 
 **Reshaping: the canvas drags, the window decides, the document validates.**
 Dragging a corner changes only what is drawn; the polygon reaches the
