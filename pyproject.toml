@@ -7,7 +7,7 @@ description = "Two-pass comic page translation tool for macOS: extract, translat
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "David Andreasson" }]
+authors = [{ name = "David Andréasson" }]
 
 dependencies = [
     "pillow>=10.3",

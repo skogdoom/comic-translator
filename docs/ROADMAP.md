@@ -24,11 +24,20 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
+| 4.18 | Application name | S |
+| 4.19 | Preferences: Done, not Close | XS |
+| 4.20 | Recently opened files | S |
+| 4.21 | Preview says it is working | S |
+| 4.23 | Page order | S–M |
+| 5 | Validate a plan file | S |
 | 4.8 | macOS look and feel | S — mostly shipped |
 | 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
-| 3 | CBZ and PDF input | L |
+| 3 | CBZ, PDF and CBR input | L |
+| 4.22 | Preview off the main thread | M |
+| 6 | PDF output | L |
+| 7 | Security audit | M |
 
 The 4.x numbering says these follow milestone 4, the review GUI. Milestone
 3 is older than all of them and independent of the GUI; it sits at the
@@ -43,7 +52,9 @@ review, and waiting on nothing, as was moving a region after them.
 
 **Cross-cutting comes last.** Localisation touches every user-visible
 string, so it goes after the milestones that add strings. Packaging bundles
-whatever the application is by then. Help text describes the UI, so it goes
+whatever the application is by then. Both are why 4.18 is at the top rather
+than filed with the other small things: renaming the application after
+either one means doing that work a second time. Help text describes the UI, so it goes
 after the UI stops moving — which meant after 4.8, since replacing a text
 toolbar with icons changed what there was to describe. That change has now
 landed, so nothing in 4.8's remainder holds help back.
@@ -63,6 +74,135 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
+
+## 4.18 Application name
+
+The window calls itself `comictrans`; it should call itself **Comic
+Translator**. The command stays `comictrans` — that is what people type,
+what every example in `README.md` shows, and what the distribution is
+called — so this is a change to what the application is named, not to how
+it is run.
+
+`gui/about.py` already separates the two ideas. `NAME` is what the UI calls
+itself and `DISTRIBUTION` is what to ask the package metadata about; they
+hold the same string today and are separate fields precisely so that this
+milestone is one line plus its tests, which hold the title bar, the Help
+menu item and the About box to whatever `NAME` says.
+
+**What stays technical, deliberately.** The `QSettings` organisation and
+application keys in `app.py`, because changing them orphans every saved
+window layout and every preference. The log directory
+`~/Library/Logs/comictrans`, because renaming it breaks the trail
+Console.app shows and the path `known-bugs.md` points at. The distribution
+name on PyPI. None of those is text anyone reads as the product's name.
+
+**This has to go before 4.9 and 4.10**, which is why it is at the top.
+Localisation freezes every user-visible string and packaging bakes the name
+into the bundle, its identifier and its `.icns`.
+
+Worth settling at the same time: `pyproject.toml`'s `description`, which
+the About box prints verbatim as the summary and which names the tool.
+
+## 4.19 Preferences: Done, not Close
+
+One word, and it is the whole milestone.
+
+The dialog writes each change through as it is edited. That is deliberate
+and stays — it is what macOS expects of a preferences window, and the same
+bargain the header dialog strikes — but "Close" reads like a button that
+might be throwing something away, which is the opposite of what it does.
+
+**Save and Cancel was considered and rejected.** Buffering the edits to
+commit them on Save would make this the one dialog here that behaves like a
+Windows one, and would split it from the header dialog for nothing. The
+behaviour was never the problem; the label was. `_on_preferences` already
+explains why the writing-through is deliberate and stays true afterwards.
+
+## 4.20 Recently opened files
+
+A **File > Open Recent** submenu, with **Clear Menu** at the bottom of it
+the way macOS applications have one.
+
+**It makes an existing claim false in three places, and all three have to be
+fixed in the same change.** `README.md`, `docs/ARCHITECTURE.md` and
+`gui/app.py` each say the window layout is the only thing this tool stores
+outside a plan file. That stopped being true when 4.13 shipped, since
+preferences write to the same `QSettings`; a recent-files list makes it a
+third. The documents are wrong now rather than because of this milestone —
+this is just the milestone that cannot avoid noticing.
+
+**A recent list is a small privacy surface**, which is what Clear Menu is
+for. It remembers the paths of everything opened, and for this tool that is
+a list of which comics someone has been working on. Its own key rather than
+being folded in with the layout, so clearing it clears it.
+
+Two rules to settle before writing it: what an entry does when its file has
+moved or been deleted — offered and reported, or dropped silently as the
+menu is built — and how many entries to keep.
+
+## 4.21 Preview says it is working
+
+`render_preview` runs synchronously on the main thread —
+`_on_render_preview` calls it directly — so on a large page the window is
+frozen for the duration and nothing on screen says why. A wait cursor and a
+line in the status bar while it runs.
+
+**Deliberately the cheap version.** Doing it properly is 4.22, and that is
+a separate milestone rather than the obvious way to write this one because
+of what it would cost: entry 5 in `known-bugs.md` rules out every
+thread-related explanation for the vanishing window on the grounds that
+preview is synchronous and touches no worker thread. This milestone leaves
+that elimination standing.
+
+It also does nothing about the other suspect in that entry — three copies
+of an eleven-megapixel page per preview — which threading would not fix
+either.
+
+## 4.23 Page order
+
+Reorder a plan's pages by dragging rows in the page list.
+
+**One order, not two.** The plan's `images` list is already a sequence;
+this makes that sequence mean something and makes it editable. Review
+follows it, and so does anything that later writes pages into a single file
+— 6 below. A separate reading order and writing order would be two things
+to keep in step for a case nobody has asked for.
+
+**Today it is half a feature, and that is the honest half.** `apply` writes
+one file per source image, named after the source, so the order decides the
+sequence pages are worked in and nothing about what lands on disk. The half
+that works now — reviewing a chapter in reading order instead of in
+whatever order the filenames happen to sort — is worth having on its own.
+
+**One rule needs writing down.** `extract` builds its image list from the
+directory scan, so re-extracting over a plan whose pages have been
+reordered by hand must not put them back. Re-extraction already knows how
+to keep hand edits to regions; this is the same promise for the list.
+
+Regions name their image by name rather than by index, so reordering does
+not touch them.
+
+## 5 Validate a plan file
+
+`comictrans validate <plan>`: read a plan, check everything checkable
+without rendering it, and say what is wrong. For debugging, and
+deliberately not in the GUI for now — the window opens plans and reports
+problems as it goes, which is a different job for a different moment.
+
+Most of the machinery exists. `load_plan` enforces the schema and
+`check_images` verifies the per-page hashes; both already produce messages
+worth printing. This is largely a matter of running them from one command
+and reporting what they say instead of raising on the first one.
+
+**It also checks that every font named resolves**, and that is the failure
+this command is really for. A plan can be perfectly well-formed, name every
+image correctly, hash clean, and still refuse to render every region on the
+page because the font it names has no bold face on this machine. Nothing in
+the schema catches that, because it is a fact about the machine rather than
+about the file. `fonts.resolve_family` is the call `apply` makes, so what
+`validate` accepts is what `apply` accepts.
+
+Exit non-zero on any failure, so it is usable from a script.
 
 ## 4.8 macOS look and feel
 
@@ -168,7 +308,7 @@ like any other page. Since 4.6 it needs pyobjc-Vision too — extract runs from
 the window now, so the recogniser is part of the application rather than
 something only the command line reaches.
 
-## 3 CBZ and PDF input
+## 3 CBZ, PDF and CBR input
 
 Read pages from an archive or a PDF instead of a directory.
 
@@ -185,3 +325,66 @@ unchanged, including the invariant that source images are never written to
 — unpacked pages are outputs of this stage, not sources being modified.
 Reading from the archive on demand means an abstraction across three
 modules for no gain that anyone has asked for.
+
+**CBR too, and reading only.** RAR has no free writer: creating one needs
+the proprietary `rar` binary, so `.cbr` is an input format here and never
+an output. Reading it needs `rarfile` plus an external `unrar` or
+`bsdtar` — the first dependency this tool has had that is not a Python
+package, so it cannot be declared in `pyproject.toml`, and 4.10 has to
+decide whether to bundle it or require it and degrade politely when it is
+absent. Bundling is the awkward half: the unrar licence is not OSI-free,
+which is a real question for an MIT project. Behind the sidecar decision
+above, a CBR reader is one more unpacker and nothing else.
+
+## 4.22 Preview off the main thread
+
+What 4.21 papers over, done properly: `render_preview` on a `RunJob`, so
+the window stays live while a page renders and the render can be called
+off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
+class and one `work()` method.
+
+**Gated on entry 5 in `known-bugs.md`, and it rewrites that entry.** The
+reasoning there rules out a `QThread` destroyed while running, Vision on a
+thread, and the job read after `deleteLater`, all on the grounds that
+preview is synchronous. Putting preview on a thread retires that reasoning,
+so the entry has to be rewritten in the same commit — `CLAUDE.md` does not
+allow a recorded behaviour to change quietly. Better done once that crash
+is understood or closed than while it is still an open hunt, since
+otherwise this widens the search space for a bug nobody has reproduced.
+
+## 6 PDF output
+
+Write a chapter as one PDF rather than a directory of images.
+
+**Low priority, and the shape is deliberately still open.** One file per
+chapter or one per page; images only, or a selectable text layer built from
+the translations; page size and DPI. These are real questions with very
+different amounts of work behind them — the searchable version is a much
+larger job than the image-only one — and they are worth settling when this
+is picked up rather than guessing now.
+
+What is already known: it extends `render_dialog`'s format choice and
+`apply.output_path`, both of which assume one output file per source image
+today. And it is what makes 4.23's page order mean something on disk.
+
+## 7 Security audit
+
+A pass over this code and over the dependency surface: Pillow, NumPy,
+OpenCV, ruamel.yaml, pyphen, pytesseract, PySide6 and pyobjc-Vision, plus
+whatever 3 adds.
+
+**Two halves worth keeping apart.** Dependency CVEs are a tooling question
+— `pip-audit` or equivalent, run on a schedule, reporting versions against
+advisories. The code half is a reading, and it has one thing to check that
+nothing else does: **no network calls anywhere in the pipeline** is an
+invariant in `CLAUDE.md` and is enforced nowhere in the suite. An audit is
+where that stops being a rule people remember and starts being something
+that fails a check.
+
+**After 3.** Reading an archive means handing an untrusted file to an
+unpacker, and for CBR that unpacker is an external binary. That is
+genuinely new attack surface and it is worth being in scope the first time
+round rather than the second.
+
+Last on the list, and the only item here that is a recurring activity
+rather than something that ships once and is deleted from this file.

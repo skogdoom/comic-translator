@@ -26,7 +26,7 @@ def test_the_version_has_one_source_of_truth() -> None:
 
 
 def test_the_author_and_licence_come_from_the_package_metadata() -> None:
-    assert about.author() == "David Andreasson"
+    assert about.author() == "David Andréasson"
     assert about.licence() == "MIT"
     assert "comic" in about.summary().lower()
 
