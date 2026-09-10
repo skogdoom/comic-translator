@@ -269,6 +269,16 @@ paid Developer ID and notarisation. Given the disclaimer in `README.md`,
 the honest target is an unsigned local build, documented as such, not a
 release artifact.
 
+**`CFBundleName` has to be "Comic Translator", and it is not optional.**
+macOS titles its application menu — "About X", "Hide X", "Quit X" — from
+`qt_mac_applicationName()`, which reads `CFBundleName` out of the bundle's
+`Info.plist` and only falls back to the `argv[0]`-derived name when there
+is no bundle. `gui.app` sets the application name before Qt starts, which
+is what makes the unbundled case right; the moment a bundle exists,
+`Info.plist` outranks it and a bundle that omits the key would put
+`comictrans` back in that menu. Set it, and set `CFBundleDisplayName` with
+it.
+
 **The icon set is already two drawings, and an `.icns` wants both.** That
 format holds one image per size rather than one scalable drawing, which is
 exactly the distinction `resources/appicon/` was built around: render the

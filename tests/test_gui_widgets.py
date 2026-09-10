@@ -274,14 +274,7 @@ def test_editing_the_translation_marks_the_document_dirty(
 def test_review_tells_the_platform_what_the_application_is_called(
     qapp: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Both of the names Qt hands the platform, because both are read.
-
-    ``applicationName`` is the one macOS builds its application menu from —
-    "About X", "Hide X", "Quit X" — regardless of what the ``AboutRole``
-    action is labelled. Unset, it defaults to ``argv[0]``, which is how the
-    About item went on saying "About comictrans" after everything the window
-    titles itself had been renamed.
-    """
+    """Both of the names Qt hands the platform, because both are read."""
     from PySide6.QtWidgets import QApplication
 
     from comictrans.gui import about
@@ -297,6 +290,45 @@ def test_review_tells_the_platform_what_the_application_is_called(
     finally:
         QApplication.setApplicationDisplayName(was_display)
         QApplication.setApplicationName(was_name)
+
+
+def test_the_application_is_named_before_qt_is_started(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ordering, not just the value — and the ordering is the whole fix.
+
+    macOS titles its application menu once, in ``QCocoaMenuLoader``'s init,
+    while ``QApplication`` is being constructed. The name it uses comes from
+    ``qt_mac_applicationName()``: ``CFBundleName`` when there is a bundle,
+    and otherwise the name derived from ``argv[0]``. Naming the application
+    after construction is therefore too late for the one menu that reads it,
+    which is how "About comictrans" survived a rename of everything this
+    window titles for itself.
+
+    So this watches the moment ``run`` reaches for the application object
+    and asserts the name was already right by then.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import about
+    from comictrans.gui import app as gui_app
+
+    at_startup: list[str] = []
+    instance = QApplication.instance
+
+    def spy() -> object:
+        at_startup.append(QApplication.applicationName())
+        return instance()
+
+    was = QApplication.applicationName()
+    monkeypatch.setattr(QApplication, "instance", staticmethod(spy))
+    monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
+    try:
+        assert gui_app.run() == 0
+        assert at_startup, "run did not reach for the application object"
+        assert at_startup[0] == about.NAME, "named after Qt started, which is too late"
+    finally:
+        QApplication.setApplicationName(was)
 
 
 def test_naming_the_application_moves_neither_the_settings_nor_the_logs(

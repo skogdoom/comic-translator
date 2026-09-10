@@ -97,6 +97,29 @@ def run(plan_path: Path | None = None) -> int:
 
     from PySide6.QtWidgets import QApplication
 
+    from . import about
+
+    # Before Qt is started, and that is the whole point of the placement.
+    #
+    # macOS titles its application menu — "About X", "Hide X", "Quit X" —
+    # once, in QCocoaMenuLoader's init, which runs while QApplication is
+    # being constructed. The name it uses is qt_mac_applicationName():
+    # CFBundleName from the bundle's Info.plist if there is one, and
+    # otherwise the name derived from argv[0]. Setting the application name
+    # after construction changes nothing there, because those titles have
+    # already been built — which is why "About comictrans" outlived a
+    # rename of everything this window titles for itself.
+    #
+    # Unbundled, this is the fix. Bundled, CFBundleName wins and 4.10 has
+    # to set it to the same string; the roadmap says so.
+    #
+    # Safe to set because nothing in this project reads applicationName:
+    # the one real QSettings names its organisation and application
+    # outright, and the log directory comes from logfile.APPLICATION, a
+    # literal. A test asserts neither moves.
+    QApplication.setApplicationName(about.NAME)
+    QApplication.setApplicationDisplayName(about.NAME)
+
     try:
         app = QApplication.instance() or QApplication(sys.argv[:1])
     except Exception as exc:  # Qt's own platform-plugin failures vary by OS and are not typed
@@ -119,25 +142,6 @@ def run(plan_path: Path | None = None) -> int:
     # `QApplication.instance()` types as the QCoreApplication that has no
     # window to put an icon on.
     QApplication.setWindowIcon(icons.app_icon())
-
-    # Both names Qt hands the platform, and both are needed.
-    #
-    # macOS builds its application menu itself — "About X", "Hide X",
-    # "Quit X" — from the application name, not from the text of the
-    # QAction carrying AboutRole. Leave it unset and it defaults to
-    # ``argv[0]``, so that menu says "About comictrans" however the action
-    # is labelled, which is exactly what was reported.
-    #
-    # ``applicationName`` is safe to set here because nothing in this
-    # project reads it: the one real ``QSettings`` is constructed with
-    # explicit organisation and application arguments, and the log
-    # directory comes from ``logfile.APPLICATION``, a literal, rather than
-    # from ``QStandardPaths``. Neither moves. ``_APPLICATION`` above stays
-    # as it is for that same reason — it is a settings key, not a name.
-    from . import about
-
-    QApplication.setApplicationName(about.NAME)
-    QApplication.setApplicationDisplayName(about.NAME)
 
     from PySide6.QtCore import QSettings
 
