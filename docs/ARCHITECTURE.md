@@ -787,6 +787,28 @@ fail to load, taking the rest of the file's translations with it. The rules
 live in `planfile.schema` where both the reader and `gui.document` can reach
 them, rather than being written out twice and drifting.
 
+**`show_page` lets go of every item before it clears the scene, and that
+order is load-bearing.** `QGraphicsScene.clear()` destroys the C++ objects
+without telling shiboken, so any Python wrapper still holding one is left
+pointing into freed memory — `Shiboken.isValid` on it returns False the
+instant `clear()` returns. Nothing has to *read* such a wrapper for this to
+be fatal: dropping it is enough, because shiboken frees what it wrapped as
+the last reference goes and there is nothing left to free. That is a
+segfault, not an exception, so it takes the window with it.
+
+It was reported as the review window vanishing, and the fatal trace named
+the line that installs the *next* page rather than the clear — because
+rebinding `_pixmap_item` was what dropped the previous, already-invalidated
+one. Anything that reaches `show_page` can trigger it: toggling the
+preview, or stepping to a region on another page. The fix is to null the
+item attributes and empty the item containers first, so the wrappers are
+gone before the objects are, and a test asserts exactly that by watching
+what is still held at the moment `clear()` is called.
+
+`clear()` is the only call with this hazard. `removeItem` hands ownership
+back to Python and leaves the wrapper valid, which is why `refresh_regions`
+and `_refresh_handles` can use it freely.
+
 **One canvas mode at a time.** A click on the page means different things —
 select a region, take hold of a corner, place a corner, take a colour — and
 they contradict each other, so the canvas holds a single `CanvasMode` rather
