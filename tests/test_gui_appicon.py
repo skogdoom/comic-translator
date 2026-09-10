@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from comictrans.gui import icons
+from comictrans.gui import about, icons
 
 APPICON_DIR = icons.APPICON.parent
 SCRIPT = APPICON_DIR / "recreate-icons.py"
@@ -142,7 +142,7 @@ def test_the_about_dialog_shows_the_icon_centred_above_the_version(qapp: object)
     ]
     assert len(pictures) == 1, "one drawing, not none and not two"
     stamp = pictures[0].geometry()
-    heading = next(label for label in labels if label.text().startswith("comictrans review"))
+    heading = next(label for label in labels if label.text().startswith(about.NAME))
 
     assert stamp.bottom() <= heading.geometry().top(), "the icon is above the version, not beside"
     # One pixel, because an odd width has no exact centre to sit on.

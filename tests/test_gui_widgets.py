@@ -271,6 +271,37 @@ def test_editing_the_translation_marks_the_document_dirty(
     assert window.document.region("page-001-001").translation == "HELLO THERE"  # type: ignore[union-attr]
 
 
+def test_the_window_is_called_comictrans_everywhere_it_names_itself(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """One name, from one place. ``comictrans review`` is the command.
+
+    That is what the CLI is invoked as and what opens this window; it is not
+    what the window is called, and the title bar, the Help menu and the
+    About box all have to agree on which is which.
+    """
+    from comictrans.gui import about
+    from comictrans.gui.about_dialog import AboutDialog
+
+    window = MainWindow()
+    assert window.windowTitle() == about.NAME
+    assert window._about_action.text() == f"&About {about.NAME}"
+
+    window.open_plan(two_page_plan)
+    assert window.windowTitle() == f"{two_page_plan.name}[*] — {about.NAME}"
+
+    dialog = AboutDialog()
+    assert dialog.windowTitle() == f"About {about.NAME}"
+
+    named = (
+        window.windowTitle(),
+        window._about_action.text(),
+        dialog.windowTitle(),
+    )
+    for shown in named:
+        assert "review" not in shown.lower(), f"{shown!r} names the command, not the window"
+
+
 def test_editing_an_empty_translation_clears_the_held_back_flag_in_the_page_list(
     qapp: object, two_page_plan: Path
 ) -> None:

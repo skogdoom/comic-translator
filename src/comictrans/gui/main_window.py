@@ -38,7 +38,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
-from . import icons
+from . import about, icons
 from .about_dialog import AboutDialog
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -412,7 +412,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self._open_logs_action)
         help_menu.addSeparator()
 
-        self._about_action = QAction("&About comictrans review", self)
+        self._about_action = QAction(f"&About {about.NAME}", self)
         # macOS keeps About in the application menu, not in Help. The role is
         # what moves it; Preferences already carries its own. Neither has
         # been seen doing it — there is no Mac here to look at.
@@ -632,10 +632,10 @@ class MainWindow(QMainWindow):
         placeholder whatever the state.
         """
         if self.document is None:
-            self.setWindowTitle("comictrans review")
+            self.setWindowTitle(about.NAME)
             self.setWindowModified(False)
             return
-        self.setWindowTitle(f"{self.document.path.name}[*] — comictrans review")
+        self.setWindowTitle(f"{self.document.path.name}[*] — {about.NAME}")
         self.setWindowModified(self.document.dirty)
 
     # -- opening, saving -----------------------------------------------

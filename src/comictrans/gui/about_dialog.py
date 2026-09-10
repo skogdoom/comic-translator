@@ -60,9 +60,9 @@ def _read_only_text(lines: tuple[str, ...]) -> QPlainTextEdit:
 class AboutDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("About comictrans review")
+        self.setWindowTitle(f"About {about.NAME}")
 
-        heading = QLabel(f"comictrans review {about.package_version()}")
+        heading = QLabel(f"{about.NAME} {about.package_version()}")
         font = heading.font()
         font.setBold(True)
         heading.setFont(font)
