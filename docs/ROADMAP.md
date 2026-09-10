@@ -18,10 +18,11 @@ change; once 4.9 has shipped, it updates the strings that need
 re-extracting too. Where that turns out to be a body of work rather than a
 paragraph it becomes its own milestone — but it is never simply left for
 later, because help describing the previous version is worse than no help
-at all. Sizes are relative effort, not
-estimates. When a milestone ships, delete its section and its row from the
-table; when a whole milestone ships, say so in the Status section of
-`README.md` as well.
+at all.
+
+Sizes are relative effort, not estimates. When a milestone ships, delete
+its section and its row from the table, and say so in the Status section of
+`README.md`.
 
 **The numbers are names, not positions.** They were allocated in the order
 the milestones were thought of, and the order worth building them in has
@@ -32,15 +33,14 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
+| 9 | Test suite speed | S |
 | 4.23 | Page order | S–M |
-| 4.22 | Preview off the main thread | M |
-| 4.8 | macOS look and feel | S — mostly shipped |
 | 4.24 | Interface review: conventions and wording | M |
 | 4.7 | Help instructions | S–M |
-| 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
 | **11** | **First release (1.0.0)** | **S–M** |
-| 9 | Test suite speed | S |
+| 4.22 | Preview off the main thread | M |
+| 4.9 | Localisation | M |
 | 5 | Validate a plan file | S |
 | 4.26 | Extract text for one region | M |
 | 4.27 | Lock a region | M |
@@ -72,8 +72,9 @@ rather than being filed with the other small things: renaming after either
 one would have meant doing that work a second time, and 4.24 is filed just
 ahead of them for exactly that reason — it decides what the labels say, and
 deciding that after they have been translated is the same mistake twice.
-Help text describes the UI, so it goes after the UI stops moving, which now
-means after the region tools and the review that follows them.
+Help text describes the UI, so it goes after the UI stops moving — which
+for a first release means after 4.24 has settled the wording and before the
+release freezes it.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -82,11 +83,17 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-**A release changes what "first" means.** Everything above 11 earns its
-place by being needed to ship, not by being cheap or by being ready; 9
-would otherwise sit at the top, since the suite costs 70 seconds and every
-milestone pays it, but a slow suite is not what stops a release. It is
-first among the milestones that follow one instead.
+**A release changes what "first" means.** Everything above 11 is there
+because a release needs it, not because it is cheap or because it is ready.
+That is why the region tools, the archive formats and the validate command
+all sit below a line they would otherwise be well up: none of them is what
+makes this releasable, and each is easier to get right once there is a
+released version to compare against.
+
+9 is the exception that proves it. A slow suite is not what stops a
+release — but it is free, it touches nothing a user sees, and every
+milestone above the line pays the 70 seconds. Doing it first costs one
+milestone and refunds it across five.
 
 **Measurement comes before the thing it would justify.** 9's saving was
 found by timing the suite rather than by guessing which tests looked slow,
@@ -103,6 +110,31 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
+
+## 9 Test suite speed
+
+**Measured, not guessed.** The suite takes 70 seconds, and 53 of them are
+`test_fixtures.py`. Everything else put together is 17, of which the widget
+tests are 10 for 191 of them.
+
+OCR is already cached per fixture page — `_page_and_lines` does that and
+says so. Detection is not: `find_regions` runs four times per image, once
+for geometry, once for colours, and twice for the determinism check. Three
+of those four ask the same question of the same pixels.
+
+**The saving is in what the determinism test compares against.** One cached
+detection per image, and one fresh run in the determinism test to compare
+it to, is two runs instead of four. It is also a slightly stronger check
+than the present one: the two runs are separated by whatever else the
+session did in between, rather than being back to back in one function.
+
+No coverage changes. Every assertion still runs against every fixture.
+Measure before and after and put both numbers in the commit.
+
+**Not `pytest-xdist` first.** Parallelism would cut wall time further and is
+worth considering afterwards, but it adds a dependency and it hides
+ordering bugs — exactly the kind the stray-window fixture was added to stop
+hiding. Fix the arithmetic before adding processes.
 
 ## 4.23 Page order
 
@@ -130,67 +162,6 @@ to keep hand edits to regions; this is the same promise for the list.
 Regions name their image by name rather than by index, so reordering does
 not touch them.
 
-## 4.22 Preview off the main thread
-
-What the wait cursor papers over, done properly: `render_preview` on a
-`RunJob`, so
-the window stays live while a page renders and the render can be called
-off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
-class and one `work()` method.
-
-**No longer gated.** This waited on entry 5 of `known-bugs.md` — the
-window seen vanishing during preview — because that entry ruled out every
-thread-related explanation on the grounds that preview was synchronous, and
-putting it on a thread would have retired the reasoning while the hunt was
-still open. The crash turned out to be a stale shiboken wrapper outliving
-`QGraphicsScene.clear()`, which is fixed and the entry deleted, so nothing
-is being disturbed by moving preview off the main thread now.
-
-What a wait cursor could not touch is still here: three copies of an
-eleven-megapixel page per preview, about 120MB of them. A thread makes the
-window answer while that happens; it does not make it less. Worth measuring
-before deciding this milestone is only about threading.
-
-**It moved up the list once it was ungated**, and 11 questions whether it
-belongs above a release at all: the wait cursor already shipped, this is
-threading in the one code path that has produced a segfault here, and 4.26
-— which wants the same harness — is below the release line anyway. Worth
-settling before it is started rather than during.
-
-## 4.8 macOS look and feel
-
-Qt supplies the native style, the native menu bar, and Cmd for Ctrl through
-`QKeySequence.StandardKey`, so less of this was missing than it appeared.
-Most of the rest has now shipped: the toolbar is icons, drawn for this tool
-and tinted to the palette; the application has an icon of its own, set on
-the `QApplication` and shown in the About box; `AboutRole` puts About in the
-application menu and Preferences already carried `PreferencesRole` from
-4.13; the unified title-and-toolbar look is asked for; and the one thing
-dark mode was actually breaking — the mark on a font name this machine
-cannot resolve, measured at 1.5:1 against a dark base — now picks its red
-from the palette and clears 4.5:1 both ways round.
-
-Two things are left.
-
-- **An `.icns` icon and bundle identity.** The artwork exists now —
-  `resources/appicon/` holds the master and the derived icon, and Qt shows
-  it wherever it can — so what is left is the conversion and the bundle to
-  put it in, which is 4.10's. On macOS the Dock reads the bundle rather
-  than `setWindowIcon`, so until then the icon is visible everywhere except
-  the one place a Mac user looks first.
-- **Confirmation on a real Mac.** Everything above is set from code and
-  none of it has been seen working: the menu bar placement and `AboutRole`,
-  the unified toolbar, full screen, and the icons against real dark-mode
-  chrome rather than a palette a test set for itself.
-
-**The suite still cannot defend the second one.** What the tests added here
-check is that every drawing an action asks for ships, that each renders at
-every baked size, that it comes out in the colour it was asked for, and
-that a palette change repaints the set — all under the offscreen platform,
-on whatever machine is to hand. None of that is evidence about where macOS
-puts a menu item. That step needs hands on the target machine, and it is
-the only part of this milestone the four checks were never going to cover.
-
 ## 4.24 Interface review: conventions and wording
 
 Two passes over one surface, together because they touch the same strings.
@@ -199,8 +170,8 @@ conventions half turns out to be large.
 
 **Against Apple's Human Interface Guidelines.** Menu structure and where
 commands belong, standard shortcuts, dialog button order and roles, what
-belongs in a preferences window versus a document window. What remains of
-4.8 is adjacent to this and may as well be done with it.
+belongs in a preferences window versus a document window — the macOS
+conventions Qt does not decide on our behalf.
 
 **Wording and casing, where the finding is a decision rather than a bug.**
 Sampled: buttons and menu items are title case — "Cancel", "Choose…",
@@ -227,43 +198,13 @@ A short in-application guide to reviewing a plan: what the badge colours
 mean, what each flag means, what preview does and does not tell you.
 
 After the milestones that change the UI, because it documents them, and
-after 4.8 in particular. That one collided with this one directly rather
-than vaguely: toolbar icons replaced the text labels help would otherwise
-have named, About moved into the application menu so "Help > About" stopped
-being where it is, and dark mode was explicitly about whether the overlay
-colours still read. All three have now landed, so the collision is spent —
-what is left of 4.8 is a bundle icon and a pass on a Mac, neither of which
-changes what help has to say.
+after 4.24 in particular — that one decides what the labels say, and help
+quoting a label that is about to be reworded is help wrong on arrival.
 
 A dialog with a `QTextBrowser` over a bundled document, rather than strings
 in the source, keeps 4.9 to one file per language.
 
-**One caveat on the order.** What remains of 4.8 is the part the test
-suite cannot defend, and it needs hands on a Mac, so it is the item most
-able to sit. Do not hold help behind it — the numbers are names, not
-positions, and most of what help has to say is about the plan and the
-canvas rather than the chrome.
-
 `README.md` is not a substitute; it is written for the command line.
-
-## 4.9 Localisation
-
-GUI chrome only.
-
-Not the CLI, which is a large surface for a different audience, and
-emphatically not plan file content: `source_text` and `translation` are the
-comic, not the interface. `source_language` and `target_language` in the
-plan header describe the comic too, and have nothing to do with this.
-
-Last of the GUI work because every milestone above adds or changes strings,
-and each one would otherwise mean another `lupdate` pass.
-
-Two mechanics worth knowing before starting: `self.tr()` needs a `QObject`
-subclass, so module-level constants — the label table in
-`inspector._flags_text`, for one — need `QCoreApplication.translate`
-instead. And there are no translator files yet, so this brings `lupdate`
-and `lrelease` into the workflow and `.qm` files into the wheel. Add a
-check that the compiled files are current.
 
 ## 4.10 Package as an application
 
@@ -294,6 +235,10 @@ exactly the distinction `resources/appicon/` was built around: render the
 1024 master into the large slots, where its fur lines and page edges read,
 and the derived 512 icon into the small ones, where they would turn to mud.
 Rendering one file into every slot throws away the reason there are two.
+
+On macOS the Dock reads the bundle rather than `setWindowIcon`, so until
+this milestone the icon is visible everywhere except the first place a Mac
+user looks.
 
 The bundle needs Pillow, numpy and OpenCV whatever else happens: the review
 window renders previews through `render_page`, which erases and typesets
@@ -329,44 +274,76 @@ exactly when somebody else needs it. Whatever ships as "known limitations"
 should be written from that file rather than alongside it, so the two
 cannot drift apart.
 
-**One pass on a Mac, on the built thing rather than the source tree.** What
-remains of 4.8 beyond the `.icns` is exactly this and cannot happen any
-earlier: the menu bar, the About role, the unified toolbar, full screen,
-and the icons against real dark-mode chrome. A release is the honest
-deadline for it.
+**One pass on a Mac, on the built thing rather than the source tree.**
+This is the whole of what the macOS work has left, and it cannot happen any
+earlier, because none of it exists until there is a bundle. Everything on
+this list is set from code and none of it has been seen working: menu bar
+placement and `AboutRole`, the unified title-and-toolbar look, full screen,
+the Dock icon, and the toolbar drawings against real dark-mode chrome
+rather than a palette a test set for itself.
 
-**Two candidates for cutting, recorded rather than argued.** 4.22 replaces
+**The suite was never going to defend this part.** What the tests do check
+is that every drawing an action asks for ships, that each renders at every
+baked size, that it comes out in the colour it was asked for, and that a
+palette change repaints the set — all under the offscreen platform, on
+whatever machine is to hand. None of that is evidence about where macOS
+puts a menu item. A release is the honest deadline for looking.
+
+**Two things were deliberately left below this line.** 4.22 would replace
 a working wait cursor with threading, in the one code path that has
-produced a segfault here; and 4.9 ships translation machinery for a single
-language while freezing every string just as the milestones below start
-adding more. Both are improvements. Neither is what makes 1.0 releasable,
-and dropping them takes two M-sized milestones out of the path. That is a
-call for whoever is shipping it, not for this file.
+produced a segfault in this project — risk taken on immediately before a
+release, for a benefit 4.21 already largely delivered. And 4.9 would ship
+translation machinery for a single language while freezing every string
+just as the milestones below start adding more, which under the
+documentation rule above makes every one of them run a translation pass
+too. Both are improvements. Neither is what makes 1.0 releasable.
 
-## 9 Test suite speed
+## 4.22 Preview off the main thread
 
-**Measured, not guessed.** The suite takes 70 seconds, and 53 of them are
-`test_fixtures.py`. Everything else put together is 17, of which the widget
-tests are 10 for 191 of them.
+What the wait cursor papers over, done properly: `render_preview` on a
+`RunJob`, so
+the window stays live while a page renders and the render can be called
+off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
+class and one `work()` method.
 
-OCR is already cached per fixture page — `_page_and_lines` does that and
-says so. Detection is not: `find_regions` runs four times per image, once
-for geometry, once for colours, and twice for the determinism check. Three
-of those four ask the same question of the same pixels.
+**No longer gated.** This waited on entry 5 of `known-bugs.md` — the
+window seen vanishing during preview — because that entry ruled out every
+thread-related explanation on the grounds that preview was synchronous, and
+putting it on a thread would have retired the reasoning while the hunt was
+still open. The crash turned out to be a stale shiboken wrapper outliving
+`QGraphicsScene.clear()`, which is fixed and the entry deleted, so nothing
+is being disturbed by moving preview off the main thread now.
 
-**The saving is in what the determinism test compares against.** One cached
-detection per image, and one fresh run in the determinism test to compare
-it to, is two runs instead of four. It is also a slightly stronger check
-than the present one: the two runs are separated by whatever else the
-session did in between, rather than being back to back in one function.
+What a wait cursor could not touch is still here: three copies of an
+eleven-megapixel page per preview, about 120MB of them. A thread makes the
+window answer while that happens; it does not make it less. Worth measuring
+before deciding this milestone is only about threading.
 
-No coverage changes. Every assertion still runs against every fixture.
-Measure before and after and put both numbers in the commit.
+**Ungated, and still below the release line.** The gate came off when that
+crash was explained, but this is threading in the one code path that has
+produced a segfault in this project, replacing a wait cursor that already
+works. Immediately before a first release is the wrong moment for it. 4.26
+wants the same harness and is below the line too, so the pair can be built
+together afterwards.
 
-**Not `pytest-xdist` first.** Parallelism would cut wall time further and is
-worth considering afterwards, but it adds a dependency and it hides
-ordering bugs — exactly the kind the stray-window fixture was added to stop
-hiding. Fix the arithmetic before adding processes.
+## 4.9 Localisation
+
+GUI chrome only.
+
+Not the CLI, which is a large surface for a different audience, and
+emphatically not plan file content: `source_text` and `translation` are the
+comic, not the interface. `source_language` and `target_language` in the
+plan header describe the comic too, and have nothing to do with this.
+
+Last of the GUI work because every milestone above adds or changes strings,
+and each one would otherwise mean another `lupdate` pass.
+
+Two mechanics worth knowing before starting: `self.tr()` needs a `QObject`
+subclass, so module-level constants — the label table in
+`inspector._flags_text`, for one — need `QCoreApplication.translate`
+instead. And there are no translator files yet, so this brings `lupdate`
+and `lrelease` into the workflow and `.qm` files into the wheel. Add a
+check that the compiled files are current.
 
 ## 5 Validate a plan file
 
