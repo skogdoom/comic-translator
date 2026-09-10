@@ -514,6 +514,22 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
         if isinstance(state, QByteArray):
             self.restoreState(state)
+        self._close_run_dock()
+
+    def _close_run_dock(self) -> None:
+        """Shut it whatever the saved layout said, because nothing has run yet.
+
+        ``restoreState`` brings a dock back exactly as it was left, which for
+        this one means any session that rendered a chapter reopens holding
+        the bottom of the window for a panel reading "Nothing has been run
+        yet." It is a place to work through a report, not part of reviewing a
+        page, so it opens when there is one and not before.
+
+        Only the visibility is overruled: a dock dragged to another edge is
+        still there when a run opens it, because where it belongs is the
+        saved state's answer and this is only about whether it is showing.
+        """
+        self._run_dock.setVisible(False)
 
     def _save_layout(self) -> None:
         if self._settings is None:
@@ -533,7 +549,7 @@ class MainWindow(QMainWindow):
             dock.setVisible(True)
         # Not the run dock: it starts closed, and a layout reset should put
         # it back to closed rather than open one holding an old report.
-        self._run_dock.setVisible(False)
+        self._close_run_dock()
         self.resize(1200, 800)
 
     def _update_actions_enabled(self) -> None:

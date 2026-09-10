@@ -391,8 +391,8 @@ images have changed, so a render started from an open plan has already passed
 the check that flag exists to skip. **Reload** checks again.
 
 The run happens on a worker thread, so the window stays usable while a
-chapter renders: a panel along the bottom names the page being worked on and
-how far along the run is. **Cancel** stops it after that page rather than
+chapter renders: a panel opens along the bottom, naming the page being
+worked on and how far along the run is. **Cancel** stops it after that page rather than
 part-way through one, so what is on disk is always whole pages and re-running
 finishes the job.
 
@@ -428,9 +428,12 @@ A line under the canvas says what a click does in whatever mode the window is
 in — placing corners, reshaping, merging, taking a colour — and stays there
 for as long as the mode does, rather than scrolling past in the status bar.
 
-The **Window** menu closes and reopens the two panels, and **Reset Layout**
-puts them back where they started. The layout is remembered between
-sessions — the only thing this tool stores outside a plan file.
+The **Window** menu closes and reopens the three panels, and **Reset
+Layout** puts them back where they started. The layout is remembered between
+sessions — the only thing this tool stores outside a plan file — with one
+exception: the Run panel always starts closed, because a new session has
+nothing to report yet. A run opens it, and it comes back wherever you left
+it.
 
 **Edit > Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere) sets what a
 new run starts from: the language pair, OCR languages and recogniser a new

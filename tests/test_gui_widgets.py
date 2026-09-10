@@ -632,6 +632,44 @@ def test_the_layout_is_remembered_for_the_next_window(qapp: object, tmp_path: Pa
     assert not MainWindow()._pages_dock.isHidden()
 
 
+def test_the_run_dock_stays_closed_however_the_last_session_left_it(
+    qapp: object, tmp_path: Path
+) -> None:
+    """It opens when there is a report, and a new session has none.
+
+    ``restoreState`` brings a dock back exactly as it was left, so before
+    this every session that rendered a chapter reopened holding the bottom
+    of the window for a panel reading "Nothing has been run yet."
+    """
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings(str(tmp_path / "layout.ini"), QSettings.Format.IniFormat)
+
+    first = MainWindow(settings=settings)
+    first._run_dock.setVisible(True)
+    first._save_layout()
+
+    assert MainWindow(settings=settings)._run_dock.isHidden()
+
+
+def test_the_run_dock_reopens_where_it_was_dragged_to(qapp: object, tmp_path: Path) -> None:
+    """Closed is not the same as forgotten: only the visibility is overruled."""
+    from PySide6.QtCore import QSettings, Qt
+
+    settings = QSettings(str(tmp_path / "layout.ini"), QSettings.Format.IniFormat)
+
+    first = MainWindow(settings=settings)
+    first._run_dock.setVisible(True)
+    first.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, first._run_dock)
+    first._save_layout()
+
+    second = MainWindow(settings=settings)
+    assert second._run_dock.isHidden()
+
+    second._run_dock.setVisible(True)
+    assert second.dockWidgetArea(second._run_dock) == Qt.DockWidgetArea.LeftDockWidgetArea
+
+
 def test_next_region_carries_on_to_the_following_page(qapp: object, two_page_plan: Path) -> None:
     window = MainWindow()
     window.open_plan(two_page_plan)
