@@ -19,7 +19,6 @@ inside :func:`run`, after :func:`available` has already been checked.
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
 
 from ..errors import GuiUnavailableError
@@ -99,29 +98,36 @@ def run(plan_path: Path | None = None) -> int:
 
     from . import about
 
-    # Before Qt is started, and that is the whole point of the placement.
-    #
-    # macOS titles its application menu — "About X", "Hide X", "Quit X" —
-    # once, in QCocoaMenuLoader's init, which runs while QApplication is
-    # being constructed. The name it uses is qt_mac_applicationName():
-    # CFBundleName from the bundle's Info.plist if there is one, and
-    # otherwise the name derived from argv[0]. Setting the application name
-    # after construction changes nothing there, because those titles have
-    # already been built — which is why "About comictrans" outlived a
-    # rename of everything this window titles for itself.
-    #
-    # Unbundled, this is the fix. Bundled, CFBundleName wins and 4.10 has
-    # to set it to the same string; the roadmap says so.
-    #
-    # Safe to set because nothing in this project reads applicationName:
-    # the one real QSettings names its organisation and application
-    # outright, and the log directory comes from logfile.APPLICATION, a
-    # literal. A test asserts neither moves.
+    # Set before Qt starts so nothing derives them from argv[0] instead.
+    # These are what Qt itself reads: applicationDisplayName titles windows
+    # that do not title themselves, applicationName is the fallback key for
+    # a QSettings built without explicit ones. Neither is what macOS reads —
+    # see below.
     QApplication.setApplicationName(about.NAME)
     QApplication.setApplicationDisplayName(about.NAME)
 
     try:
-        app = QApplication.instance() or QApplication(sys.argv[:1])
+        # The name in argv[0], not the path this was launched by, because on
+        # macOS that string becomes the application menu.
+        #
+        # Qt titles "About X", "Hide X" and "Quit X" from
+        # qt_mac_applicationName(), which reads CFBundleName out of the
+        # bundle's Info.plist and falls back to the basename of argv[0].
+        # QCoreApplicationPrivate::appName does the same. Neither consults
+        # setApplicationName at all, so no amount of setting it moves that
+        # menu: run from `.venv/bin/comictrans` those items read
+        # "comictrans", which is the basename and nothing else.
+        #
+        # Qt does not need argv[0] to be a path. applicationFilePath comes
+        # from the OS — measured, it reports the real interpreter either way
+        # — and this project never asks for it or for applicationDirPath.
+        # Every argument after the first is dropped here regardless, so the
+        # command line is not being taken away from anyone.
+        #
+        # The bold title beside the Apple menu is a different thing again:
+        # that is the process, which is the interpreter, and only a real
+        # bundle changes it. 4.10 sets CFBundleName and gets both.
+        app = QApplication.instance() or QApplication([about.NAME])
     except Exception as exc:  # Qt's own platform-plugin failures vary by OS and are not typed
         raise GuiUnavailableError(
             f"PySide6 is installed but could not open a display: {exc}. On Linux this "
