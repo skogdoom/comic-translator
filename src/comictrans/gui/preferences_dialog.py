@@ -65,6 +65,14 @@ def _spacer() -> QLabel:
     return QLabel()
 
 
+DONE_TEXT = "Done"
+"""What dismisses this dialog, said as what it does.
+
+There is no ``StandardButton.Done``, so this is written out rather than
+taken from Qt — see the note where the button is built.
+"""
+
+
 class PreferencesDialog(QDialog):
     """Application defaults, written through as they are edited."""
 
@@ -136,7 +144,22 @@ class PreferencesDialog(QDialog):
         form.addRow("erase", self._erase)
         form.addRow("format", self._format)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        # "Done", not "Close". Every field here has written itself through
+        # by the time this is pressed, so there is nothing being closed
+        # away and nothing to discard — and "Close" reads like a button
+        # that might be doing one of those. Save and Cancel would say it
+        # even more wrongly: there is no pending edit for either to act on.
+        #
+        # Not a Qt standard button, because there is no Done among them.
+        # That costs the free translation ``StandardButton.Close`` came
+        # with, so this string is one of ours for 4.9 to pick up.
+        #
+        # AcceptRole rather than RejectRole: finishing with a form is the
+        # affirmative answer, and it is what puts Return on the button.
+        # Escape still closes, as it does for any dialog, and means the
+        # same thing here as Done does.
+        buttons = QDialogButtonBox()
+        buttons.addButton(DONE_TEXT, QDialogButtonBox.ButtonRole.AcceptRole)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
 
@@ -212,4 +235,4 @@ class PreferencesDialog(QDialog):
             self._format.setCurrentIndex(self._format.findData(preferences.image_format))
 
 
-__all__ = ["FONT_DEFAULT", "WHAT_IT_IS", "PreferencesDialog"]
+__all__ = ["DONE_TEXT", "FONT_DEFAULT", "WHAT_IT_IS", "PreferencesDialog"]
