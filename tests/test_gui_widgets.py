@@ -274,13 +274,13 @@ def test_editing_the_translation_marks_the_document_dirty(
 def test_review_tells_the_platform_what_the_application_is_called(
     qapp: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``applicationDisplayName`` is the name Qt hands anything it labels.
+    """Both of the names Qt hands the platform, because both are read.
 
-    And ``applicationName`` is a settings key wearing a name's clothes: a
-    ``QSettings`` built without explicit keys lands wherever it points, so
-    changing it would orphan every saved layout and preference. The rename
-    has to move the first and leave the second alone, which is what this
-    checks.
+    ``applicationName`` is the one macOS builds its application menu from —
+    "About X", "Hide X", "Quit X" — regardless of what the ``AboutRole``
+    action is labelled. Unset, it defaults to ``argv[0]``, which is how the
+    About item went on saying "About comictrans" after everything the window
+    titles itself had been renamed.
     """
     from PySide6.QtWidgets import QApplication
 
@@ -292,10 +292,46 @@ def test_review_tells_the_platform_what_the_application_is_called(
     monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
     try:
         assert gui_app.run() == 0
+        assert QApplication.applicationName() == about.NAME
         assert QApplication.applicationDisplayName() == about.NAME
-        assert QApplication.applicationName() == was_name
     finally:
         QApplication.setApplicationDisplayName(was_display)
+        QApplication.setApplicationName(was_name)
+
+
+def test_naming_the_application_moves_neither_the_settings_nor_the_logs(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why setting ``applicationName`` is safe here, measured rather than assumed.
+
+    Qt falls back to it for a ``QSettings`` built without explicit keys, and
+    for ``QStandardPaths``. Neither is how this project asks: the one real
+    ``QSettings`` names its organisation and application outright, and the
+    log directory comes from ``logfile.APPLICATION``, a literal. Worth a
+    test rather than a comment, because getting it wrong would quietly
+    orphan someone's saved layout and hide their crash logs somewhere new.
+    """
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import about, logfile
+    from comictrans.gui.app import _APPLICATION, _ORGANIZATION
+
+    # The suite points the log directory at a temporary one; without that
+    # override this computes the real path, which is the one under test.
+    monkeypatch.delenv(logfile.LOG_DIR_ENV, raising=False)
+
+    def where() -> tuple[str, str]:
+        return QSettings(_ORGANIZATION, _APPLICATION).fileName(), str(logfile.log_directory())
+
+    was = QApplication.applicationName()
+    try:
+        QApplication.setApplicationName("something else entirely")
+        before = where()
+        QApplication.setApplicationName(about.NAME)
+        assert where() == before
+    finally:
+        QApplication.setApplicationName(was)
 
 
 def test_the_window_uses_one_name_everywhere_it_names_itself(

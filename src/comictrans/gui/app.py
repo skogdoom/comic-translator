@@ -120,17 +120,23 @@ def run(plan_path: Path | None = None) -> int:
     # window to put an icon on.
     QApplication.setWindowIcon(icons.app_icon())
 
-    # The name Qt gives the platform for anything it labels on our behalf,
-    # as opposed to the windows we title ourselves. Kept separate from
-    # ``_APPLICATION`` above deliberately: that one is a QSettings key and
-    # changing it would orphan every saved layout and preference, while this
-    # one is only ever read by a human.
+    # Both names Qt hands the platform, and both are needed.
     #
-    # On macOS the application menu comes from the bundle once there is one,
-    # which is 4.10's business; whether an unbundled process picks this up
-    # has not been checked on a Mac.
+    # macOS builds its application menu itself — "About X", "Hide X",
+    # "Quit X" — from the application name, not from the text of the
+    # QAction carrying AboutRole. Leave it unset and it defaults to
+    # ``argv[0]``, so that menu says "About comictrans" however the action
+    # is labelled, which is exactly what was reported.
+    #
+    # ``applicationName`` is safe to set here because nothing in this
+    # project reads it: the one real ``QSettings`` is constructed with
+    # explicit organisation and application arguments, and the log
+    # directory comes from ``logfile.APPLICATION``, a literal, rather than
+    # from ``QStandardPaths``. Neither moves. ``_APPLICATION`` above stays
+    # as it is for that same reason — it is a settings key, not a name.
     from . import about
 
+    QApplication.setApplicationName(about.NAME)
     QApplication.setApplicationDisplayName(about.NAME)
 
     from PySide6.QtCore import QSettings
