@@ -212,6 +212,60 @@ def font_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     yield directory
 
 
+@pytest.fixture(autouse=True)
+def _no_stray_windows() -> Iterator[None]:
+    """Close whatever a test left open, so the next one starts by itself.
+
+    Widget tests build windows and mostly do not close them: the object goes
+    out of scope, but a shown Qt window survives its last Python reference
+    until the event loop collects it, and under the offscreen platform they
+    stack up at the same place. That is invisible until a test synthesises
+    mouse input, at which point the event can land on somebody else's window
+    and the failure surfaces as "the widget ignored it" — a long way from
+    whichever test actually leaked.
+
+    Cheap enough to do after every test, and it makes each one independent
+    of how many ran before it.
+    """
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError:  # the gui extra is not installed; nothing to close
+        yield
+        return
+
+    if QApplication.instance() is None:
+        yield
+        return
+
+    before = set(QApplication.topLevelWidgets())
+    yield
+    close_windows_opened_since(before)
+
+
+def close_windows_opened_since(before: set[object]) -> None:
+    """Shut anything a test opened that it has no handle on.
+
+    ``gui.app.run`` builds and shows its own window and hands back only an
+    exit code, so a test that calls it cannot close what it made. Left open
+    those accumulate as real top-level windows, and a later test that
+    synthesises mouse input finds one of them over the point it is aiming
+    at — which fails as "the widget ignored the event" a long way from the
+    test that actually leaked.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    for widget in QApplication.topLevelWidgets():
+        if widget not in before:
+            # hide(), not close(): closing a main window runs its closeEvent,
+            # and a window holding unsaved edits answers that with a modal
+            # "save first?" box, which under the offscreen platform waits for
+            # a click that never comes. Hidden is all this needs — a window
+            # that is not on screen is not over anybody's pointer.
+            widget.hide()
+            widget.deleteLater()
+    QApplication.processEvents()
+
+
 @pytest.fixture(scope="session")
 def qapp(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     """A shared ``QApplication`` for the review GUI's tests.

@@ -432,10 +432,19 @@ for as long as the mode does, rather than scrolling past in the status bar.
 
 The **Window** menu closes and reopens the three panels, and **Reset
 Layout** puts them back where they started. The layout is remembered between
-sessions — the only thing this tool stores outside a plan file — with one
-exception: the Run panel always starts closed, because a new session has
-nothing to report yet. A run opens it, and it comes back wherever you left
-it.
+sessions, with one exception: the Run panel always starts closed, because a
+new session has nothing to report yet. A run opens it, and it comes back
+wherever you left it.
+
+**File > Open Recent** lists the last ten plans opened, most recent first,
+labelled by their directory since plans written by `extract` are all called
+`comic-plan.yaml`. Choosing one that has since been moved or deleted says
+so and takes it off the list. **Clear Menu**, at the bottom, empties it.
+
+Three things are remembered between sessions, then, and nothing else: the
+layout, the preferences below, and that list. All three live in the
+application's own settings rather than in your plans, and each can be
+cleared without disturbing the others.
 
 **Edit > Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere) sets what a
 new run starts from: the language pair, OCR languages and recogniser a new

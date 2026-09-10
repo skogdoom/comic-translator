@@ -27,11 +27,17 @@ log = logging.getLogger(__name__)
 
 _ORGANIZATION = "comictrans"
 _APPLICATION = "review"
-"""Where ``QSettings`` keeps the window layout between sessions.
+"""Where ``QSettings`` keeps what this tool remembers between sessions.
 
-The only state this tool holds outside a plan file, and it is deliberately
-nothing but layout: what a review *means* lives in the plan, which is the
-file you can read, diff and hand to someone else.
+Three things, and no more: the window layout, the preferences a new run
+starts from, and the list of plans opened lately. What a review *means* is
+not among them — that lives in the plan file, which is the thing you can
+read, diff and hand to someone else.
+
+The three are kept under separate keys rather than in one blob, because
+they are wanted and unwanted separately: Reset Layout puts the docks back
+without touching the preferences, and Clear Menu empties the history
+without touching either.
 """
 
 _IMPORT_ERROR: str | None

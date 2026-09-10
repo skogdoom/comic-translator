@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
@@ -38,7 +39,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
-from . import about, icons
+from . import about, icons, recent
 from .about_dialog import AboutDialog
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -98,6 +99,11 @@ def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
         color=color,
         flagged=document.flags(region.id).any,
     )
+
+
+RECENT_MENU_TITLE = "Open &Recent"
+CLEAR_RECENT_TEXT = "Clear Menu"
+"""Named so the menu and its test cannot drift apart, as with the toolbar."""
 
 
 class MainWindow(QMainWindow):
@@ -235,6 +241,12 @@ class MainWindow(QMainWindow):
         self._open_action.setShortcut(QKeySequence.StandardKey.Open)
         self._open_action.triggered.connect(self.open_plan_dialog)
         file_menu.addAction(self._open_action)
+
+        self._recent_menu = file_menu.addMenu(RECENT_MENU_TITLE)
+        # A menu's tooltips are off by default, and these carry the whole
+        # path — see _rebuild_recent_menu for why the label cannot.
+        self._recent_menu.setToolTipsVisible(True)
+        self._rebuild_recent_menu()
 
         self._reload_action = QAction("&Reload", self)
         self._reload_action.triggered.connect(self._on_reload)
@@ -664,6 +676,7 @@ class MainWindow(QMainWindow):
 
         self.document = document
         self._remember_directory(path)
+        self._remember_recent(path)
         self._current_image = None
         self._current_region = None
         self._showing_preview = False
@@ -1322,6 +1335,71 @@ class MainWindow(QMainWindow):
     def _remember_directory(self, path: Path) -> None:
         """Where the next file dialog should start, after this one ended here."""
         self._on_preferences_changed(replace(self._preferences, last_directory=str(path.parent)))
+
+    # -- recently opened plans -------------------------------------------
+
+    def _rebuild_recent_menu(self) -> None:
+        """Redraw Open Recent from what is stored, and grey it out when empty.
+
+        The label is the parent directory and the filename rather than the
+        filename alone, which is what a Mac usually shows: plans made by
+        ``extract`` are all called ``comic-plan.yaml``, so ten of them would
+        be ten identical rows. The directory is the chapter, which is the
+        part worth reading. The whole path is on the tooltip, for the case
+        where two chapters are named alike as well.
+        """
+        self._recent_menu.clear()
+        paths = recent.load(self._settings) if self._settings is not None else ()
+        for path in paths:
+            parent = path.parent.name
+            action = QAction(f"{parent}/{path.name}" if parent else path.name, self)
+            action.setToolTip(str(path))
+            action.triggered.connect(partial(self._on_open_recent, path))
+            self._recent_menu.addAction(action)
+        self._recent_menu.setEnabled(bool(paths))
+        if not paths:
+            return
+        self._recent_menu.addSeparator()
+        clear_action = QAction(CLEAR_RECENT_TEXT, self)
+        clear_action.triggered.connect(self._on_clear_recent)
+        self._recent_menu.addAction(clear_action)
+
+    def _on_open_recent(self, path: Path) -> None:
+        """Open a listed plan, and drop it from the list if it has gone.
+
+        The list is not checked against the disk when the menu is built:
+        that would be a stat per entry every time File is opened, and one of
+        them being on a network volume that is not answering would hang the
+        menu rather than the click. So the check happens here, where someone
+        has asked for this particular file and is waiting on it anyway.
+        """
+        if not path.exists():
+            self._forget_recent(path)
+            QMessageBox.warning(
+                self,
+                "Plan not found",
+                f"{path} is not there any more, so it has been taken off the recent list.",
+            )
+            return
+        self.open_plan(path)
+
+    def _remember_recent(self, path: Path) -> None:
+        if self._settings is None:
+            return
+        recent.remember(self._settings, path)
+        self._rebuild_recent_menu()
+
+    def _forget_recent(self, path: Path) -> None:
+        if self._settings is None:
+            return
+        recent.forget(self._settings, path)
+        self._rebuild_recent_menu()
+
+    def _on_clear_recent(self) -> None:
+        if self._settings is None:
+            return
+        recent.clear(self._settings)
+        self._rebuild_recent_menu()
 
     def _start_directory(self) -> Path:
         """Where a file dialog opens: the plan on screen, else where you were."""
