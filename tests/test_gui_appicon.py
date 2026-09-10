@@ -125,20 +125,28 @@ def test_a_missing_application_icon_costs_the_picture_and_nothing_else(
     assert not pictures, "an empty label would hold the words away from the edge"
 
 
-def test_the_about_dialog_shows_the_icon(qapp: object) -> None:
-    from PySide6.QtWidgets import QLabel
+def test_the_about_dialog_shows_the_icon_centred_above_the_version(qapp: object) -> None:
+    """Measured rather than assumed: a layout can put a widget anywhere."""
+    from PySide6.QtWidgets import QApplication, QLabel
 
     from comictrans.gui.about_dialog import AboutDialog
 
     dialog = AboutDialog()
-    pictures = [
-        label.pixmap()
-        for label in dialog.findChildren(QLabel)
-        if label.pixmap() is not None and not label.pixmap().isNull()
-    ]
+    dialog.adjustSize()
+    dialog.show()
+    QApplication.processEvents()
 
+    labels = dialog.findChildren(QLabel)
+    pictures = [
+        label for label in labels if label.pixmap() is not None and not label.pixmap().isNull()
+    ]
     assert len(pictures) == 1, "one drawing, not none and not two"
-    assert pictures[0].width() > 0
+    stamp = pictures[0].geometry()
+    heading = next(label for label in labels if label.text().startswith("comictrans review"))
+
+    assert stamp.bottom() <= heading.geometry().top(), "the icon is above the version, not beside"
+    # One pixel, because an odd width has no exact centre to sit on.
+    assert abs(stamp.center().x() - dialog.rect().center().x()) <= 1, "not centred"
 
 
 def test_review_gives_every_window_the_icon(qapp: object, monkeypatch: pytest.MonkeyPatch) -> None:

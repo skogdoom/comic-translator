@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QVBoxLayout,
@@ -35,7 +34,7 @@ _ICON_SIZE = 96
 """How big the dog is here.
 
 Large enough to be the drawing it is rather than a decoration, and small
-enough that the version and summary beside it stay the first thing read.
+enough that the version under it is still the first thing read.
 """
 
 
@@ -71,22 +70,15 @@ class AboutDialog(QDialog):
         blurb = QLabel(about.summary())
         blurb.setWordWrap(True)
 
-        # The icon is a decoration, and a missing one leaves no gap where a
-        # picture was going to be: the row is built without it rather than
-        # with an empty label holding the words away from the edge.
-        titles = QVBoxLayout()
-        titles.addWidget(heading)
-        titles.addWidget(blurb)
-        titles.addStretch(1)
-
-        banner = QHBoxLayout()
+        # Centred above the words rather than beside them. The icon is a
+        # decoration, and a missing one leaves no gap where a picture was
+        # going to be: the row is left out rather than kept as an empty
+        # label holding everything below it down.
         picture = icons.app_icon().pixmap(_ICON_SIZE, _ICON_SIZE)
+        stamp: QLabel | None = None
         if not picture.isNull():
             stamp = QLabel()
             stamp.setPixmap(picture)
-            stamp.setAlignment(Qt.AlignmentFlag.AlignTop)
-            banner.addWidget(stamp)
-        banner.addLayout(titles, 1)
 
         facts = QFormLayout()
         facts.addRow("author", QLabel(about.author()))
@@ -103,7 +95,10 @@ class AboutDialog(QDialog):
         buttons.accepted.connect(self.accept)
 
         layout = QVBoxLayout(self)
-        layout.addLayout(banner)
+        if stamp is not None:
+            layout.addWidget(stamp, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(heading)
+        layout.addWidget(blurb)
         layout.addLayout(facts)
         layout.addWidget(QLabel("libraries"))
         layout.addWidget(self._libraries)
