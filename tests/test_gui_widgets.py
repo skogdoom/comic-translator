@@ -3208,6 +3208,29 @@ def _preferences(**overrides: str) -> Preferences:
     return Preferences(**base)
 
 
+def test_the_preferences_dialog_says_done_rather_than_close(qapp: object) -> None:
+    """Nothing is being closed away: each field wrote through as it was edited.
+
+    "Close" reads like a button that might be discarding something, and
+    Save and Cancel would read even more wrongly — there is no pending edit
+    for either of them to act on. The behaviour was never the problem here,
+    only the word.
+    """
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from comictrans.gui.preferences_dialog import DONE_TEXT
+
+    dialog = PreferencesDialog(Preferences(), None)
+    box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
+
+    buttons = box.buttons()
+    assert [button.text() for button in buttons] == [DONE_TEXT], "one button, and it says Done"
+    assert box.buttonRole(buttons[0]) == QDialogButtonBox.ButtonRole.AcceptRole, (
+        "finishing with the form is the affirmative answer, and puts Return on the button"
+    )
+
+
 def test_the_preferences_dialog_writes_through_as_it_is_edited(qapp: object) -> None:
     dialog = PreferencesDialog(Preferences(), None)
     seen: list[Preferences] = []

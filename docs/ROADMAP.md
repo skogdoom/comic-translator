@@ -24,7 +24,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.19 | Preferences: Done, not Close | XS |
 | 4.20 | Recently opened files | S |
 | 4.21 | Preview says it is working | S |
 | 4.23 | Page order | S–M |
@@ -74,21 +73,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.19 Preferences: Done, not Close
-
-One word, and it is the whole milestone.
-
-The dialog writes each change through as it is edited. That is deliberate
-and stays — it is what macOS expects of a preferences window, and the same
-bargain the header dialog strikes — but "Close" reads like a button that
-might be throwing something away, which is the opposite of what it does.
-
-**Save and Cancel was considered and rejected.** Buffering the edits to
-commit them on Save would make this the one dialog here that behaves like a
-Windows one, and would split it from the header dialog for nothing. The
-behaviour was never the problem; the label was. `_on_preferences` already
-explains why the writing-through is deliberate and stays true afterwards.
 
 ## 4.20 Recently opened files
 
