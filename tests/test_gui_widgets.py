@@ -622,6 +622,88 @@ def test_the_window_menu_can_close_and_reopen_a_dock(qapp: object) -> None:
     assert not window._pages_dock.isHidden()
 
 
+def test_show_page_lets_go_of_every_item_before_the_scene_deletes_them(
+    qapp: object,
+) -> None:
+    """A wrapper that outlives ``QGraphicsScene.clear()`` is a dangling pointer.
+
+    ``clear()`` destroys the C++ objects without telling shiboken, so a
+    Python wrapper still holding one points into freed memory. Nothing has
+    to read it: merely *dropping* it — rebinding the attribute — is what
+    frees it a second time, because shiboken releases what it wrapped as the
+    last reference goes. On a Mac that landed as a SIGSEGV inside
+    ``SbkDeallocWrapperCommon``, reached from the line that installs the
+    next page, which is the line that happened to drop the old one.
+
+    So the rule is purely about order, and this is the test for it: when the
+    scene is told to clear, nothing here may still be holding an item.
+    """
+    from PySide6.QtGui import QColor, QPixmap
+
+    from comictrans.gui.canvas import PageCanvas, RegionAppearance
+
+    canvas = PageCanvas()
+    appearance = RegionAppearance(
+        region_id="r1",
+        polygon=((10, 10), (90, 10), (90, 90), (10, 90)),
+        color=QColor(40, 170, 70),
+        flagged=False,
+    )
+    canvas.show_page(QPixmap(200, 200), [appearance])
+    canvas.set_mode(CanvasMode.RESHAPE)
+    canvas.set_selected("r1")
+    assert canvas._pixmap_item is not None
+    assert canvas._handles, "the test needs handles in the scene to be worth running"
+
+    held: dict[str, object] = {}
+    scene_clear = canvas._scene.clear
+
+    def spy() -> None:
+        held["pixmap_item"] = canvas._pixmap_item
+        held["draft_item"] = canvas._draft_item
+        held["items"] = dict(canvas._items)
+        held["handles"] = list(canvas._handles)
+        held["draft_handles"] = list(canvas._draft_handles)
+        scene_clear()
+
+    canvas._scene.clear = spy  # type: ignore[method-assign]
+    canvas.show_page(QPixmap(200, 200), [appearance])
+
+    assert held["pixmap_item"] is None, "the page item outlived the clear"
+    assert held["draft_item"] is None, "the draft outline outlived the clear"
+    assert held["items"] == {}, "region outlines outlived the clear"
+    assert held["handles"] == [], "vertex handles outlived the clear"
+    assert held["draft_handles"] == [], "draft handles outlived the clear"
+
+
+def test_a_page_swap_in_reshape_mode_rebuilds_the_scene(qapp: object) -> None:
+    """The crash path, exercised: swap pages with handles on screen.
+
+    Cheap next to the test above and worth having anyway, because it is the
+    sequence a reader actually performs — reshaping a region and then moving
+    to another page — rather than an assertion about ordering.
+    """
+    from PySide6.QtGui import QColor, QPixmap
+
+    from comictrans.gui.canvas import PageCanvas, RegionAppearance
+
+    canvas = PageCanvas()
+    appearance = RegionAppearance(
+        region_id="r1",
+        polygon=((10, 10), (90, 10), (90, 90), (10, 90)),
+        color=QColor(40, 170, 70),
+        flagged=False,
+    )
+    for _ in range(25):
+        canvas.show_page(QPixmap(200, 200), [appearance])
+        canvas.set_mode(CanvasMode.RESHAPE)
+        canvas.set_selected("r1")
+
+    assert canvas._pixmap_item is not None
+    assert set(canvas._items) == {"r1"}
+    assert len(canvas._handles) == 4
+
+
 def test_reset_layout_reopens_whatever_was_closed(qapp: object) -> None:
     window = MainWindow()
     window._pages_dock.setVisible(False)

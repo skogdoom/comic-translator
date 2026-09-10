@@ -373,13 +373,26 @@ class PageCanvas(QGraphicsView):
         and so cannot know what zoom that page was last read at. Whoever does
         know follows this with :meth:`apply_view_state`.
         """
-        self._scene.clear()  # deletes every item, handles included
-        self._items.clear()
-        self._appearances.clear()
-        self._handles.clear()
-        self._draft.clear()
-        self._draft_handles.clear()
+        # Every Python reference to a graphics item goes *before* the scene
+        # deletes them, and that order is the whole of this. ``clear()``
+        # destroys the C++ objects without telling shiboken, so a wrapper
+        # that outlives the call points into freed memory — measured:
+        # ``Shiboken.isValid`` on the old pixmap item returns False the
+        # instant ``clear()`` returns. Nothing has to *read* such a wrapper
+        # to crash. Dropping it is enough, because shiboken frees what it
+        # wrapped as the last reference goes and there is nothing left to
+        # free. That drop used to be the rebinding of ``_pixmap_item`` a few
+        # lines below, which is why the fatal trace named the line that
+        # installs the new page rather than this one.
+        self._pixmap_item = None
         self._draft_item = None
+        self._items.clear()
+        self._handles.clear()
+        self._draft_handles.clear()
+        self._scene.clear()
+
+        self._appearances.clear()
+        self._draft.clear()
         self._drag = None
         self._selected_id = None
 
