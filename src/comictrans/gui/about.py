@@ -19,13 +19,16 @@ from .. import __version__
 
 DISTRIBUTION = "comictrans"
 
-NAME = "comictrans"
+NAME = "Comic Translator"
 """What the application calls itself: the window title, the About box.
 
-The same string as ``DISTRIBUTION`` today and a different fact from it — one
-is what the UI is called, the other is what to ask the package metadata
-about. ``comictrans review`` is neither: that is the command that opens this
-window, and the CLI keeps it.
+A different fact from ``DISTRIBUTION``, which is what to ask the package
+metadata about and stays `comictrans` — that is the name on PyPI and the
+name of the command. ``comictrans review`` is neither of these: it is how
+this window is opened, and the CLI keeps it exactly as it is.
+
+Everything that shows a name reads it from here, so this constant is the
+whole of what it takes to rename the application.
 """
 
 _REQUIREMENT_NAME = re.compile(r"^[A-Za-z0-9._-]+")

@@ -218,8 +218,10 @@ uv sync --extra gui
 uv run comictrans review pages/comic-plan.yaml
 ```
 
-Opens a plan file in a window: pages on the left, the current page in the
-middle with its region polygons overlaid, one region's fields on the right.
+Opens a plan file in a window — **Comic Translator**, which is what the
+application calls itself; `comictrans` remains what you type. Pages on the
+left, the current page in the middle with its region polygons overlaid, one
+region's fields on the right.
 Run it without a path and it opens empty, ready to open a plan or extract
 one. Needs PySide6, a separate extra like tesseract — most work on this
 repository never opens a window. Without it, `review` fails with a clear

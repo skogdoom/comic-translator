@@ -120,6 +120,19 @@ def run(plan_path: Path | None = None) -> int:
     # window to put an icon on.
     QApplication.setWindowIcon(icons.app_icon())
 
+    # The name Qt gives the platform for anything it labels on our behalf,
+    # as opposed to the windows we title ourselves. Kept separate from
+    # ``_APPLICATION`` above deliberately: that one is a QSettings key and
+    # changing it would orphan every saved layout and preference, while this
+    # one is only ever read by a human.
+    #
+    # On macOS the application menu comes from the bundle once there is one,
+    # which is 4.10's business; whether an unbundled process picks this up
+    # has not been checked on a Mac.
+    from . import about
+
+    QApplication.setApplicationDisplayName(about.NAME)
+
     from PySide6.QtCore import QSettings
 
     from .main_window import MainWindow

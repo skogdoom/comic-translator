@@ -271,10 +271,41 @@ def test_editing_the_translation_marks_the_document_dirty(
     assert window.document.region("page-001-001").translation == "HELLO THERE"  # type: ignore[union-attr]
 
 
-def test_the_window_is_called_comictrans_everywhere_it_names_itself(
+def test_review_tells_the_platform_what_the_application_is_called(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``applicationDisplayName`` is the name Qt hands anything it labels.
+
+    And ``applicationName`` is a settings key wearing a name's clothes: a
+    ``QSettings`` built without explicit keys lands wherever it points, so
+    changing it would orphan every saved layout and preference. The rename
+    has to move the first and leave the second alone, which is what this
+    checks.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import about
+    from comictrans.gui import app as gui_app
+
+    was_display = QApplication.applicationDisplayName()
+    was_name = QApplication.applicationName()
+    monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
+    try:
+        assert gui_app.run() == 0
+        assert QApplication.applicationDisplayName() == about.NAME
+        assert QApplication.applicationName() == was_name
+    finally:
+        QApplication.setApplicationDisplayName(was_display)
+
+
+def test_the_window_uses_one_name_everywhere_it_names_itself(
     qapp: object, two_page_plan: Path
 ) -> None:
     """One name, from one place. ``comictrans review`` is the command.
+
+    The assertions read the name from ``about.NAME`` rather than spelling
+    it out, so renaming the application is that constant and nothing else —
+    which is the point of the constant.
 
     That is what the CLI is invoked as and what opens this window; it is not
     what the window is called, and the title bar, the Help menu and the
