@@ -10,7 +10,15 @@ This file describes what it is not yet.
 
 Nothing here is a commitment, and nothing here is a work item an agent
 should pick up on its own — the same rule `known-bugs.md` carries. Work a
-milestone when the request names it. Sizes are relative effort, not
+milestone when the request names it.
+
+**A milestone includes its own documentation.** Once 4.7 has shipped, a
+milestone that changes what the window does updates the help in the same
+change; once 4.9 has shipped, it updates the strings that need
+re-extracting too. Where that turns out to be a body of work rather than a
+paragraph it becomes its own milestone — but it is never simply left for
+later, because help describing the previous version is worse than no help
+at all. Sizes are relative effort, not
 estimates. When a milestone ships, delete its section and its row from the
 table; when a whole milestone ships, say so in the Status section of
 `README.md` as well.
@@ -24,23 +32,27 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 9 | Test suite speed | S |
 | 4.23 | Page order | S–M |
-| 5 | Validate a plan file | S |
 | 4.22 | Preview off the main thread | M |
-| 4.26 | Extract text for one region | M |
-| 4.27 | Lock a region | M |
-| 4.28 | Region context menu | S |
 | 4.8 | macOS look and feel | S — mostly shipped |
 | 4.24 | Interface review: conventions and wording | M |
 | 4.7 | Help instructions | S–M |
 | 4.9 | Localisation | M |
 | 4.10 | Package as an application | M |
+| **11** | **First release (1.0.0)** | **S–M** |
+| 9 | Test suite speed | S |
+| 5 | Validate a plan file | S |
+| 4.26 | Extract text for one region | M |
+| 4.27 | Lock a region | M |
+| 4.28 | Region context menu | S |
 | 3 | CBZ, PDF and CBR input | L |
 | 8 | CBZ and CBR output | M |
 | 6 | PDF output | L |
 | 10 | Code quality review | M |
 | 7 | Security audit | M |
+
+Everything above 11 is what a first release needs. Everything below it is
+what comes after one, and none of it should start before 1.0 is out.
 
 The 4.x numbering says these follow milestone 4, the review GUI. Milestone
 3 is older than all of them and independent of the GUI; it sits at the
@@ -70,13 +82,18 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-**Measurement comes before the thing it would justify.** 9 is at the top
-because the suite costs 70 seconds and every milestone below pays it, and
-because its saving was found by timing the suite rather than by guessing
-which tests looked slow. The same applies inside 4.26 and 4.22: what a
-crop does to recognition accuracy, and what a thread does and does not do
-about three copies of an eleven-megapixel page, are both numbers somebody
-has to produce before the design is settled.
+**A release changes what "first" means.** Everything above 11 earns its
+place by being needed to ship, not by being cheap or by being ready; 9
+would otherwise sit at the top, since the suite costs 70 seconds and every
+milestone pays it, but a slow suite is not what stops a release. It is
+first among the milestones that follow one instead.
+
+**Measurement comes before the thing it would justify.** 9's saving was
+found by timing the suite rather than by guessing which tests looked slow,
+and the same is owed to 4.26 and 4.22: what a crop does to recognition
+accuracy, and what a thread does and does not do about three copies of an
+eleven-megapixel page, are numbers somebody has to produce before either
+design is settled.
 
 One ordering was a judgement call rather than a dependency, and it paid out:
 **rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
@@ -86,31 +103,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 9 Test suite speed
-
-**Measured, not guessed.** The suite takes 70 seconds, and 53 of them are
-`test_fixtures.py`. Everything else put together is 17, of which the widget
-tests are 10 for 191 of them.
-
-OCR is already cached per fixture page — `_page_and_lines` does that and
-says so. Detection is not: `find_regions` runs four times per image, once
-for geometry, once for colours, and twice for the determinism check. Three
-of those four ask the same question of the same pixels.
-
-**The saving is in what the determinism test compares against.** One cached
-detection per image, and one fresh run in the determinism test to compare
-it to, is two runs instead of four. It is also a slightly stronger check
-than the present one: the two runs are separated by whatever else the
-session did in between, rather than being back to back in one function.
-
-No coverage changes. Every assertion still runs against every fixture.
-Measure before and after and put both numbers in the commit.
-
-**Not `pytest-xdist` first.** Parallelism would cut wall time further and is
-worth considering afterwards, but it adds a dependency and it hides
-ordering bugs — exactly the kind the stray-window fixture was added to stop
-hiding. Fix the arithmetic before adding processes.
 
 ## 4.23 Page order
 
@@ -138,28 +130,6 @@ to keep hand edits to regions; this is the same promise for the list.
 Regions name their image by name rather than by index, so reordering does
 not touch them.
 
-## 5 Validate a plan file
-
-`comictrans validate <plan>`: read a plan, check everything checkable
-without rendering it, and say what is wrong. For debugging, and
-deliberately not in the GUI for now — the window opens plans and reports
-problems as it goes, which is a different job for a different moment.
-
-Most of the machinery exists. `load_plan` enforces the schema and
-`check_images` verifies the per-page hashes; both already produce messages
-worth printing. This is largely a matter of running them from one command
-and reporting what they say instead of raising on the first one.
-
-**It also checks that every font named resolves**, and that is the failure
-this command is really for. A plan can be perfectly well-formed, name every
-image correctly, hash clean, and still refuse to render every region on the
-page because the font it names has no bold face on this machine. Nothing in
-the schema catches that, because it is a fact about the machine rather than
-about the file. `fonts.resolve_family` is the call `apply` makes, so what
-`validate` accepts is what `apply` accepts.
-
-Exit non-zero on any failure, so it is usable from a script.
-
 ## 4.22 Preview off the main thread
 
 What the wait cursor papers over, done properly: `render_preview` on a
@@ -181,81 +151,11 @@ eleven-megapixel page per preview, about 120MB of them. A thread makes the
 window answer while that happens; it does not make it less. Worth measuring
 before deciding this milestone is only about threading.
 
-**It moved up the list once it was ungated**, because 4.26 wants the same
-harness for the same reason and would otherwise either build it or freeze
-the window on every balloon.
-
-## 4.26 Extract text for one region
-
-Run the recogniser over a single region and put what it reads into
-`source_text`: for a region drawn by hand, which has no reading at all, and
-for one where detection read the lettering badly.
-
-**Two ways to do it, and the cheap one is wrong.** Recognising the whole
-page and keeping the lines inside the polygon needs almost no new code, but
-spends a full-page recognition on one balloon. Cropping to the region and
-recognising that is the one worth building, and its risk is accuracy rather
-than speed: recognisers do better with a margin around the text than with a
-tight crop. So the crop wants padding, and the result wants comparing
-against what full-page detection finds on the same fixtures before this is
-called done.
-
-**It writes over something a person may have typed**, which nothing else in
-the window does — every other edit replaces the reviewer's text with the
-reviewer's text. So it asks first when `source_text` is not what extract
-left there, and it is one undo step like any other edit.
-
-**It wants the worker thread, which is why it sits after 4.22.** A
-recogniser is seconds, not milliseconds, and unlike preview this is a
-per-balloon action rather than an occasional one; a wait cursor is the
-wrong answer at that frequency.
-
-`apply` is untouched and still runs no OCR. This is `review` doing what
-`extract` does, to one region.
-
-## 4.27 Lock a region
-
-Mark a region finished, so that changing it means deliberately unlocking it
-first.
-
-**It costs a plan version.** The reader rejects unknown keys on purpose, so
-that a typo is an error rather than a silent no-op — which means a plan
-carrying `locked:` cannot be read by a build that predates it. That is what
-`PLAN_VERSION` is for: 3 becomes 4. Worth spending that bump on every field
-the roadmap wants at once rather than twice; nothing else pending needs
-one, so today this is alone.
-
-**In the plan rather than in settings**, for the reason everything else is:
-the plan is the thing handed to someone else, and "these are final, leave
-them" is exactly the sort of thing worth handing over. In settings it would
-live on one machine and be lost on the next.
-
-**It is not `skip`, and the two will be confused unless the labels are
-careful.** `skip` means do not render this region; `locked` means do not
-edit it, and a locked region still renders. Saying which is which without
-the manual is as much 4.24's job as this one's.
-
-**What it has to reach**: every edit path. The inspector's fields,
-reshaping, the arrow keys, merge, delete — and re-extraction, where locked
-regions are the ones that should come through untouched, which is half the
-reason to want it.
-
-## 4.28 Region context menu
-
-Right-click — and Control-click, on macOS — on a region: extract its text,
-lock or unlock it, edit its shape, select it.
-
-**After the commands it lists.** A context menu is a shortcut to things
-that already exist; built before them it is a menu of two items.
-
-**It has to respect one-mode-at-a-time.** The canvas holds a single
-`CanvasMode` precisely because a click means different things in each, and
-a menu offering a command that contradicts the mode in progress is the
-wrong place to find that out.
-
-`contextMenuEvent` on the canvas, choosing the region under the cursor the
-same way a left-click chooses it, so the two cannot disagree about what was
-clicked.
+**It moved up the list once it was ungated**, and 11 questions whether it
+belongs above a release at all: the wait cursor already shipped, this is
+threading in the one code path that has produced a segfault here, and 4.26
+— which wants the same harness — is below the release line anyway. Worth
+settling before it is started rather than during.
 
 ## 4.8 macOS look and feel
 
@@ -400,6 +300,167 @@ window renders previews through `render_page`, which erases and typesets
 like any other page. Since 4.6 it needs pyobjc-Vision too — extract runs from
 the window now, so the recogniser is part of the application rather than
 something only the command line reaches.
+
+## 11 First release (1.0.0)
+
+The version, the release notes, and the decisions a release forces that a
+development branch is free to leave open.
+
+**What changes mechanically.** `__version__` in `src/comictrans/__init__.py`
+is the single source — hatch reads it from there and a test holds the About
+box to it — so 0.1.0 becomes 1.0.0 in one place. `README.md`'s Status
+section still lists which milestones are implemented, which is a sentence
+for a repository rather than for a release. And there is no changelog:
+release notes need somewhere to live that is not `git log`.
+
+**What a release forces a decision on, and 4.10 should not be written
+before it is made.** That milestone records the problem plainly: an
+unsigned bundle is quarantined by Gatekeeper on any machine but the one
+that built it, and signing means a paid Developer ID and notarisation.
+While the target is a build for oneself that is a footnote. The moment
+"releasable" means somebody else double-clicks it, it is the whole
+question, and it decides whether 1.0 is a `.app` at all or a documented
+`uv run` with a bundle to follow.
+
+**What the release notes have to say that the code cannot.**
+`known-bugs.md` holds four entries and every one is a decision rather than
+a defect — that distinction is the file's whole purpose, and a release is
+exactly when somebody else needs it. Whatever ships as "known limitations"
+should be written from that file rather than alongside it, so the two
+cannot drift apart.
+
+**One pass on a Mac, on the built thing rather than the source tree.** What
+remains of 4.8 beyond the `.icns` is exactly this and cannot happen any
+earlier: the menu bar, the About role, the unified toolbar, full screen,
+and the icons against real dark-mode chrome. A release is the honest
+deadline for it.
+
+**Two candidates for cutting, recorded rather than argued.** 4.22 replaces
+a working wait cursor with threading, in the one code path that has
+produced a segfault here; and 4.9 ships translation machinery for a single
+language while freezing every string just as the milestones below start
+adding more. Both are improvements. Neither is what makes 1.0 releasable,
+and dropping them takes two M-sized milestones out of the path. That is a
+call for whoever is shipping it, not for this file.
+
+## 9 Test suite speed
+
+**Measured, not guessed.** The suite takes 70 seconds, and 53 of them are
+`test_fixtures.py`. Everything else put together is 17, of which the widget
+tests are 10 for 191 of them.
+
+OCR is already cached per fixture page — `_page_and_lines` does that and
+says so. Detection is not: `find_regions` runs four times per image, once
+for geometry, once for colours, and twice for the determinism check. Three
+of those four ask the same question of the same pixels.
+
+**The saving is in what the determinism test compares against.** One cached
+detection per image, and one fresh run in the determinism test to compare
+it to, is two runs instead of four. It is also a slightly stronger check
+than the present one: the two runs are separated by whatever else the
+session did in between, rather than being back to back in one function.
+
+No coverage changes. Every assertion still runs against every fixture.
+Measure before and after and put both numbers in the commit.
+
+**Not `pytest-xdist` first.** Parallelism would cut wall time further and is
+worth considering afterwards, but it adds a dependency and it hides
+ordering bugs — exactly the kind the stray-window fixture was added to stop
+hiding. Fix the arithmetic before adding processes.
+
+## 5 Validate a plan file
+
+`comictrans validate <plan>`: read a plan, check everything checkable
+without rendering it, and say what is wrong. For debugging, and
+deliberately not in the GUI for now — the window opens plans and reports
+problems as it goes, which is a different job for a different moment.
+
+Most of the machinery exists. `load_plan` enforces the schema and
+`check_images` verifies the per-page hashes; both already produce messages
+worth printing. This is largely a matter of running them from one command
+and reporting what they say instead of raising on the first one.
+
+**It also checks that every font named resolves**, and that is the failure
+this command is really for. A plan can be perfectly well-formed, name every
+image correctly, hash clean, and still refuse to render every region on the
+page because the font it names has no bold face on this machine. Nothing in
+the schema catches that, because it is a fact about the machine rather than
+about the file. `fonts.resolve_family` is the call `apply` makes, so what
+`validate` accepts is what `apply` accepts.
+
+Exit non-zero on any failure, so it is usable from a script.
+
+## 4.26 Extract text for one region
+
+Run the recogniser over a single region and put what it reads into
+`source_text`: for a region drawn by hand, which has no reading at all, and
+for one where detection read the lettering badly.
+
+**Two ways to do it, and the cheap one is wrong.** Recognising the whole
+page and keeping the lines inside the polygon needs almost no new code, but
+spends a full-page recognition on one balloon. Cropping to the region and
+recognising that is the one worth building, and its risk is accuracy rather
+than speed: recognisers do better with a margin around the text than with a
+tight crop. So the crop wants padding, and the result wants comparing
+against what full-page detection finds on the same fixtures before this is
+called done.
+
+**It writes over something a person may have typed**, which nothing else in
+the window does — every other edit replaces the reviewer's text with the
+reviewer's text. So it asks first when `source_text` is not what extract
+left there, and it is one undo step like any other edit.
+
+**It wants the worker thread, which is why it sits after 4.22.** A
+recogniser is seconds, not milliseconds, and unlike preview this is a
+per-balloon action rather than an occasional one; a wait cursor is the
+wrong answer at that frequency.
+
+`apply` is untouched and still runs no OCR. This is `review` doing what
+`extract` does, to one region.
+
+## 4.27 Lock a region
+
+Mark a region finished, so that changing it means deliberately unlocking it
+first.
+
+**It costs a plan version.** The reader rejects unknown keys on purpose, so
+that a typo is an error rather than a silent no-op — which means a plan
+carrying `locked:` cannot be read by a build that predates it. That is what
+`PLAN_VERSION` is for: 3 becomes 4. Worth spending that bump on every field
+the roadmap wants at once rather than twice; nothing else pending needs
+one, so today this is alone.
+
+**In the plan rather than in settings**, for the reason everything else is:
+the plan is the thing handed to someone else, and "these are final, leave
+them" is exactly the sort of thing worth handing over. In settings it would
+live on one machine and be lost on the next.
+
+**It is not `skip`, and the two will be confused unless the labels are
+careful.** `skip` means do not render this region; `locked` means do not
+edit it, and a locked region still renders. Saying which is which without
+the manual is as much 4.24's job as this one's.
+
+**What it has to reach**: every edit path. The inspector's fields,
+reshaping, the arrow keys, merge, delete — and re-extraction, where locked
+regions are the ones that should come through untouched, which is half the
+reason to want it.
+
+## 4.28 Region context menu
+
+Right-click — and Control-click, on macOS — on a region: extract its text,
+lock or unlock it, edit its shape, select it.
+
+**After the commands it lists.** A context menu is a shortcut to things
+that already exist; built before them it is a menu of two items.
+
+**It has to respect one-mode-at-a-time.** The canvas holds a single
+`CanvasMode` precisely because a click means different things in each, and
+a menu offering a command that contradicts the mode in progress is the
+wrong place to find that out.
+
+`contextMenuEvent` on the canvas, choosing the region under the cursor the
+same way a left-click chooses it, so the two cannot disagree about what was
+clicked.
 
 ## 3 CBZ, PDF and CBR input
 
