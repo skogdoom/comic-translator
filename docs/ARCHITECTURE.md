@@ -547,6 +547,7 @@ inspector.py   one region's fields, writing straight through to the document
 color_box.py    a colour field: a swatch, the standard values, the eyedropper
 page_list.py   one row per page, with a region-and-flag-count summary
 about_dialog.py  what about.py found, plus the Python and Qt versions
+help_dialog.py   the bundled guide, in a window you can leave open
 header_dialog.py the settings every region is drawn under
 font_box.py     a font field offering only what fonts.py can resolve
 run_report.py   what a finished run is worth showing — no Qt
@@ -1235,6 +1236,40 @@ that makes `QSettings` booleans a trap.
 Loading falls back field by field rather than all at once. A settings file is
 hand-editable and outlives the version that wrote it, so a stale engine name
 costs that one field and leaves the rest of the file standing.
+
+**The guide is a document, not strings in the source.** `review` ships a
+short guide — what the outline colours mean, what each flag means, what the
+preview does and does not tell you — as one HTML file per language under
+`gui/resources/help/`, opened in a `QTextBrowser`. Strings in the source
+would have to be found and re-found by whoever translates them; a file is
+handed over whole. `document_path` picks by name and falls back to English,
+because a partial translation is the normal state of one of these and a
+missing language is not worth a missing Help menu.
+
+It is not modal. Help you cannot keep open beside the thing it describes is
+help you memorise a paragraph at a time, so it is a window, and asking for
+it twice raises the one already up rather than stacking a second and losing
+the place it was scrolled to.
+
+Nothing in it is generated, including the swatch colours, which are written
+into the document as hex. That is the deliberate half of the bargain: a
+translator receives prose with no machinery in it. The drift that would
+otherwise buy is caught by tests instead, which read the shipped file and
+hold it to the code — the swatches against `canvas.COLOR_*`, the flag names
+against `inspector._FLAG_LABELS`, and every `href="#…"` against every
+`<a name>`. They run over every file in the directory, so a translation
+dropped in is held to the same rules.
+
+That last one is not a nicety. Measured: `scrollToAnchor` on a name the
+document does not have scrolls to the *top* — not an exception, not a no-op
+— so a renamed section silently turns its contents entry into a link back to
+the contents.
+
+The browser fetches nothing. `setOpenLinks(False)` turns navigation off
+outright and `_on_anchor` follows a bare fragment and nothing else, so a URL
+that finds its way into a translated document is ignored rather than opened
+— this pipeline makes no network calls, and a rich text widget is the one
+place a document could have made one on its behalf.
 
 ### Interface conventions
 
