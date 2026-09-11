@@ -588,13 +588,14 @@ in this order:
 - **Preferences > this window > language**, which is the one to use: it is
   remembered, and it takes effect the next time the application starts — the
   window says so when you choose one, and again under the field.
-- The machine's own language settings, which on macOS includes the language
-  given to this application in System Settings > General > Language & Region.
-  The built bundle declares what it is translated into, so it appears there
-  rather than as "doesn't support additional languages". If it says that
-  anyway, macOS is answering from its own database rather than from the
-  bundle: the build asks it to look again, and the command it uses is printed
-  if it could not.
+- The machine's own language settings — a Mac set to Swedish throughout
+  gets a Swedish window.
+
+**macOS's per-application language does not work yet.** System Settings >
+General > Language & Region says the application supports no additional
+languages, for a bundle that declares them every way Apple documents. It is
+recorded, with everything tried and measured, as entry 5 in `known-bugs.md`.
+Use Preferences instead; nothing about the translation itself is affected.
 
 A language named in the first two and not translated falls back to English
 rather than to the next place down: naming one is an answer, and answering a

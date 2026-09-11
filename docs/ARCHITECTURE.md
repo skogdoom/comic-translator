@@ -1604,12 +1604,13 @@ settings key all say Preferences, and the item follows Qt.
 answer; English behind all three. A language named in either of the first two
 and not translated falls back to English rather than to the next place down —
 naming one is an answer, and answering a different question would be worse
-than answering in English. The machine's answer is a *list*, and asking for
-the list is what makes the macOS per-application language work: choosing one
-in System Settings > General > Language & Region writes an `AppleLanguages`
-list scoped to the application, which `QLocale.uiLanguages()` reports in
-order, while `QLocale.system().name()` goes on describing the system locale.
-A window reading only the latter would have ignored the setting entirely.
+than answering in English. The machine's answer is a *list* rather than one
+locale, which is both more accurate — a preference list is what a person
+actually has — and what a macOS per-application language would arrive as:
+choosing one in System Settings writes an `AppleLanguages` list scoped to
+that application, which `QLocale.uiLanguages()` reports in order while
+`QLocale.system().name()` goes on describing the system locale. That half is
+ready; the half where macOS lets the choice be made is not, and is below.
 
 That setting also has to be offered before it can be chosen, and macOS
 decides what to offer from the bundle: an application declaring no
@@ -1644,14 +1645,20 @@ answering with what the previous build said. That is the other half of why
 the panel can be wrong, and the half no amount of getting the bundle right
 would fix.
 
-`tools/inspect_bundle.py` exists because that panel has now disagreed with a
-bundle that looked right twice, and from inside the application there is no
-telling which half is at fault. It reads a built bundle four ways — the
-Info.plist key, the directories on disk, the signature, and what `NSBundle`
-answers, the last being macOS reading the bundle with its own eyes. It draws
-no conclusion without that one: measured facts that looked sufficient have
-already been insufficient here twice, and the tool says so rather than
-adding a third.
+`tools/inspect_bundle.py` exists because that panel has disagreed with a
+bundle that looked right at every attempt, and from inside the application
+there is no telling which half is at fault. It reads a built bundle four
+ways — the Info.plist key, the directories on disk, the signature, and what
+`NSBundle` answers, the last being macOS reading the bundle with its own
+eyes. It draws no conclusion without that one.
+
+**None of it worked, and that is recorded rather than left implied.** The
+panel still refuses. What the bundle declares, what was tried, where the
+`.lproj` directories provably land, and the one measurement still to take are
+entry 5 in `known-bugs.md`. The declarations stay: they are correct, they are
+what Apple documents, and a later fix will want them there. What does not
+stay is any claim that they work — the window's own Preferences is the route
+that does.
 
 **The language preference takes effect at the next start, and the window says
 so twice: under the field before the choice, and in an alert after it.** Retranslating a running window means re-setting every

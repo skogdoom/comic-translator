@@ -156,3 +156,57 @@ not a patch.
 
 **Impact.** Space only. Nothing is hidden, nothing is misreported, and no
 plan data is affected.
+
+## 5. macOS will not give the application its own language
+
+System Settings > General > Language & Region > Applications answers
+"Comic Translator.app doesn't support additional languages" for a bundle that
+declares two, and no amount of declaring them differently has moved it.
+
+What the built bundle has, verified on the Mac that built it by the build's
+own read-back, which printed no warning:
+
+| declaration | state |
+| --- | --- |
+| `CFBundleLocalizations` in `Info.plist` | `["en", "sv"]` |
+| `CFBundleDevelopmentRegion` | `en` |
+| `Contents/Resources/en.lproj/InfoPlist.strings` | present, UTF-16 |
+| `Contents/Resources/sv.lproj/InfoPlist.strings` | present, UTF-16 |
+
+Four things were tried, in this order, each rebuilt and tested:
+
+1. The Info.plist key alone. No change.
+2. The key plus `.lproj` directories written into the bundle after the
+   build. No change — and wrong for a second reason: PyInstaller signs the
+   bundle and then verifies it, so anything added afterwards breaks the seal
+   it just made. That is why they are collected by the spec now.
+3. The directories collected before signing, sealed with everything else,
+   and the `.strings` files written as UTF-16 rather than UTF-8. No change.
+4. `lsregister -f` on the bundle, in case macOS was answering from the Launch
+   Services database rather than the bundle. No change.
+
+Where the `.lproj` directories land was measured rather than assumed:
+PyInstaller's own bundle-layout logic, run over a synthetic table of contents,
+puts a data entry destined for `sv.lproj` at `Contents/Resources/sv.lproj`
+with a cross-link in `Contents/Frameworks`. That is where macOS looks.
+
+**The one measurement not taken is the one that would split the problem.**
+`NSBundle.bundleWithPath_(…).localizations()` is macOS reading the bundle
+through the call everything else goes through: if it lists both languages,
+the bundle is right and the panel is answering from somewhere else; if it
+lists one, something in the bundle is not being seen after all.
+`tools/inspect_bundle.py` takes that reading, along with the plist, the
+directories and the signature. **Run it first when picking this up.**
+
+Untested leads, in the order they seem worth trying: that the panel wants a
+signed bundle rather than PyInstaller's ad-hoc one; that the Launch Services
+record needs more than `-f` (`lsregister -kill -r -domain local -domain
+user`); that an application outside `/Applications` is treated differently;
+that the panel wants something in the `.lproj` beyond `InfoPlist.strings`.
+
+**Impact.** One route to a setting that has two others. The window's own
+Preferences > this window > language works, and so does
+`COMICTRANS_LANGUAGE`; what is unavailable is macOS's per-application
+language, which is where somebody would look first on a Mac. Nothing about
+the translation itself is affected — the catalogues load, and a Mac set to
+Swedish throughout gets a Swedish window.
