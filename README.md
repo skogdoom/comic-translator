@@ -572,7 +572,8 @@ in this order:
   (`COMICTRANS_LANGUAGE=sv comictrans review`) — how to look at a
   translation on a machine that is not set to it.
 - **Preferences > this window > language**, which is the one to use: it is
-  remembered, and it takes effect the next time the application starts.
+  remembered, and it takes effect the next time the application starts — the
+  window says so when you choose one, and again under the field.
 - The machine's own language settings, which on macOS includes the language
   given to this application in System Settings > General > Language & Region.
   The built bundle declares what it is translated into, so it appears there

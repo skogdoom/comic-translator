@@ -233,6 +233,60 @@ def test_the_bundle_declares_every_language_it_is_translated_into(
     }
 
 
+def test_a_localization_directory_is_written_for_every_language(tmp_path: Path) -> None:
+    """What the Info.plist key alone did not buy.
+
+    ``CFBundleLocalizations`` is Apple's documented key for an application
+    that loads its own strings, and it is set — and the Language & Region
+    panel went on saying the application supports no additional languages
+    with it there. So the directories are written too. Both are declarations
+    of the same fact and neither is a workaround for the other; this one is
+    what every application offering the choice actually ships.
+    """
+    bundle = tmp_path / "Comic Translator.app"
+    codes = build_app.languages()
+
+    written = build_app.localize(bundle, codes)
+
+    assert [path.parent.name for path in written] == [f"{code}.lproj" for code in codes]
+    for path in written:
+        assert path.name == "InfoPlist.strings"
+        assert path.parent.parent == bundle / "Contents" / "Resources"
+        # Not an empty directory: it carries the one localized resource this
+        # application has, so nothing that copies or archives it drops it.
+        assert "Comic Translator" in path.read_text(encoding="utf-8")
+
+
+def test_the_languages_written_are_the_catalogues_that_ship() -> None:
+    from comictrans.gui import translations
+
+    assert set(build_app.languages()) == {
+        translations.SOURCE_LANGUAGE,
+        *translations.available(),
+    }
+
+
+def test_a_bundle_that_declares_no_languages_is_noticed(tmp_path: Path) -> None:
+    """The build reads its own Info.plist back, because nothing else would.
+
+    A bundle missing the key builds, runs and translates itself perfectly;
+    only System Settings is any the wiser, and only for somebody looking.
+    """
+    import plistlib
+
+    bundle = tmp_path / "Comic Translator.app"
+    plist = bundle / "Contents" / "Info.plist"
+    plist.parent.mkdir(parents=True)
+
+    assert build_app.declared_languages(bundle) == (), "no Info.plist at all"
+
+    plist.write_bytes(plistlib.dumps({"CFBundleName": "Comic Translator"}))
+    assert build_app.declared_languages(bundle) == (), "an Info.plist without the key"
+
+    plist.write_bytes(plistlib.dumps({"CFBundleLocalizations": ["en", "sv"]}))
+    assert build_app.declared_languages(bundle) == ("en", "sv")
+
+
 def test_the_bundle_is_not_built_as_a_background_application(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -823,32 +823,42 @@
         <translation>öppnar inställningar</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1778"/>
+        <location filename="../../main_window.py" line="1721"/>
+        <source>{0} will be in {1} the next time it starts.</source>
+        <translation>{0} kommer att vara på {1} nästa gång programmet startar.</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="1724"/>
+        <source>Quit and open it again to change the language of this window.</source>
+        <translation>Avsluta och öppna igen för att byta språk i det här fönstret.</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="1807"/>
         <source>{0} is not there any more.</source>
         <translation>{0} finns inte längre.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1779"/>
+        <location filename="../../main_window.py" line="1808"/>
         <source>It has been taken off the recent list. It was at {0}.</source>
         <translation>Den har tagits bort från listan över senaste. Den låg i {0}.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1824"/>
+        <location filename="../../main_window.py" line="1853"/>
         <source>{0}: {1}</source>
         <translation>{0}: {1}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1828"/>
+        <location filename="../../main_window.py" line="1857"/>
         <source>{0} failed: {1} — see the log</source>
         <translation>{0} misslyckades: {1} — se loggen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1845"/>
+        <location filename="../../main_window.py" line="1874"/>
         <source>opening the log folder</source>
         <translation>öppnar loggmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1848"/>
+        <location filename="../../main_window.py" line="1877"/>
         <source>logs are in {0}</source>
         <translation>loggarna finns i {0}</translation>
     </message>
@@ -895,92 +905,92 @@
         <translation>(låt extract välja)</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="105"/>
+        <location filename="../../preferences_dialog.py" line="126"/>
         <source>Done</source>
         <translation>Klar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="141"/>
+        <location filename="../../preferences_dialog.py" line="161"/>
         <source>Preferences</source>
         <translation>Inställningar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="147"/>
+        <location filename="../../preferences_dialog.py" line="167"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="160"/>
+        <location filename="../../preferences_dialog.py" line="180"/>
         <source>beside the pages</source>
         <translation>bredvid sidorna</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="161"/>
+        <location filename="../../preferences_dialog.py" line="181"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="199"/>
+        <location filename="../../preferences_dialog.py" line="219"/>
         <source>a new plan starts as</source>
         <translation>en ny plan börjar som</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="200"/>
+        <location filename="../../preferences_dialog.py" line="220"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="201"/>
+        <location filename="../../preferences_dialog.py" line="221"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="202"/>
+        <location filename="../../preferences_dialog.py" line="222"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="203"/>
+        <location filename="../../preferences_dialog.py" line="223"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="204"/>
+        <location filename="../../preferences_dialog.py" line="224"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="206"/>
+        <location filename="../../preferences_dialog.py" line="226"/>
         <source>rendering pages</source>
         <translation>rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="207"/>
+        <location filename="../../preferences_dialog.py" line="227"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="208"/>
+        <location filename="../../preferences_dialog.py" line="228"/>
         <source>erase</source>
         <translation>radera</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="209"/>
+        <location filename="../../preferences_dialog.py" line="229"/>
         <source>format</source>
         <translation>format</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="211"/>
+        <location filename="../../preferences_dialog.py" line="231"/>
         <source>this window</source>
         <translation>det här fönstret</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="212"/>
+        <location filename="../../preferences_dialog.py" line="232"/>
         <source>language</source>
         <translation>språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="289"/>
+        <location filename="../../preferences_dialog.py" line="309"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>

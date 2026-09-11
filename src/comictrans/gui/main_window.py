@@ -72,7 +72,7 @@ from .inspector import RegionInspector
 from .logfile import log_directory, set_notifier
 from .page_list import PageList
 from .preferences import Preferences, load_preferences, save_preferences
-from .preferences_dialog import PreferencesDialog
+from .preferences_dialog import PreferencesDialog, language_name
 from .preview import Preview
 from .preview_cache import PreviewCache
 from .qimage import to_pixmap
@@ -1692,8 +1692,37 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _on_preferences_changed(self, preferences: Preferences) -> None:
+        was = self._preferences
         self._preferences = preferences
         save_preferences(self._settings, preferences)
+        if preferences.language != was.language:
+            self._say_the_language_waits()
+
+    def _say_the_language_waits(self) -> None:
+        """A language chosen here is the language of the next window.
+
+        The dialog says so under the field before the choice is made; this
+        says it after, because a setting that visibly does nothing is a
+        setting somebody presses twice. Not said at all when the choice does
+        not actually change the language — picking Swedish on a Mac already
+        running in Swedish changes nothing, and an alert claiming otherwise
+        would be worse than silence.
+
+        Why it waits rather than taking effect: the window reads its words
+        once, as it is built, and some of them are module-level constants
+        read once per process. Retranslating in place is a larger change
+        than this milestone, and a note is honest in the meantime.
+        """
+        language = translations.resolved(self._preferences.language)
+        if language == translations.current():
+            return
+        alerts.note(
+            self,
+            self.tr("{0} will be in {1} the next time it starts.").format(
+                about.NAME, language_name(language)
+            ),
+            self.tr("Quit and open it again to change the language of this window."),
+        )
 
     def _remember_directory(self, path: Path) -> None:
         """Where the next file dialog should start, after this one ended here."""

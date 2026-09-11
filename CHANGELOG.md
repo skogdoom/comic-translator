@@ -23,9 +23,9 @@ for themselves. See **Build the application** in `README.md`.
   to one and 13.
 - **The window speaks Swedish.** Every word of the interface is translated
   from a catalogue now. Pick a language in Preferences — it applies the next
-  time the application starts — or leave it to the machine, which on macOS
-  includes the per-application language in System Settings, since the bundle
-  now declares what it is translated into. `COMICTRANS_LANGUAGE` overrules
+  time the application starts, and it says so when you choose one — or leave
+  it to the machine, which on macOS includes the per-application language in
+  System Settings, since the bundle now declares what it is translated into. `COMICTRANS_LANGUAGE` overrules
   both. The guide the Help menu opens follows the same language. The command
   line, the plan file's content, and what the pipeline says when something
   goes wrong are deliberately not translated. Swedish is the one translation

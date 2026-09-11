@@ -27,9 +27,11 @@ the tests and the bundle are the same one. A crash on quit was seen once on a
 3.14 build and never on 3.12, which is a reason to notice rather than a
 finding — but shipping what is tested needs no finding.
 
-This script does the two things the spec cannot: it renders the icon, because
-``.icns`` holds one image per size rather than one drawing, and it refuses
-early and in plain words on a machine that cannot produce a bundle at all.
+This script does the three things the spec cannot: it renders the icon,
+because ``.icns`` holds one image per size rather than one drawing; it writes
+the ``.lproj`` directories that decide whether macOS will offer this
+application a language of its own; and it refuses early and in plain words on
+a machine that cannot produce a bundle at all.
 """
 
 from __future__ import annotations
@@ -83,6 +85,17 @@ next to it.
 master's fur lines and page edges are the mud ``recreate-icons.py`` exists to
 avoid. From 128 points up — the Dock and Finder's icon view — that detail is
 the drawing, so the master goes there.
+"""
+
+
+LOCALIZED_NAME_KEYS = ("CFBundleName", "CFBundleDisplayName")
+"""What each ``InfoPlist.strings`` carries: the application's name.
+
+The same name in every language — it is a made-up compound, not a phrase to
+translate — so these files exist for their directories rather than their
+contents. That is not a trick: a localization is where an application's
+localized resources go, and its name is a localized resource whether or not
+it happens to differ.
 """
 
 
@@ -227,6 +240,59 @@ def build_bundle() -> Path:
     return DIST / "Comic Translator.app"
 
 
+def languages() -> tuple[str, ...]:
+    """Every language the window has a catalogue for, English included."""
+    from comictrans.gui.translations import SOURCE_LANGUAGE, available
+
+    return tuple(sorted({SOURCE_LANGUAGE, *available()}))
+
+
+def localize(bundle: Path, codes: tuple[str, ...]) -> tuple[Path, ...]:
+    """Write one ``<language>.lproj`` into the bundle, and return them.
+
+    This is what makes System Settings > General > Language & Region offer
+    the application a language of its own. ``CFBundleLocalizations`` in the
+    Info.plist is Apple's documented key for an application that loads its
+    own strings, which is exactly this one — and it is set, and on its own it
+    was not enough: that panel went on reporting "doesn't support additional
+    languages" for a bundle that declared both. Observed on macOS rather than
+    reasoned about, and not reproducible from here, which is why both are set
+    now rather than one replacing the other. A directory per language is what
+    every application that offers the choice actually ships.
+
+    Each holds an ``InfoPlist.strings`` naming the application, so the
+    directory carries a localized resource rather than being an empty folder
+    that a copy or an archiver might drop.
+    """
+    resources = bundle / "Contents" / "Resources"
+    written = []
+    for code in codes:
+        folder = resources / f"{code}.lproj"
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = [f'"{key}" = "{bundle.stem}";' for key in LOCALIZED_NAME_KEYS]
+        strings = folder / "InfoPlist.strings"
+        strings.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        written.append(strings)
+    return tuple(written)
+
+
+def declared_languages(bundle: Path) -> tuple[str, ...]:
+    """What the built Info.plist actually says, read back off the disk.
+
+    The one key here whose absence is invisible: a bundle missing it builds,
+    runs, and translates itself perfectly, and only the Language & Region
+    panel is any the wiser.
+    """
+    import plistlib
+
+    plist = bundle / "Contents" / "Info.plist"
+    try:
+        with plist.open("rb") as handle:
+            return tuple(plistlib.load(handle).get("CFBundleLocalizations", ()))
+    except (OSError, plistlib.InvalidFileException):
+        return ()
+
+
 def main() -> int:
     check_platform()
     check_interpreter()
@@ -235,8 +301,21 @@ def main() -> int:
     build_icns(build_iconset(ROOT / "build"), ICNS)
     print(f"icon: {ICNS}")
     bundle = build_bundle()
+
+    codes = languages()
+    localize(bundle, codes)
+    declared = declared_languages(bundle)
+    if set(declared) != set(codes):
+        print(
+            f"warning: the bundle declares {declared or 'no languages'} "
+            f"where the catalogues are {codes} — System Settings will offer "
+            "whatever it declares",
+            file=sys.stderr,
+        )
+
     print()
     print(f"built: {bundle}")
+    print(f"languages: {', '.join(codes)}")
     print()
     print(
         "It is unsigned, so it will open on this machine and be refused by "

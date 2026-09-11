@@ -1614,19 +1614,31 @@ A window reading only the latter would have ignored the setting entirely.
 That setting also has to be offered before it can be chosen, and macOS
 decides what to offer from the bundle: an application declaring no
 localizations is one System Settings says "doesn't support additional
-languages" about, whatever is inside it. The usual way to declare them is an
-`.lproj` directory per language, which is for strings macOS itself loads;
-ours are Qt catalogues loaded by Qt, and `CFBundleLocalizations` is Apple's
-key for exactly that case. `tools/comictrans.spec` builds it from
-`translations.available()` rather than a list, so a catalogue added and the
-spec forgotten cannot happen.
+languages" about, whatever is inside it. It is declared twice, and the second
+one is not redundancy for its own sake. `CFBundleLocalizations` in the
+Info.plist is Apple's documented key for an application that loads its own
+strings — which is exactly this one — and with it set, and both catalogues
+inside the bundle, that panel went on saying the application supports no
+additional languages. Observed on macOS and not reproducible from here, so
+`tools/build_app.py` writes a `<language>.lproj` directory per language into
+`Contents/Resources` as well, each holding an `InfoPlist.strings` naming the
+application, which is what every application that does offer the choice
+actually ships. Both lists come from `translations.available()` rather than
+being written out, so a catalogue added and the build forgotten cannot
+happen, and the build reads its own Info.plist back and says so if the key
+did not survive — nothing else would notice.
 
-**The language preference takes effect at the next start, and the dialog says
-so under the field.** Retranslating a running window means re-setting every
+**The language preference takes effect at the next start, and the window says
+so twice: under the field before the choice, and in an alert after it.** Retranslating a running window means re-setting every
 string on `LanguageChange`, and the module-level constants above cannot be
 re-read at all — they are evaluated once at import, which is the same
 property that makes them translatable in the first place. A note standing in
-the form says that before the choice is made rather than after. `gui.app`
+the form says that before the choice is made; the alert is there because a
+setting that visibly does nothing is a setting somebody presses twice. It is
+raised only when the choice would actually change the language — picking
+Swedish on a Mac already running in Swedish changes nothing, and
+`translations.resolved()` answers that question without installing anything.
+`gui.app`
 therefore reads the stored preferences before it builds anything, hands the
 language to `install`, and passes the same `QSettings` on to the window, so
 there is one settings object rather than two.

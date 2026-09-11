@@ -10,9 +10,9 @@ whatever that argument said, and what is left is the bare detail with
 nothing framing it: an exception's own words, and no sentence saying which
 of the window's actions produced them.
 
-So the window does not call the static helpers. It calls :func:`report` and
-:func:`ask`, which put the sentence in the message and the detail under it,
-and the two strings survive on every platform.
+So the window does not call the static helpers. It calls :func:`report`,
+:func:`note` and :func:`ask`, which put the sentence in the message and the
+detail under it, and the two strings survive on every platform.
 
 Standard buttons rather than buttons of our own, for the same reason.
 ``StandardButton.Discard`` is titled "Don't Save" by Qt's Cocoa theme and
@@ -48,6 +48,19 @@ def report(parent: QWidget, message: str, detail: str = "", icon: Icon = Icon.Cr
     box.exec()
 
 
+def note(parent: QWidget, message: str, detail: str = "") -> None:
+    """Say that something happened that is worth knowing and is not wrong.
+
+    Its own function rather than ``report`` with a different icon, because
+    the two are different things to say and a call site should read as which
+    one it is: an alert nobody needs to act on, for a setting whose effect
+    waits, is not a failure.
+    """
+    box = _box(parent, Icon.Information, message, detail)
+    box.setStandardButtons(Button.Ok)
+    box.exec()
+
+
 def ask(
     parent: QWidget,
     message: str,
@@ -67,4 +80,4 @@ def ask(
     return Button(box.exec())
 
 
-__all__ = ["Button", "Icon", "ask", "report"]
+__all__ = ["Button", "Icon", "ask", "note", "report"]

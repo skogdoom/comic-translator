@@ -160,6 +160,18 @@ def wanted(chosen: str = "") -> str:
     return asked[0] if asked else SOURCE_LANGUAGE
 
 
+def resolved(chosen: str = "") -> str:
+    """The language a window opened right now would actually speak.
+
+    What :func:`install` settles on, without installing anything — so the
+    window can ask whether a language just chosen in its settings differs
+    from the one it is running in, and say a restart is needed only when it
+    does. Picking Swedish on a Mac already running the window in Swedish
+    changes nothing and should not claim to.
+    """
+    return next((code for code in preferred(chosen) if code in available()), SOURCE_LANGUAGE)
+
+
 def current() -> str:
     """The language the window is actually speaking.
 
@@ -195,7 +207,7 @@ def install(app: QCoreApplication, chosen: str = "") -> str:
         app.removeTranslator(_installed.pop())
 
     asked = preferred(chosen)
-    language = next((code for code in asked if code in available()), SOURCE_LANGUAGE)
+    language = resolved(chosen)
     if language not in asked:
         log.info("no catalogue for %s; falling back to %s", ", ".join(asked), SOURCE_LANGUAGE)
 
@@ -232,5 +244,6 @@ __all__ = [
     "install",
     "offered",
     "preferred",
+    "resolved",
     "wanted",
 ]

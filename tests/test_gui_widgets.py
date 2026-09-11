@@ -4278,6 +4278,53 @@ def test_an_unset_font_is_not_called_the_plan_default_here(qapp: object) -> None
     assert dialog.preferences().font == ""
 
 
+def test_choosing_a_language_says_it_waits_for_a_restart(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The setting is remembered now and read at the next start.
+
+    Said in an alert as well as in the standing note under the field: a
+    setting that visibly does nothing is a setting somebody presses twice.
+
+    The environment variable is taken away first, because the suite sets it
+    and it beats this setting by design — with it in place, choosing Swedish
+    here would change nothing and correctly say nothing.
+    """
+    from comictrans.gui import translations
+
+    monkeypatch.delenv(translations.LANGUAGE_ENV, raising=False)
+    shown = _catch_alerts(monkeypatch)
+    window = MainWindow()
+
+    window._on_preferences_changed(replace(window._preferences, language="sv"))
+
+    assert len(shown) == 1
+    assert "Svenska" in shown[0].text()
+    assert window._preferences.language == "sv", "remembered whatever the alert said"
+    assert translations.current() == "en", "and the running window has not moved"
+
+
+def test_a_language_change_that_changes_no_language_says_nothing(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two cases that are not a change: the same value, and the same result.
+
+    The second is the one worth the code. The suite runs with English forced,
+    so choosing English explicitly is a different setting with an identical
+    effect — and an alert announcing a restart to reach the language already
+    on screen would be worse than silence.
+    """
+    from comictrans.gui import translations
+
+    shown = _catch_alerts(monkeypatch)
+    window = MainWindow()
+
+    window._on_preferences_changed(replace(window._preferences, ocr_engine="tesseract"))
+    window._on_preferences_changed(replace(window._preferences, language=translations.current()))
+
+    assert shown == []
+
+
 def test_the_dialog_carries_the_remembered_directory_through_untouched(qapp: object) -> None:
     """It is remembered, not chosen, so the dialog never shows or clears it."""
     dialog = PreferencesDialog(_preferences(last_directory="/tmp/somewhere"), None)

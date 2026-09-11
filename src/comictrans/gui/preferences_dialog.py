@@ -89,7 +89,7 @@ def _spacer() -> QLabel:
     return QLabel()
 
 
-def _language_name(code: str) -> str:
+def language_name(code: str) -> str:
     """A language named in itself, for the field that picks one.
 
     *Svenska*, not *Swedish*: the only naming that helps somebody who opened
@@ -149,7 +149,7 @@ class PreferencesDialog(QDialog):
         """
         rows = [(SYSTEM_LANGUAGE, "")]
         for code in translations.available():
-            rows.append((_language_name(code), code))
+            rows.append((language_name(code), code))
         return tuple(rows)
 
     def __init__(self, preferences: Preferences, parent: QWidget | None = None) -> None:
@@ -344,4 +344,5 @@ __all__ = [
     "SYSTEM_LANGUAGE",
     "WHAT_IT_IS",
     "PreferencesDialog",
+    "language_name",
 ]
