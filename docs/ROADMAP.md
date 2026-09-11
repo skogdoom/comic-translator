@@ -33,7 +33,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 9 | Test suite speed | S |
 | 4.23 | Page order | S–M |
 | 4.24 | Interface review: conventions and wording | M |
 | 4.7 | Help instructions | S–M |
@@ -90,14 +89,15 @@ all sit below a line they would otherwise be well up: none of them is what
 makes this releasable, and each is easier to get right once there is a
 released version to compare against.
 
-9 is the exception that proves it. A slow suite is not what stops a
-release — but it is free, it touches nothing a user sees, and every
-milestone above the line pays the 70 seconds. Doing it first costs one
-milestone and refunds it across five.
+The test suite was the exception that proved it, and it went first for
+that reason: not a release blocker, but free, invisible to users, and paid
+for by every milestone above the line. It came in at 78 seconds and leaves
+at 56.
 
-**Measurement comes before the thing it would justify.** 9's saving was
-found by timing the suite rather than by guessing which tests looked slow,
-and the same is owed to 4.26 and 4.22: what a crop does to recognition
+**Measurement comes before the thing it would justify.** The suite's
+saving was found by timing it rather than by guessing which tests looked
+slow, and then confirmed by counting the calls rather than by trusting the
+clock. The same is owed to 4.26 and 4.22: what a crop does to recognition
 accuracy, and what a thread does and does not do about three copies of an
 eleven-megapixel page, are numbers somebody has to produce before either
 design is settled.
@@ -110,31 +110,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 9 Test suite speed
-
-**Measured, not guessed.** The suite takes 70 seconds, and 53 of them are
-`test_fixtures.py`. Everything else put together is 17, of which the widget
-tests are 10 for 191 of them.
-
-OCR is already cached per fixture page — `_page_and_lines` does that and
-says so. Detection is not: `find_regions` runs four times per image, once
-for geometry, once for colours, and twice for the determinism check. Three
-of those four ask the same question of the same pixels.
-
-**The saving is in what the determinism test compares against.** One cached
-detection per image, and one fresh run in the determinism test to compare
-it to, is two runs instead of four. It is also a slightly stronger check
-than the present one: the two runs are separated by whatever else the
-session did in between, rather than being back to back in one function.
-
-No coverage changes. Every assertion still runs against every fixture.
-Measure before and after and put both numbers in the commit.
-
-**Not `pytest-xdist` first.** Parallelism would cut wall time further and is
-worth considering afterwards, but it adds a dependency and it hides
-ordering bugs — exactly the kind the stray-window fixture was added to stop
-hiding. Fix the arithmetic before adding processes.
 
 ## 4.23 Page order
 
