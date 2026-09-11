@@ -862,7 +862,11 @@ def test_a_preview_that_lands_after_you_have_moved_on_is_dropped(
     window._on_render_preview()
     assert window._preview_job is not None and window._preview_job.isRunning()
 
+    job = window._preview_job
     window._on_image_selected("page-002.png")
+
+    assert job is not None and job.cancelling, "the render was told to stop, not just ignored"
+
     _settle_preview(window)
 
     assert window._current_image == "page-002.png"
@@ -932,6 +936,95 @@ def test_asking_for_the_same_preview_twice_renders_it_once(
 
     assert window._showing_preview
     assert len(started) == 1, f"rendered {len(started)} times for one unchanged page"
+
+
+def test_switching_page_stops_the_render_rather_than_waiting_it_out(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asked to stop, and it does — between regions, inside the page.
+
+    Counted rather than timed: with both regions slow to erase and the page
+    switched while the first is in flight, the second one never starting is
+    the evidence. The switch is made from this thread, not from inside the
+    patched erase — a test that reached into the window from the worker
+    would be doing the thing the whole design exists to avoid, and Qt says
+    so out loud when it happens.
+    """
+    import time
+
+    from comictrans import render as rm
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    # Both of this page's regions have to be renderable, or only one is ever
+    # erased and the count below proves nothing: the fixture holds the second
+    # back with an empty translation.
+    window.document.set_translation("page-001-002", "ALSO RENDERED")  # type: ignore[union-attr]
+    window._on_image_selected("page-001.png")
+
+    erased: list[str] = []
+    real = rm.erase
+
+    def slow_and_counted(rgb: object, region: object, *args: object, **kwargs: object) -> object:
+        erased.append(region.id)  # type: ignore[attr-defined]
+        time.sleep(0.3)
+        return real(rgb, region, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(rm, "erase", slow_and_counted)
+    window._on_render_preview()
+
+    window._on_image_selected("page-002.png")
+    job = window._preview_job
+    assert job is not None and job.cancelling, "it was told to stop"
+
+    _settle_preview(window)
+
+    assert len(erased) < 2, f"it went on erasing after being told to stop: {erased}"
+    assert not window._showing_preview
+
+
+def test_the_busy_bar_counts_regions_once_it_knows_how_many(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """Indeterminate until there is a count, determinate after.
+
+    Which is the shape of what is known: a preview has to open the page and
+    plan its regions before it can say how many there are to erase.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._on_image_selected("page-001.png")
+
+    seen: list[tuple[bool, int, int]] = []
+    window._busy.valueChanged.connect(
+        lambda _v: seen.append((window._busy.waiting, window._busy.value(), window._busy.maximum()))
+    )
+
+    assert window._busy.waiting, "nothing known yet"
+    window._on_render_preview()
+    _settle_preview(window)
+
+    assert seen, "the bar was given real numbers"
+    assert seen[-1][1] == seen[-1][2], f"and finished full: {seen[-1]}"
+    assert not any(waiting for waiting, _v, _m in seen), "each report is a real fraction"
+
+
+def test_the_busy_bar_goes_back_to_waiting_for_the_next_preview(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Or the next one would open on the last one's finished bar."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._on_render_preview()
+    _settle_preview(window)
+    assert not window._busy.waiting, "the first one left it full"
+
+    _slow_render(monkeypatch)
+    window._on_back_to_overlay()
+    window._on_render_preview()
+
+    assert window._busy.waiting, "the second starts from nothing known"
+    _settle_preview(window)
 
 
 def test_the_busy_bar_reports_no_number_because_a_preview_has_none(qapp: object) -> None:

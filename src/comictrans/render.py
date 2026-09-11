@@ -10,6 +10,7 @@ forbids faking anything about the face.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
@@ -20,9 +21,32 @@ from .fonts import FontFace
 from .imaging import PageImage
 from .markup import MarkupError, tokenize
 from .model import Color, Region, TextCase
+from .progress import CancelCheck
 from .typeset import FitFailure, Layout, layout_text
 
 log = logging.getLogger(__name__)
+
+
+# Not RenderCancelledError: N818 wants the suffix on anything raised, and
+# this is the one case where it would say the wrong thing. Nothing has gone
+# wrong; somebody moved on.
+class RenderCancelled(Exception):  # noqa: N818
+    """A page was abandoned part-way, because its caller asked.
+
+    Deliberately not a ``ComictransError``. Those are failures with something
+    to tell a user, and a run that stopped because somebody moved on is not
+    one — the window catches this and drops the half-rendered page, and the
+    ``RunJob`` machinery that turns a ``ComictransError`` into a red message
+    never sees it.
+
+    Only reachable by passing ``should_cancel``. ``apply`` does not, which is
+    what keeps its promise intact: a cancelled ``apply`` stops *between*
+    pages, and every page it wrote is one a complete run would have written.
+    """
+
+
+RegionProgress = Callable[[int, int], None]
+"""``(done, total)`` in regions erased. See ``render_page``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +233,9 @@ def render_page(
     regions: tuple[Region, ...],
     styles: dict[str, RegionStyle],
     cfg: ApplyConfig,
+    *,
+    on_region: RegionProgress | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> tuple[Image.Image, list[RegionOutcome]]:
     """Apply every region belonging to one page.
 
@@ -217,10 +244,32 @@ def render_page(
     two polygons overlap — silently, since both regions still report success.
     Every erase therefore happens first, against pixels that hold only the
     original artwork, and only then is any text drawn.
+
+    **Both hooks are optional and both are off by default**, which is how
+    ``apply`` keeps its promise that a cancelled run leaves whole pages: it
+    passes neither, so this can neither report from inside a page nor stop
+    part-way through one. They exist for ``review``'s preview, which is one
+    page, ephemeral, and thrown away rather than written if it is abandoned.
+
+    **Both live in the erase loop, and that is measured rather than assumed.**
+    On an eleven-megapixel page with ten regions the three loops here cost
+    0.099s, 1.280s and 0.002s per region — erasing is 80% of the whole
+    preview, and the other two are below the granularity anybody could see
+    on a progress bar. Cancelling is checked in the planning loop too, which
+    costs one call per region and takes the worst case from "the whole page"
+    down to "the region being erased".
+
+    ``should_cancel`` raises :class:`RenderCancelled` rather than returning
+    something. A half-erased page is not a result, and a return value saying
+    so would have to be handled by every caller including the two that can
+    never see it.
     """
+    stop = should_cancel or (lambda: False)
     planned: list[PlannedRegion] = []
     outcomes: list[RegionOutcome] = []
     for region in sorted(regions, key=lambda r: r.order):
+        if stop():
+            raise RenderCancelled
         layout, outcome = plan_region(
             region,
             styles[region.id],
@@ -235,8 +284,14 @@ def render_page(
     _warn_about_overlaps(planned)
 
     rgb = page.rgb
-    for entry in planned:
+    for done, entry in enumerate(planned):
+        if stop():
+            raise RenderCancelled
+        if on_region is not None:
+            on_region(done, len(planned))
         rgb = erase(rgb, entry.region, cfg.erase, page_height=page.height)
+    if on_region is not None:
+        on_region(len(planned), len(planned))
 
     image = Image.fromarray(rgb)
     for entry in planned:

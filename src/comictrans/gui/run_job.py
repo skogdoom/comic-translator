@@ -50,6 +50,7 @@ from ..model import Plan, TextCase
 from ..ocr import get_recognizer
 from ..planfile import write_plan
 from ..progress import CancelCheck, PageProgress, ProgressCallback
+from ..render import RenderCancelled
 from .preview import Preview, PreviewRequest, render_preview
 
 log = logging.getLogger(__name__)
@@ -247,35 +248,42 @@ class ExtractJob(RunJob):
 class PreviewJob(RunJob):
     """``render_preview`` on a worker thread. Completes with a ``Preview``.
 
-    **Nothing cancels it, and it does not pretend to.** The other two jobs
-    stop between pages, which is a real place to stop because there are more
-    pages coming. A preview is one page: ``render_page`` has no seam inside
-    it and adding one would be a change to the pipeline for the window's
-    convenience. So the window's answer to a preview it no longer wants is to
-    stop wanting it — the result of a superseded request is dropped when it
-    arrives, and the thread finishes into nothing. That costs the second the
-    page was always going to take, and it does not cost the window, which is
-    what putting this on a thread was for.
+    **It stops inside the page, which the other two jobs do not.** They stop
+    between pages, because a chapter has more coming; a preview is one page,
+    so stopping at all means stopping part-way through one. That is safe here
+    and nowhere else: a half-rendered preview is discarded rather than shown,
+    where a half-written page would be a file somebody keeps. ``apply`` passes
+    neither hook to ``render_page`` and so cannot reach either behaviour.
 
-    ``progressed`` is never emitted. One page has no progress to report; the
-    status bar says that a render is going and the next thing it says is what
-    the render found.
+    ``progressed`` carries regions rather than pages — ``(done, total,
+    image)`` counting regions erased. Erasing is 80% of a preview's time,
+    measured, so a bar following it follows the wait.
+
+    Completes with ``None`` rather than a ``Preview`` when it was stopped.
+    Not ``failed``: nothing failed.
     """
 
     def __init__(self, request: PreviewRequest, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.request = request
 
-    # Both arguments unused, and the signature kept anyway: it is what makes
-    # the three jobs interchangeable to `run`. A preview has no page loop to
-    # report from and no seam to stop at.
-    def work(
-        self,
-        progress: ProgressCallback,  # noqa: ARG002 - the shared signature
-        should_cancel: CancelCheck,  # noqa: ARG002 - see the comment above
-    ) -> Preview:
+    def work(self, progress: ProgressCallback, should_cancel: CancelCheck) -> Preview | None:
         request = self.request
-        return render_preview(request.plan, request.plan_path, request.image)
+
+        def on_region(done: int, total: int) -> None:
+            progress(PageProgress(index=done, total=total, image=request.image))
+
+        try:
+            return render_preview(
+                request.plan,
+                request.plan_path,
+                request.image,
+                on_region=on_region,
+                should_cancel=should_cancel,
+            )
+        except RenderCancelled:
+            log.debug("preview of %s cancelled", request.image)
+            return None
 
 
 __all__ = [

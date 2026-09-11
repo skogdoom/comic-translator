@@ -1279,12 +1279,21 @@ class MainWindow(QMainWindow):
         more — and one that would otherwise still match ``_preview_wanted``
         and be painted over whatever is on screen now.
 
-        The thread itself is left to finish. It has nowhere to stop, and its
-        result lands in ``_on_preview_ready``, which now has nothing to match
-        it against.
+        The thread is asked to stop, and now can: ``render_page`` checks
+        between regions when the preview hands it something to check. It
+        stops part-way through a page, which is safe for a preview and for
+        nothing else — what is abandoned is thrown away rather than written.
+        What it leaves is the same as what a finished one leaves: nothing.
+
+        Asking is not the same as having stopped. The check happens between
+        regions, so the thread runs on for up to one erase; its result lands
+        in ``_on_preview_ready``, which by then has nothing to match it
+        against.
         """
         self._showing_preview = False
         self._preview_wanted = None
+        if self._preview_job is not None:
+            self._preview_job.cancel()
 
     def _on_render_preview(self) -> None:
         """Start a render of the current page. Returns before it is done.
@@ -1303,6 +1312,7 @@ class MainWindow(QMainWindow):
             # result will be dropped on arrival.
             return
         job = PreviewJob(request, self)
+        job.progressed.connect(self._on_preview_progress)
         job.completed.connect(self._on_preview_ready)
         job.failed.connect(self._on_preview_failed)
         job.finished.connect(self._on_preview_thread_done)
@@ -1310,6 +1320,16 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(PREVIEW_WORKING)
         self._busy.set_busy(True)
         job.start()
+
+    def _on_preview_progress(self, done: int, total: int, image: str) -> None:
+        """Regions erased, from the worker. The run panel's signal, reused.
+
+        Ignored for a render nobody is waiting for any more — the thread it
+        comes from has been asked to stop but has not noticed yet, and a bar
+        that kept counting for it would be counting the wrong page.
+        """
+        if self._preview_wanted is not None and self._preview_wanted.image == image:
+            self._busy.advance(done, total)
 
     def _on_preview_thread_done(self) -> None:
         """The worker has stopped. Start the next render if one is waiting.
@@ -1355,6 +1375,8 @@ class MainWindow(QMainWindow):
         ``_preview_wanted``, so matching against it is the whole check. The
         job cannot be called off, so this is where a dropped one is dropped.
         """
+        if preview is None:
+            return  # stopped part-way; there is nothing to show and nobody waiting
         assert isinstance(preview, Preview)
         job = self._preview_job
         if job is None or job.request != self._preview_wanted:
@@ -1767,10 +1789,11 @@ class MainWindow(QMainWindow):
             self._job.cancel()
             self._job.wait()
             self._job = None
-        # The preview thread has nothing to cancel — see PreviewJob — so this
-        # waits out the page it is on. A second at worst, against a process
-        # that aborts if a running QThread is destroyed.
+        # Told to stop and then waited for, the same as the pass above. A
+        # QThread destroyed while it is still running aborts the process, and
+        # the wait is now one region rather than one page.
         if self._preview_job is not None:
+            self._preview_job.cancel()
             self._preview_job.wait()
             self._preview_job = None
         set_notifier(None)

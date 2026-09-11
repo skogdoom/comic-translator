@@ -547,3 +547,34 @@ def test_cancelling_before_the_first_page_writes_nothing(
     assert report.cancelled
     assert report.pages_written == []
     assert not output.exists()
+
+
+def test_apply_never_hands_render_page_a_way_to_abandon_a_page(
+    project: tuple[Path, Path, Plan], font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole of "a cancelled apply leaves whole pages", enforced at the call.
+
+    ``render_page`` grew a progress hook and a cancel hook for ``review``'s
+    preview, which is one page and thrown away if abandoned. A page apply
+    writes is a file somebody keeps, so apply must go on stopping between
+    pages and never inside one — and the way it does that is by not passing
+    either hook. A default is easy to start relying on by accident; this
+    reads the call.
+    """
+    from comictrans import apply as apply_module
+
+    seen: list[dict[str, object]] = []
+    real = apply_module.render_page
+
+    def watched(*args: object, **kwargs: object) -> object:
+        seen.append(dict(kwargs))
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(apply_module, "render_page", watched)
+
+    _apply(project)
+
+    assert seen, "a page was rendered"
+    for call in seen:
+        assert "on_region" not in call
+        assert "should_cancel" not in call

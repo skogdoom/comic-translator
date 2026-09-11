@@ -35,7 +35,8 @@ from ..config import (
 )
 from ..imaging import load_page
 from ..model import Plan
-from ..render import RegionOutcome, render_page
+from ..progress import CancelCheck
+from ..render import RegionOutcome, RegionProgress, render_page
 from .document import PlanDocument
 
 
@@ -117,7 +118,14 @@ def source_path(plan_path: Path, image: str) -> Path:
     return (plan_path.parent / image).resolve()
 
 
-def render_preview(plan: Plan, plan_path: Path, image: str) -> Preview:
+def render_preview(
+    plan: Plan,
+    plan_path: Path,
+    image: str,
+    *,
+    on_region: RegionProgress | None = None,
+    should_cancel: CancelCheck | None = None,
+) -> Preview:
     """Render one page as ``apply`` would, without writing anything anywhere.
 
     The source image is opened read-only through the same ``load_page`` apply
@@ -127,8 +135,19 @@ def render_preview(plan: Plan, plan_path: Path, image: str) -> Preview:
     Runs on a worker thread, so everything it needs arrives frozen: a
     ``Plan``, which is immutable, and the path its images are resolved
     against. Nothing it touches can be edited while it runs.
+
+    Raises :class:`RenderCancelled` if ``should_cancel`` says so part-way
+    through. Nothing is written either way, so an abandoned preview leaves
+    exactly what a finished one does: nothing.
     """
     page = load_page(source_path(plan_path, image))
     styles = resolve_styles(plan, cli_font=None)
-    rendered, outcomes = render_page(page, plan.regions_for(image), styles, apply_config_for(plan))
+    rendered, outcomes = render_page(
+        page,
+        plan.regions_for(image),
+        styles,
+        apply_config_for(plan),
+        on_region=on_region,
+        should_cancel=should_cancel,
+    )
     return Preview(rendered, tuple(outcomes))

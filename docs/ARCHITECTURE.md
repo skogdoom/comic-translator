@@ -740,23 +740,54 @@ nothing to lock and nothing to half-read. It is the rule `RenderJob` already
 followed; the preview joins it, which is why `render_preview` stopped taking
 a `PlanDocument`.
 
-**Nothing cancels a preview, and it does not pretend to.** The other two
-jobs stop between pages, which is a real place to stop because more pages
-are coming. A preview is one page: `render_page` has no seam inside it, and
-cutting one for the window's convenience would be a change to the pipeline
-every `apply` run pays for. So a preview nobody wants any more is left to
-finish into nothing, and the window's job is to recognise the result on
-arrival and drop it.
+**A preview stops inside the page; nothing else does.** The other two jobs
+stop between pages, because a chapter has more coming. A preview is one page,
+so stopping at all means stopping part-way through one — which is safe here
+and nowhere else: what is abandoned is thrown away rather than written, where
+a half-written page would be a file somebody keeps.
 
-What makes a result unwanted is not that the plan has moved on. A preview
-answers the plan as it stood when it was asked for, and an edit made while
-it rendered makes the answer older than the question rather than wrong —
-which is exactly what used to happen anyway, since the edit could not have
-been made during a render that blocked. What makes it unwanted is that
-nobody is waiting: the page changed, another plan is open, the overlay is
-back, or a newer preview was asked for. All four clear or replace
-`_preview_wanted`, and `_on_preview_ready` shows only a result whose request
-still matches it.
+So `render_page` grew two optional hooks, `on_region` and `should_cancel`,
+and **both are off by default**. `apply` passes neither, which is the whole
+of how its promise survives: a cancelled `apply` goes on stopping between
+pages, and every page it wrote is one a complete run would have written. That
+is not left to a default — a test watches the call apply makes and asserts
+neither keyword is in it, because a default is an easy thing to start
+relying on by accident.
+
+Both hooks live in the erase loop, and that is measured. On an
+eleven-megapixel page with ten regions the three loops in `render_page` cost
+0.099s, 1.280s and 0.002s per region: erasing is 80% of the whole preview,
+and the other two are below the granularity anyone could see on a bar.
+Cancelling is checked in the planning loop as well, which costs one call per
+region and takes the worst case from "the whole page" down to "the region
+being erased". Never *inside* an erase: a half-erased region would be a
+balloon with part of it repainted, which is the one thing this must not
+produce even for something thrown away.
+
+`should_cancel` raises `RenderCancelled` rather than returning a sentinel. A
+half-erased page is not a result, and a return value saying so would have to
+be handled by every caller including the two that can never see it. It is
+deliberately not a `ComictransError`: nothing failed, so the `RunJob`
+machinery that turns one of those into a red message never sees it, and
+`PreviewJob` completes with `None` instead.
+
+Being unwanted and being stopped are two different things, and the window
+does both. What makes a result unwanted is not that the plan has moved on: a
+preview answers the plan as it stood when it was asked for, and an edit made
+while it rendered makes the answer older than the question rather than wrong
+— which is what used to happen anyway, since the edit could not have been
+made during a render that blocked. What makes it unwanted is that nobody is
+waiting: the page changed, another plan is open, the overlay is back, or a
+newer preview was asked for. All four clear or replace `_preview_wanted`, and
+`_on_preview_ready` shows only a result whose request still matches it.
+
+The first three also cancel the thread, because there is nothing to wait for.
+The fourth does not: a superseded request wants the *next* render, and
+stopping the current one only to start another immediately would throw away
+whatever it had already erased. Asking is not the same as having stopped
+either — the check is between regions, so the thread runs on for up to one
+erase and its result lands in a handler that no longer has anything to match
+it against.
 
 Matching on the request rather than on a counter buys one thing for free:
 two presses with nothing changed in between produce equal requests, so the
@@ -768,8 +799,7 @@ remembered, not started; the running job's `finished` starts it. That keeps
 the peak at one render's worth of memory rather than two, which on the
 numbers below is the difference worth having.
 
-**The indeterminate bar is the first animation this window could honestly
-have.** While the render blocked, the event loop was not turning: the status
+**The bar is the first animation this window could honestly have.** While the render blocked, the event loop was not turning: the status
 bar had to be repainted by hand to get one message onto the screen, and a
 spinner would have been a still picture of a spinner. With the render on a
 worker thread the loop turns throughout, so `busy_bar.py` shows a
@@ -777,9 +807,18 @@ worker thread the loop turns throughout, so `busy_bar.py` shows a
 its own timer — beside the status bar's message for as long as a render is
 in flight.
 
-No number, because there is none: a preview is one page, so a percentage
-would have to be invented. The run panel's bar counts pages and is a
-different thing for a different job.
+It starts indeterminate and becomes determinate, which is the shape of what
+is actually known: a preview has to open the page and plan its regions before
+it can say how many there are to erase. Until the first count arrives the
+only true statement is *something is happening*; from then on there is a real
+fraction and it shows it. `set_busy` puts it back to waiting on the way in,
+or the next preview would open on the last one's finished bar.
+
+The fraction counts regions erased, reusing `RunJob.progressed` — the run
+panel's own signal, carrying regions here instead of pages. That the unit is
+regions-erased is the measurement above, not a guess: a bar following the
+80% follows the wait. The run panel's bar counts pages and stays a different
+thing for a different job.
 
 It goes down on the thread's `finished`, except on failure, where it goes
 down first. A failure opens a modal alert, which sits there for as long as it
