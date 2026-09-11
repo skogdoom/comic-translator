@@ -33,16 +33,22 @@ nothing else is.
 
 ## Status
 
-Milestones 1, 2 and 4 are implemented: `extract` writes a plan file, `apply`
-renders translated pages from it, and `review` opens a plan file in a GUI to
-check both. Milestone 3 (CBZ/PDF input) is not started.
+**1.0.0.** All three passes are here and in use: `extract` writes a plan file,
+`apply` renders translated pages from it, and `review` opens a plan beside the
+pages it describes. `CHANGELOG.md` says what a release means here — there is no
+download, and the reason is in the first paragraph.
 
-`docs/ROADMAP.md` covers what is planned and not yet built, in the order it
-is worth building.
+Not in it: archive formats. A chapter is a folder of images going in and a
+folder of images coming out; CBZ, CBR and PDF are neither read nor written.
+`docs/ROADMAP.md` covers that and everything else planned, in the order it is
+worth building, and `known-bugs.md` records what is known to be wrong and left
+alone on purpose.
 
 ## Requirements
 
-- macOS on Apple Silicon, Python 3.12
+- macOS on Apple Silicon, Python 3.12 — pinned in `.python-version`, since
+  that is the version the suite runs on and the one an application bundle
+  would carry
 - Apple Vision for OCR, via pyobjc (installed automatically on macOS)
 - Tesseract as an optional fallback: `uv sync --extra tesseract` plus a
   `tesseract` binary with language data for your source language
@@ -87,6 +93,12 @@ Build from a zip and the application will refuse to open and look broken.
 The build only works on macOS: PyInstaller bundles the interpreter and
 libraries of the machine it runs on and does not cross-compile. Anywhere else
 the script says so and stops.
+
+It bundles the *interpreter* too, which is why `.python-version` pins 3.12:
+`requires-python` is only a floor, so on a Mac with a newer Python installed
+`uv` will happily build an application running one this project's tests have
+never executed a line on. Override the pin if you want to — the build says so
+rather than refusing.
 
 ## extract
 
@@ -488,7 +500,7 @@ layout, the preferences below, and that list. All three live in the
 application's own settings rather than in your plans, and each can be
 cleared without disturbing the others.
 
-**Settings…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere — in the application
+**Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere — in the application
 menu on macOS, under Edit elsewhere) sets what a
 new run starts from: the language pair, OCR languages and recogniser a new
 plan is written with, a font to record in its header, and the output
@@ -503,7 +515,7 @@ none of them is written into a plan that exists. A default font that quietly
 won over a plan's header would mean the same plan renders differently on two
 machines, and re-runnability — edit a translation, run it again, and only
 that text changes — is the property the two passes exist to have. Edit >
-Plan Header changes *this* plan; Settings decides what a *new* one starts
+Plan Header changes *this* plan; Preferences decides what a *new* one starts
 from.
 
 Fields write through as you edit them, so there is nothing to apply and
@@ -598,7 +610,7 @@ Comments you add are preserved.
 
 ```yaml
 version: 3
-generator: comictrans 0.1.0
+generator: comictrans 1.0.0
 created: 2026-09-06T19:22:04Z
 source_language: it
 target_language: en

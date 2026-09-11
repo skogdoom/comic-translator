@@ -51,16 +51,27 @@ class Library:
 
 
 def package_version() -> str:
-    """The version of comictrans, from the installed distribution.
+    """The version of comictrans, from the module that defines it.
 
-    Falls back to ``comictrans.__version__`` when there is no distribution to
-    ask — running straight from a source tree that was never installed. The
-    two cannot disagree: hatch reads the version out of that same module.
+    Not from the installed distribution, which is a *copy* made when the
+    package was installed and can be older than the code beside it. This
+    asked the metadata first until an application bundle shipped reporting
+    0.1.0 while the same build's crash log banner — which reads
+    ``__version__`` — said 1.0.0. Reproduced afterwards in three lines: edit
+    ``__version__``, import without reinstalling, and the two disagree.
+
+    An editable install is where it bites. Hatch derives the distribution's
+    version from this module at install time, so the copy is right when it is
+    made and stale from the next edit until something reinstalls; a build
+    that happens in between carries the stale one into the bundle, where
+    there is nothing to reinstall it.
+
+    There is no case the other way round. The metadata is derived from this
+    string, so it is never more current than the string, and the About box
+    should not be the only place in the application reporting a different
+    version from the log.
     """
-    try:
-        return version(DISTRIBUTION)
-    except PackageNotFoundError:
-        return __version__
+    return __version__
 
 
 def _field(name: str, default: str) -> str:

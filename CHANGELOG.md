@@ -1,0 +1,108 @@
+# Changelog
+
+Release notes, so that what changed between two versions lives somewhere
+other than `git log`. Newest first.
+
+What a release *is* here is unusual enough to say once, at the top. There is
+no download. The bundle `tools/build_app.py` produces is unsigned — no
+Developer ID, no notarisation, no stapling — so Gatekeeper quarantines it on
+any machine but the one that built it. A release is therefore the repository
+at a tag, a documented build command, and an application each person makes
+for themselves. See **Build the application** in `README.md`.
+
+## 1.0.0 — 2026-09-11
+
+The first release. Nothing before this was tagged, so this is the whole tool
+rather than a list of changes.
+
+### What it does
+
+Translate scanned comic pages from one language into another in two passes,
+with the translation done by hand in between.
+
+`extract` reads a folder of pages, finds the lettering, and writes a plan
+file: one entry per region, carrying the outline it traced, the fill and text
+colours it read off the page, and the text it recognised. It writes no
+images.
+
+You then translate — in an editor, or in `review`, which opens the plan
+beside the pages it describes and lets you fix an outline, draw one that was
+missed, merge two tracings of the same balloon, and see a real render of the
+page before committing to one.
+
+`apply` draws the plan onto copies of your pages. Every decision it makes
+comes from the plan file, so changing one translation and running it again
+changes that text and nothing else.
+
+### What it will not do
+
+These are the shape of the tool rather than things not got to yet.
+
+- **It never writes to your pages.** They are opened read-only. The only
+  things ever written are the plan file, `--debug-dir`, and `--output` — and
+  the last two refuse to write inside the source tree, with no override.
+- **It makes no network calls, anywhere.** Translation is manual by design,
+  and neither pass, nor the window, nor the crash log, reaches anything.
+- **It never translates for you.** No machine translation is called or
+  bundled.
+- **It never invents a font.** A plan names a family; if it cannot be
+  resolved with a real bold face, the region is left alone and named in the
+  report rather than rendered in something else. Emphasis is bold, never
+  synthesised, and never the oblique face.
+- **A region it cannot render is left completely alone** — not erased, not
+  half-drawn — and named in the report.
+
+### Requirements
+
+macOS on Apple Silicon and Python 3.12. Apple Vision does the OCR, through
+pyobjc, and installs automatically on macOS; Tesseract is an optional
+fallback and is noticeably worse on comic lettering. The `review` window
+needs PySide6, which is an extra rather than a requirement — the command line
+works without it.
+
+Most of the tool is platform-independent and its test suite runs anywhere.
+The OCR and the application bundle are not.
+
+### The plan file
+
+Version 3. The reader also accepts versions 1 and 2 and upgrades them on the
+way in, so a plan written by an earlier build opens with its translations
+intact. It writes version 3, so opening and saving an older plan moves it
+forward.
+
+The format is YAML with a stable key order, and the comments you add to it
+are preserved. It is meant to be read, edited by hand, diffed and handed to
+somebody else; the window is one way to edit it and not a privileged one.
+
+### Known limitations
+
+Every one of these has been found, reproduced and measured, and then left
+alone deliberately, because fixing it needs a decision rather than a patch.
+`known-bugs.md` carries the measurements and the reasoning; this is the
+summary.
+
+- **Re-wrapping turns the source's soft hyphens into word breaks** — a
+  hyphenated line break in the recognised text renders as two words. Only
+  visible while the seeded source text is still in place; a real translation
+  replaces it.
+- **Erase only reaches ink inside the polygon** — original lettering that
+  falls outside a region's outline survives and the translation is drawn over
+  it. Mostly a Tesseract problem: Apple Vision read the measured case in
+  full.
+- **A solid caption box is detected as a padded text box, not as the box** —
+  a filled caption box comes back as an approximate polygon covering about
+  60% of its width. Nothing is damaged; the typesetter simply works with less
+  room than the art offers.
+- **A long region id sets a floor under the Region panel's width** — region
+  ids are built from the page filename, and a long one stops the panel from
+  being made narrow. Space only: nothing is hidden and no plan data is
+  affected.
+
+### Not in this release
+
+Two improvements were deliberately held back rather than rushed in front of
+it. Rendering the preview on a worker thread would put threading into the one
+code path that has produced a segfault in this project, for a benefit the
+wait cursor already largely delivers. And localisation would freeze every
+string in the interface just as the milestones after this one start adding
+more. Both are in `docs/ROADMAP.md`.
