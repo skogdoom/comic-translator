@@ -1620,13 +1620,29 @@ Info.plist is Apple's documented key for an application that loads its own
 strings — which is exactly this one — and with it set, and both catalogues
 inside the bundle, that panel went on saying the application supports no
 additional languages. Observed on macOS and not reproducible from here, so
-`tools/build_app.py` writes a `<language>.lproj` directory per language into
-`Contents/Resources` as well, each holding an `InfoPlist.strings` naming the
-application, which is what every application that does offer the choice
-actually ships. Both lists come from `translations.available()` rather than
-being written out, so a catalogue added and the build forgotten cannot
-happen, and the build reads its own Info.plist back and says so if the key
-did not survive — nothing else would notice.
+there is a `<language>.lproj` directory per language too, each holding an
+`InfoPlist.strings` naming the application, which is what every application
+that does offer the choice actually ships.
+
+**They are collected into the bundle rather than added to it.**
+`build_app.py` writes them under `build/`, the spec picks them up as data
+with `sv.lproj` as their destination, and PyInstaller puts them where macOS
+looks. Writing them into `Contents/Resources` after the build would have been
+shorter and wrong: PyInstaller signs the bundle and then verifies its own
+signature, so anything added afterwards breaks the seal it just made — a
+worse problem than the one being fixed, and a silent one until something
+checks.
+
+Both lists come from `translations.available()` rather than being written
+out, so a catalogue added and the build forgotten cannot happen, and the
+build reads the finished bundle back for both — nothing else would notice
+either being absent. It also asks Launch Services to look again
+(`lsregister -f`, which lives at a fixed path inside a framework and has
+never been on `PATH`): macOS answers that panel from its own database rather
+than from the bundle in front of it, so a bundle rebuilt in place can go on
+answering with what the previous build said. That is the other half of why
+the panel can be wrong, and the half no amount of getting the bundle right
+would fix.
 
 **The language preference takes effect at the next start, and the window says
 so twice: under the field before the choice, and in an alert after it.** Retranslating a running window means re-setting every

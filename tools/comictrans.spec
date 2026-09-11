@@ -27,6 +27,7 @@ not in the tree.
 """
 
 import os
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
@@ -80,6 +81,30 @@ than a path written here, because this spec must not be runnable without the
 step that makes the thing it names: a missing icon is not an error PyInstaller
 reports, it is Python's default icon on somebody's Dock."""
 
+LPROJ = os.environ["COMICTRANS_LPROJ"]
+"""Where build_app.py left the ``.lproj`` directories, for the same reason.
+
+They go in as data rather than being written into the bundle afterwards
+because PyInstaller signs the bundle and then verifies it: anything added to
+``Contents/Resources`` after that breaks the seal it just made. Collected
+here, they are sealed with everything else.
+"""
+
+
+def localizations():
+    """``(source, destination)`` for each ``.lproj``, as PyInstaller takes it.
+
+    A destination of ``sv.lproj`` lands in ``Contents/Resources/sv.lproj``,
+    which is where macOS looks to decide whether this application can be
+    given a language of its own. ``CFBundleLocalizations`` below says the
+    same thing in the Info.plist and did not, on its own, move System
+    Settings — so both are here.
+    """
+    return [
+        (str(strings), strings.parent.name)
+        for strings in sorted(Path(LPROJ).glob("*.lproj/InfoPlist.strings"))
+    ]
+
 analysis = Analysis(  # noqa: F821 - PyInstaller injects this
     ["app_entry.py"],
     pathex=[],
@@ -88,6 +113,7 @@ analysis = Analysis(  # noqa: F821 - PyInstaller injects this
         collect_data_files("comictrans")
         + copy_metadata("comictrans", recursive=True)
         + extra_metadata()
+        + localizations()
     ),
     hiddenimports=[],
     hookspath=[],

@@ -577,7 +577,10 @@ in this order:
 - The machine's own language settings, which on macOS includes the language
   given to this application in System Settings > General > Language & Region.
   The built bundle declares what it is translated into, so it appears there
-  rather than as "doesn't support additional languages".
+  rather than as "doesn't support additional languages". If it says that
+  anyway, macOS is answering from its own database rather than from the
+  bundle: the build asks it to look again, and the command it uses is printed
+  if it could not.
 
 A language named in the first two and not translated falls back to English
 rather than to the next place down: naming one is an answer, and answering a

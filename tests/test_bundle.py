@@ -18,6 +18,7 @@ to build.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -158,8 +159,13 @@ class _Recorder:
         return _Recorder(f"{self._name}.{attribute}", self._seen)
 
 
-def _run_spec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """Execute the spec with the bundler stubbed, and return its arguments."""
+def _run_spec(monkeypatch: pytest.MonkeyPatch, lproj: Path | None = None) -> dict[str, Any]:
+    """Execute the spec with the bundler stubbed, and return its arguments.
+
+    Both paths the spec reads from the environment are set here: a fake one
+    for the icon, and a directory with nothing in it for the localizations,
+    which the one test that cares about them overrides.
+    """
     hooks = types.ModuleType("PyInstaller.utils.hooks")
 
     def collect_data_files(package: str) -> list[tuple[str, str]]:
@@ -180,6 +186,7 @@ def _run_spec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setitem(sys.modules, "PyInstaller.utils", utils)
     monkeypatch.setitem(sys.modules, "PyInstaller.utils.hooks", hooks)
     monkeypatch.setenv("COMICTRANS_ICNS", "/somewhere/Comic Translator.icns")
+    monkeypatch.setenv("COMICTRANS_LPROJ", str(lproj or "/somewhere/lproj"))
 
     seen: dict[str, Any] = {}
     namespace: dict[str, Any] = {
@@ -243,18 +250,84 @@ def test_a_localization_directory_is_written_for_every_language(tmp_path: Path) 
     of the same fact and neither is a workaround for the other; this one is
     what every application offering the choice actually ships.
     """
-    bundle = tmp_path / "Comic Translator.app"
     codes = build_app.languages()
 
-    written = build_app.localize(bundle, codes)
+    written = build_app.write_localizations(tmp_path, codes)
 
     assert [path.parent.name for path in written] == [f"{code}.lproj" for code in codes]
     for path in written:
         assert path.name == "InfoPlist.strings"
-        assert path.parent.parent == bundle / "Contents" / "Resources"
         # Not an empty directory: it carries the one localized resource this
-        # application has, so nothing that copies or archives it drops it.
+        # application has, and PyInstaller collects files rather than folders.
         assert "Comic Translator" in path.read_text(encoding="utf-8")
+
+
+def test_the_localizations_are_collected_rather_than_added_afterwards(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Into the bundle before it is signed, not into it after.
+
+    PyInstaller signs the bundle and then verifies its own signature, so a
+    directory dropped into ``Contents/Resources`` afterwards breaks the seal
+    it just made — a worse problem than the one being fixed, and a silent one
+    until something checks.
+
+    A destination of ``sv.lproj`` is what puts the directory at
+    ``Contents/Resources/sv.lproj``, which is where macOS looks.
+    """
+    build_app.write_localizations(tmp_path, ("en", "sv"))
+
+    datas = _run_spec(monkeypatch, tmp_path)["Analysis"]["datas"]
+
+    carried = {destination: source for source, destination in datas}
+    assert set(carried) >= {"en.lproj", "sv.lproj"}
+    for destination, source in carried.items():
+        if destination.endswith(".lproj"):
+            assert Path(source).name == "InfoPlist.strings"
+
+
+def test_the_built_bundle_is_read_back_for_both_declarations(tmp_path: Path) -> None:
+    """Neither one is visible from inside the application when it is missing."""
+    bundle = tmp_path / "Comic Translator.app"
+    resources = bundle / "Contents" / "Resources"
+
+    assert build_app.bundled_localizations(bundle) == (), "not built at all"
+
+    resources.mkdir(parents=True)
+    assert build_app.bundled_localizations(bundle) == (), "built without them"
+
+    for code in ("sv", "en"):
+        (resources / f"{code}.lproj").mkdir()
+    assert build_app.bundled_localizations(bundle) == ("en", "sv")
+
+
+def test_launch_services_is_asked_to_look_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """macOS answers that panel from its own database, not from the bundle.
+
+    So a bundle rebuilt in place can keep answering with what the last build
+    said. Best effort — ``lsregister`` lives at a fixed path inside a
+    framework and has never been on ``PATH``, so a macOS that moves it costs
+    a refresh rather than a build.
+    """
+    bundle = tmp_path / "Comic Translator.app"
+    monkeypatch.setattr(build_app, "LSREGISTER", tmp_path / "not-here")
+    assert build_app.register(bundle) is False, "nothing to run, and not a failure"
+
+    tool = tmp_path / "lsregister"
+    tool.touch()
+    monkeypatch.setattr(build_app, "LSREGISTER", tool)
+    ran: list[list[str]] = []
+
+    def record(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        ran.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(build_app.subprocess, "run", record)
+
+    assert build_app.register(bundle) is True
+    assert ran == [[str(tool), "-f", str(bundle)]]
 
 
 def test_the_languages_written_are_the_catalogues_that_ship() -> None:
