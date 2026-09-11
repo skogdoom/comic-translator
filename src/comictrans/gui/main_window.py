@@ -16,7 +16,6 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
@@ -378,12 +377,20 @@ class MainWindow(QMainWindow):
         # is Cmd+, there and Ctrl+, everywhere else, so the shortcut is not
         # spelled out either.
         #
-        # "Settings…", which is what macOS has called it since 13. Whether
-        # the merged item on a Mac shows this text or Qt's own is not
-        # something this machine can answer — the About item does not — but
-        # the two answers are the old name and the new one, so the worst
-        # this can do is leave that item exactly as it is today.
-        self._preferences_action = QAction("&Settings…", self)
+        # "Preferences…", not "Settings…", which is what the HIG has asked
+        # for since macOS 13. It was renamed and then changed back, on
+        # evidence: the merged item on a Mac reads "Preferences" whatever
+        # this string says — seen, on a build whose text was "&Settings…".
+        # Qt titles the three items it moves into the application menu
+        # itself, the same way About takes the application name rather than
+        # the action's text.
+        #
+        # So the choice is not between two names in that menu; it is between
+        # matching it here and not. A command called Settings that opens a
+        # window called Preferences is the thing 4.24 set out to stop, so
+        # both say what the platform says. Reaching the HIG name needs a
+        # translator over Qt's own catalogue, which belongs to 4.9.
+        self._preferences_action = QAction("&Preferences…", self)
         self._preferences_action.setMenuRole(QAction.MenuRole.PreferencesRole)
         self._preferences_action.setShortcut(QKeySequence.StandardKey.Preferences)
         self._preferences_action.triggered.connect(self._on_preferences)
@@ -1506,7 +1513,10 @@ class MainWindow(QMainWindow):
             parent = path.parent.name
             action = QAction(f"{parent}/{path.name}" if parent else path.name, self)
             action.setToolTip(str(path))
-            action.triggered.connect(partial(self._on_open_recent, path))
+            # The path rides on the action rather than in a partial bound to
+            # this window — see _on_recent_triggered for why that mattered.
+            action.setData(str(path))
+            action.triggered.connect(self._on_recent_triggered)
             self._recent_menu.addAction(action)
         self._recent_menu.setEnabled(bool(paths))
         if not paths:
@@ -1515,6 +1525,38 @@ class MainWindow(QMainWindow):
         clear_action = QAction(CLEAR_RECENT_TEXT, self)
         clear_action.triggered.connect(self._on_clear_recent)
         self._recent_menu.addAction(clear_action)
+
+    def _on_recent_triggered(self) -> None:
+        """Open whichever recent entry was clicked, read off the action itself.
+
+        This used to be ``partial(self._on_open_recent, path)``, and the
+        partial is what a crash trace from a built application ended in. The
+        chain: the ``QApplication`` is destroyed at exit, which destroys this
+        window, which deletes its child actions; destroying an action cleans
+        its connections; cleaning this one frees the partial, which frees the
+        bound method inside it, which drops the last reference to this
+        window's Python wrapper — while its C++ object is part-way through
+        the destructor the whole chain is running inside. shiboken then frees
+        what is already being freed. A segfault, not an exception.
+
+        A bound method connected on its own does not do that: PySide gives
+        the connection the receiving ``QObject`` as its context, so Qt breaks
+        it when that object goes rather than leaving a Python callable to be
+        freed during the teardown. So the per-path argument the partial
+        existed to carry moves onto the action, where ``QAction.data`` holds
+        it as a plain string and nothing holds a reference to anything.
+
+        It is the same shape as the canvas segfault this project has already
+        had: a Python wrapper outliving its C++ object, where *dropping* it
+        is what kills the process. Not reproduced here — six runs of the real
+        window left alive at interpreter exit under the offscreen platform
+        exit cleanly, and the crash was seen once on macOS, on an interpreter
+        this suite has never run. So this removes the object the trace died
+        on; it does not prove the race is gone.
+        """
+        action = self.sender()
+        if isinstance(action, QAction) and isinstance(action.data(), str):
+            self._on_open_recent(Path(action.data()))
 
     def _on_open_recent(self, path: Path) -> None:
         """Open a listed plan, and drop it from the list if it has gone.

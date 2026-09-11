@@ -852,6 +852,28 @@ what is still held at the moment `clear()` is called.
 back to Python and leaves the wrapper valid, which is why `refresh_regions`
 and `_refresh_handles` can use it freely.
 
+**The same shape turned up again at teardown, and it is why no signal here is
+connected to a `partial` or a lambda over `self`.** Quitting a built
+application segfaulted once: the `QApplication` destructor deletes the
+window, which deletes its child `QAction`s, and destroying an action cleans
+its connections — which freed a `functools.partial` holding a bound method of
+the window, dropping the last reference to a wrapper whose C++ object was
+part-way through the destructor the whole chain was running inside. Again the
+*drop* is what kills the process, not a read.
+
+A bound method connected on its own does not do it: PySide gives such a
+connection the receiving `QObject` as its context, so Qt breaks it when that
+object goes rather than leaving a Python callable to be freed during
+teardown. So the recent menu's per-path argument, which is what the partial
+existed to carry, rides on the action instead — `QAction.setData` holds it as
+a plain string, and nothing holds a reference to anything.
+
+Recorded as reasoning rather than as a measurement: it has been seen once, on
+a Mac, on Python 3.14, and it does not reproduce here — six runs of the real
+window left alive at interpreter exit under the offscreen platform exit
+cleanly. What was done removes the object the trace died on. It does not
+prove the race is gone.
+
 **One canvas mode at a time.** A click on the page means different things —
 select a region, take hold of a corner, place a corner, take a colour — and
 they contradict each other, so the canvas holds a single `CanvasMode` rather
@@ -1328,11 +1350,16 @@ translated, and what it costs is the item disappearing from the menu it
 belongs in. A test asserts that the set of actions carrying a merge role is
 exactly those three.
 
-What the merged items are *titled* is Qt's business, not ours: the About item
-reads "About ⟨application name⟩" whatever the action says, which is why
-`gui.app` passes the name as `argv[0]`. Settings is renamed here on the same
-terms — macOS has called it Settings since 13, and if Qt supplies its own
-title anyway the worst that happens is the item stays exactly as it was.
+What the merged items are *titled* is Qt's business, not ours, and that has
+been measured on a real bundle. The About item reads "About ⟨application
+name⟩" whatever the action says, which is why `gui.app` passes the name as
+`argv[0]`. Settings is the same: an action whose text was "&Settings…"
+produced a menu item reading "Preferences". So the HIG name — macOS has
+called it Settings since 13 — is not reachable by naming the action, and the
+action is called Preferences again, along with the window it opens. A command
+whose name does not match the window it opens is the thing this section
+exists to prevent; reaching the newer name needs a translator over Qt's own
+catalogue, which belongs with localisation.
 
 **Cmd+M belongs to the window, and the Window menu was missing.** Qt adds no
 Minimise or Zoom of its own, so a window that does not define them has no

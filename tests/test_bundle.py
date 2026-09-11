@@ -26,6 +26,7 @@ from typing import Any
 import build_app
 import pytest
 
+ROOT = Path(build_app.__file__).resolve().parent.parent
 SPEC = Path(build_app.__file__).parent / "comictrans.spec"
 
 
@@ -43,6 +44,31 @@ def test_a_bundle_is_refused_where_one_cannot_be_built(monkeypatch: pytest.Monke
 def test_a_mac_is_not_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     build_app.check_platform()
+
+
+def test_the_interpreter_the_bundle_would_carry_is_the_tested_one() -> None:
+    """PyInstaller freezes whichever Python builds it, and requires-python is
+    only a floor. On a Mac with a newer one installed `uv` picked 3.14 and the
+    application shipped running an interpreter this suite has never executed a
+    line on. ``.python-version`` is what makes the default the tested one.
+    """
+    pinned = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+    assert pinned == build_app.TESTED_PYTHON
+    running = f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert running == pinned, "the suite is running on something else than the pin"
+
+
+def test_building_on_an_untested_interpreter_says_so_without_refusing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A newer Python is somebody's decision to make, not this script's."""
+    monkeypatch.setattr(build_app, "TESTED_PYTHON", "3.1")
+
+    build_app.check_interpreter()
+
+    warning = capsys.readouterr().err
+    assert "3.1" in warning
+    assert "carries the interpreter" in warning
 
 
 def test_the_iconset_is_exactly_the_ten_slots_apple_reads() -> None:

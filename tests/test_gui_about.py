@@ -25,6 +25,21 @@ def test_the_version_has_one_source_of_truth() -> None:
     assert about.package_version() == comictrans.__version__
 
 
+def test_a_stale_installed_copy_of_the_version_does_not_win(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An application bundle shipped saying 0.1.0 while its log said 1.0.0.
+
+    The distribution metadata is a copy hatch makes from ``__version__`` at
+    install time. An editable install leaves it behind from the next edit
+    until something reinstalls, and a build in between carries the stale copy
+    into a bundle, where nothing ever will.
+    """
+    monkeypatch.setattr(about, "version", lambda _name: "0.0.1-from-an-old-install")
+
+    assert about.package_version() == comictrans.__version__
+
+
 def test_the_author_and_licence_come_from_the_package_metadata() -> None:
     assert about.author() == "David Andréasson"
     assert about.licence() == "MIT"

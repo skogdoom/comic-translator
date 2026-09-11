@@ -46,7 +46,9 @@ alone on purpose.
 
 ## Requirements
 
-- macOS on Apple Silicon, Python 3.12
+- macOS on Apple Silicon, Python 3.12 — pinned in `.python-version`, since
+  that is the version the suite runs on and the one an application bundle
+  would carry
 - Apple Vision for OCR, via pyobjc (installed automatically on macOS)
 - Tesseract as an optional fallback: `uv sync --extra tesseract` plus a
   `tesseract` binary with language data for your source language
@@ -91,6 +93,12 @@ Build from a zip and the application will refuse to open and look broken.
 The build only works on macOS: PyInstaller bundles the interpreter and
 libraries of the machine it runs on and does not cross-compile. Anywhere else
 the script says so and stops.
+
+It bundles the *interpreter* too, which is why `.python-version` pins 3.12:
+`requires-python` is only a floor, so on a Mac with a newer Python installed
+`uv` will happily build an application running one this project's tests have
+never executed a line on. Override the pin if you want to — the build says so
+rather than refusing.
 
 ## extract
 
@@ -492,7 +500,7 @@ layout, the preferences below, and that list. All three live in the
 application's own settings rather than in your plans, and each can be
 cleared without disturbing the others.
 
-**Settings…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere — in the application
+**Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere — in the application
 menu on macOS, under Edit elsewhere) sets what a
 new run starts from: the language pair, OCR languages and recogniser a new
 plan is written with, a font to record in its header, and the output
@@ -507,7 +515,7 @@ none of them is written into a plan that exists. A default font that quietly
 won over a plan's header would mean the same plan renders differently on two
 machines, and re-runnability — edit a translation, run it again, and only
 that text changes — is the property the two passes exist to have. Edit >
-Plan Header changes *this* plan; Settings decides what a *new* one starts
+Plan Header changes *this* plan; Preferences decides what a *new* one starts
 from.
 
 Fields write through as you edit them, so there is nothing to apply and

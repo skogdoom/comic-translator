@@ -18,6 +18,15 @@ dependency group, not in the project's requirements, so installing
 ``comictrans`` for the command line does not pull a bundler that will never be
 run.
 
+**The interpreter goes in the bundle, so it is pinned.** PyInstaller freezes
+whichever Python the build environment has, and ``requires-python`` only sets
+a floor: on a Mac with a newer one installed, `uv` picked 3.14 and the
+application shipped running an interpreter this project's suite has never
+executed a line on. ``.python-version`` pins 3.12 so the everyday environment,
+the tests and the bundle are the same one. A crash on quit was seen once on a
+3.14 build and never on 3.12, which is a reason to notice rather than a
+finding — but shipping what is tested needs no finding.
+
 This script does the two things the spec cannot: it renders the icon, because
 ``.icns`` holds one image per size rather than one drawing, and it refuses
 early and in plain words on a machine that cannot produce a bundle at all.
@@ -56,6 +65,10 @@ ICON_SLOTS: tuple[tuple[int, int], ...] = (
 """Apple's ten iconset slots, as (points, scale). ``iconutil`` wants exactly
 these names and sizes; anything else it ignores without saying so."""
 
+TESTED_PYTHON = "3.12"
+"""What `.python-version` pins and what the suite runs on. The bundle carries
+whichever interpreter builds it, so the two should be the same one."""
+
 SIMPLIFIED_UP_TO = 32
 """The largest slot the derived drawing is used for, in **points**.
 
@@ -93,6 +106,26 @@ def check_platform() -> None:
             f"a macOS application bundle can only be built on macOS, and this is "
             f"{sys.platform}. PyInstaller bundles the interpreter and libraries of "
             "the machine it runs on; it does not cross-compile."
+        )
+
+
+def check_interpreter() -> None:
+    """Warn if the interpreter about to be frozen is not the tested one.
+
+    Not a refusal: a newer Python is a thing somebody may deliberately want to
+    try, and this script has no business forbidding it. But the bundle carries
+    whichever interpreter is running it, and shipping one the suite has never
+    executed a line on should be a decision rather than an accident —
+    ``.python-version`` makes the default the tested one, and this says so
+    when something has overridden it.
+    """
+    running = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if running != TESTED_PYTHON:
+        print(
+            f"warning: building with Python {running}, and this project's suite "
+            f"runs on {TESTED_PYTHON}. The bundle carries the interpreter that "
+            "builds it. Delete .python-version, or keep it, deliberately.",
+            file=sys.stderr,
         )
 
 
@@ -196,6 +229,7 @@ def build_bundle() -> Path:
 
 def main() -> int:
     check_platform()
+    check_interpreter()
     check_tools()
     print("rendering the icon…")
     build_icns(build_iconset(ROOT / "build"), ICNS)

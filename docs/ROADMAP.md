@@ -113,44 +113,62 @@ the time it landed, the harness was a base class and one `work()` method.
 
 ## 11 The macOS pass, on the built application
 
-**The mechanical half of the first release has shipped.** The version is
-1.0.0, `CHANGELOG.md` holds the release notes — including what a release
-means here, which is not a download — and its known limitations are held to
-`known-bugs.md` by a test so the two cannot part. What is left is the part
-no test can do.
+**Mostly done.** The version, the release notes and the documentation have
+shipped, the application has been built and run on a Mac, and most of what
+could only be seen there has been. What is left is two items and a race.
 
-**Everything below is set from code and has not been seen working.** Not
-because it is doubtful, but because a machine without macOS cannot produce
-evidence about where macOS puts a menu item, and this project does not record
-an argument as a measurement. The bundle itself has been built and run on a
-Mac; these are the details inside it.
+**Confirmed on a built bundle.** The application menu reads "About Comic
+Translator" / "Hide" / "Quit" rather than `python3` or `comictrans`, which is
+what `CFBundleName` was a release blocker for. About and Settings appear in
+that menu rather than under Help and Edit. Cmd+Q, Cmd+, and Cmd+Shift+Z
+resolve, which they do not under the offscreen platform the suite runs on.
+Cmd+M minimises the window rather than merging two regions.
 
-- The application menu says "About Comic Translator", "Hide Comic
-  Translator", "Quit Comic Translator" — not `python3`, and not
-  `comictrans`. This is what `CFBundleName` is for and the reason 4.10 was
-  a release blocker.
-- About and Settings appear in that menu rather than under Help and Edit,
-  which is what `AboutRole` and `PreferencesRole` are for.
-- Whether the merged Settings item shows the text it is given or Qt's own.
-  The About item does not take ours; if Settings does, it reads "Settings…"
-  as macOS 13 and later name it, and if it does not, it reads
-  "Preferences…" and nothing is lost.
-- Cmd+Q, Cmd+, and Cmd+Shift+Z resolve, which they do not under the
-  offscreen platform the suite runs on.
-- Cmd+M minimises the window rather than merging two regions.
-- The Dock icon is the icon, and it is the right drawing at every size the
-  Dock and the Finder ask for — the whole reason there are two drawings and
-  ten slots.
-- The unified title-and-toolbar look, and full screen.
+**Settled, and it changed the code.** The merged Settings item reads
+"Preferences" whatever the action's text says — seen, on a build whose text
+was "&Settings…". Qt titles the items it moves into the application menu
+itself, the same way About takes the application name. So 4.24's rename was
+changed back: a command called Settings that opens a window called
+Preferences is exactly what that milestone set out to stop, and the HIG name
+is unreachable without a translator over Qt's own catalogue, which belongs
+to 4.9.
+
+**Still not looked at.**
+
+- The Dock icon: that it is the icon, and the right drawing at every size the
+  Dock and the Finder ask for. This is the whole reason there are two
+  drawings and ten slots, and none of it has been seen.
 - The toolbar drawings against real dark-mode chrome, rather than against a
-  palette a test set for itself.
-- The guide the Help menu opens, and the alerts, in both appearances.
+  palette a test set for itself. The unified title-and-toolbar look and full
+  screen go with it, as does the guide the Help menu opens and the alerts, in
+  both appearances.
+
+**One crash, seen once.** Quitting the application segfaulted during
+teardown: the `QApplication` destructor deletes the window, which deletes its
+child actions, and cleaning one action's connection freed a
+`functools.partial` holding a bound method of the window — dropping the last
+reference to a wrapper whose C++ object was part-way through the destructor
+the whole chain was running inside. The same shape as the canvas segfault
+this project has already had, where *dropping* a stale wrapper is what kills
+the process.
+
+The partial is gone: the recent menu's per-path argument rides on the action
+now. That removes the object the trace died on and it does not prove the race
+is gone — six runs of the real window left alive at interpreter exit under
+the offscreen platform exit cleanly, so there is nothing here to reproduce it
+with. If it recurs, the next trace decides whether this was the whole of it.
+
+It also surfaced something worth more than the crash: the bundle was running
+**Python 3.14**, because `requires-python` is a floor and `uv` picked the
+newest interpreter the Mac had. The suite has never executed a line on
+anything but 3.12. `.python-version` now pins it, and the build says so when
+something overrides that.
 
 **The suite was never going to defend this part.** What the tests do check is
 that every drawing an action asks for ships, that each renders at every baked
 size, in the colour it was asked for, and that a palette change repaints the
 set — all offscreen, on whatever machine is to hand. None of that is evidence
-about a menu bar.
+about a Dock icon.
 
 **Two things were deliberately left below this line.** 4.22 would replace
 a working wait cursor with threading, in the one code path that has

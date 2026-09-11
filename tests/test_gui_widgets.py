@@ -403,7 +403,7 @@ def test_every_menu_role_macos_moves_is_spelled_out(qapp: object) -> None:
     }
     assert roles == {
         f"&About {about.NAME}": QAction.MenuRole.AboutRole,
-        "&Settings…": QAction.MenuRole.PreferencesRole,
+        "&Preferences…": QAction.MenuRole.PreferencesRole,
         "&Quit": QAction.MenuRole.QuitRole,
     }
 
@@ -1218,6 +1218,53 @@ def test_opening_a_plan_puts_it_on_the_recent_menu(
     assert CLEAR_RECENT_TEXT in labels
     assert window._recent_menu.isEnabled()
     assert window._recent_menu.actions()[0].toolTip() == str(two_page_plan)
+
+
+def test_clicking_a_recent_entry_opens_that_plan_and_not_another(
+    qapp: object, tmp_path: Path, two_page_plan: Path
+) -> None:
+    """Triggered, not called — the path now travels on the action.
+
+    It used to travel in a ``functools.partial`` bound to the window, which
+    is the object a crash trace from a built application ended in: freeing
+    the partial during the window's own destruction dropped the last
+    reference to the window's wrapper while its C++ object was part-way
+    through being destroyed. ``QAction.data`` holds a plain string instead
+    and nothing holds a reference to anything — but the wiring from a click
+    to the right plan is only exercised by actually clicking.
+    """
+    other = tmp_path / "other-chapter"
+    other.mkdir()
+    page = save_page(
+        make_page_array(
+            (600, 260), ART_DARK, [("ellipse", BALLOON_A, BALLOON_WHITE, INK_BLACK, [TEXT_A])]
+        ),
+        other / "page-001.png",
+    )
+    second = other / "comic-plan.yaml"
+    write_plan(
+        make_plan(
+            _header(),
+            (_region("page-001.png", id="page-001-001", order=1),),
+            {"page-001.png": sha256_file(page)},
+        ),
+        second,
+    )
+
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window.open_plan(two_page_plan)
+    window.open_plan(second)
+    window.document = None
+
+    entries = [action for action in window._recent_menu.actions() if action.data()]
+    assert [action.data() for action in entries] == [str(second), str(two_page_plan)], (
+        "most recent first, and each carrying its own path"
+    )
+
+    entries[1].trigger()
+
+    assert window.document is not None
+    assert window.document.path == two_page_plan, "the entry clicked, not the first one"
 
 
 def test_a_window_without_settings_remembers_nothing(qapp: object, two_page_plan: Path) -> None:
