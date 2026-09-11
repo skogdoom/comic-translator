@@ -1015,16 +1015,136 @@ def test_the_busy_bar_goes_back_to_waiting_for_the_next_preview(
     """Or the next one would open on the last one's finished bar."""
     window = MainWindow()
     window.open_plan(two_page_plan)
+    region_id = window.document.ordered_ids()[0]  # type: ignore[union-attr]
     window._on_render_preview()
     _settle_preview(window)
     assert not window._busy.waiting, "the first one left it full"
 
+    # Something has to change, or the second preview is a cache hit and never
+    # starts a thread for the bar to report from.
+    window.document.set_translation(region_id, "SOMETHING ELSE ENTIRELY")  # type: ignore[union-attr]
     _slow_render(monkeypatch)
     window._on_back_to_overlay()
     window._on_render_preview()
 
     assert window._busy.waiting, "the second starts from nothing known"
     _settle_preview(window)
+
+
+def _count_renders(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every page actually rendered, so a cache hit is visible as an absence."""
+    from comictrans.gui import run_job as rj
+
+    rendered: list[str] = []
+    real = rj.render_preview
+
+    def counted(plan: object, plan_path: object, image: str, **kwargs: object) -> object:
+        rendered.append(image)
+        return real(plan, plan_path, image, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(rj, "render_preview", counted)
+    return rendered
+
+
+def test_looking_at_the_same_page_twice_renders_it_once(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gesture this exists for. Measured before it did: three toggles of
+    an eleven-megapixel page with nothing edited cost three renders and 34s.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    rendered = _count_renders(monkeypatch)
+
+    for _ in range(3):
+        window._on_render_preview()
+        _settle_preview(window)
+        assert window._showing_preview
+        window._on_back_to_overlay()
+
+    assert rendered == ["page-001.png"], f"rendered {len(rendered)} times for one page"
+
+
+def test_a_cached_preview_says_what_it_found_like_a_fresh_one(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hit that went quiet about regions that do not fit would be worse than
+    the render it saved. Both routes go through the same display path.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._on_render_preview()
+    _settle_preview(window)
+    fresh = window.statusBar().currentMessage()
+    window._on_back_to_overlay()
+
+    rendered = _count_renders(monkeypatch)
+    window._on_render_preview()
+
+    assert rendered == [], "it came from the cache"
+    assert window._showing_preview, "and it is on screen without waiting for a thread"
+    assert window.statusBar().currentMessage() == fresh
+    assert window._busy.isHidden(), "nothing is running, so nothing says it is"
+
+
+def test_an_edit_makes_the_next_preview_render_again(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure that matters is the quiet one: a stale page shown as current."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    region_id = window.document.ordered_ids()[0]  # type: ignore[union-attr]
+    window._on_render_preview()
+    _settle_preview(window)
+    window._on_back_to_overlay()
+
+    window.document.set_translation(region_id, "A DIFFERENT LINE ENTIRELY")  # type: ignore[union-attr]
+    rendered = _count_renders(monkeypatch)
+    window._on_render_preview()
+    _settle_preview(window)
+
+    assert rendered == ["page-001.png"], "the edit was not skipped over"
+
+
+def test_rescanning_fonts_throws_the_cache_away(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one input the key cannot see.
+
+    ``resolve_styles`` goes to the filesystem for a face, so installing a font
+    changes what a plan renders as without changing the plan: a region that
+    would not resolve before now draws.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._on_render_preview()
+    _settle_preview(window)
+    window._on_back_to_overlay()
+    assert window._preview_cache.holding
+
+    window._on_rescan_fonts()
+
+    assert not window._preview_cache.holding
+    rendered = _count_renders(monkeypatch)
+    window._on_render_preview()
+    _settle_preview(window)
+    assert rendered == ["page-001.png"], "it rendered again rather than trusting the old one"
+
+
+def test_opening_another_plan_does_not_keep_a_page_of_the_last_one(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """33MB for an eleven-megapixel page, held for a plan nobody has open."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._on_render_preview()
+    _settle_preview(window)
+    assert window._preview_cache.holding
+
+    window._on_back_to_overlay()
+    window.open_plan(two_page_plan)
+
+    assert not window._preview_cache.holding
 
 
 def test_the_busy_bar_reports_no_number_because_a_preview_has_none(qapp: object) -> None:

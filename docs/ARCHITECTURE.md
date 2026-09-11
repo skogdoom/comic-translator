@@ -536,6 +536,7 @@ decides, and what draws.
 ```
 document.py   the loaded plan, its edits, and where they save — no Qt
 preview.py     render_page called on the current document — no Qt
+preview_cache.py the last page rendered, and what it was rendered from — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 alerts.py      the two strings an alert has, since macOS drops its title
 qimage.py      the one function that turns a Pillow image into a QPixmap
@@ -835,6 +836,48 @@ timer and the window's cached frame did not follow. Grabbing the bar itself
 gives six distinct frames a quarter-second apart, under the offscreen
 platform, on this machine. The test polls for the first frame that differs
 rather than sleeping for a fixed time, so it usually costs one repaint.
+
+**Looking at the same page twice costs one render.** Toggling between the
+overlay and the rendered page is the common gesture, and it used to cost a
+full render each way: measured, three toggles of an eleven-megapixel page
+with nothing edited between them ran three renders and 34 seconds, none of
+the work new. With `preview_cache.py` the same three toggles run one render
+and 13 seconds, and an edit still costs a render — which is the half worth
+checking, since a cache that swallowed an edit would be worse than no cache.
+
+**One entry, because a retained preview holds its image**: 33MB for a page
+that size, standing, under a render whose transient peak is already 540MB.
+What one entry buys is the gesture that repeats. What more would buy is
+returning to a page previewed earlier and untouched since, which is rarer by
+a long way and costs 33MB a page to hold.
+
+**The key is not the plan, and that is the whole design.** A `PreviewRequest`
+carries the whole `Plan`, so keying on it would miss the moment anything on
+any other page changed — during a review, most edits. What a page's render
+actually reads is its own regions, the header the styles come from, and the
+file on disk; the key is those three and nothing else. A test edits a region
+on another page and asserts the plan changed while the key did not.
+
+The file on disk is in the key as `(mtime_ns, size)`. The plan's hash says
+what a page was when the window opened it, not what it is now, and every
+uncached render re-read the file — a cache that stopped looking would be the
+one place this window went blind to a page being replaced under it. One
+`stat` per lookup, immediately before a call that would otherwise read the
+whole file, is not the per-entry cost that kept a stat out of the recent-files
+menu.
+
+**Fonts are the input the key cannot see**, so Rescan Fonts throws the cache
+away. `resolve_styles` goes to the filesystem for a face, which means
+installing a font changes what a plan renders as without changing the plan: a
+region that would not resolve before now draws. There is nothing in the plan
+to compare, so nothing is kept.
+
+The failure this design is shaped around is the quiet one. Everything else in
+the preview path fails loudly; showing an old render as though it were
+current would not. So the key is exact and dull — no heuristics, no
+"probably unchanged", no expiry — and a hit goes through the same
+`_show_preview` a fresh render does, because a cached page that went quiet
+about regions that do not fit would be worse than the render it saved.
 
 **What a thread does not fix, measured.** A preview of an 11 MP page
 (`tests/fixtures/11-complex_six_panel_page.png`, 2840x3880, ten regions)

@@ -398,6 +398,11 @@ the first has finished and it renders once more from the plan as it now
 stands; press it again with nothing changed and it does not, because that is
 the same question.
 
+Looking at the same page twice costs one render. The last rendered page is
+kept, so toggling back to it is immediate — and any edit that page's render
+would notice throws it away, as does installing a font and rescanning. One
+page is kept, not the chapter: a rendered page is tens of megabytes.
+
 `apply` is untouched by any of this. It stops between pages, never inside
 one, so every page a cancelled run wrote is one a complete run would have
 written.

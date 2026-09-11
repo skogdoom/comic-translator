@@ -66,6 +66,7 @@ from .page_list import PageList
 from .preferences import Preferences, load_preferences, save_preferences
 from .preferences_dialog import PreferencesDialog
 from .preview import Preview
+from .preview_cache import PreviewCache
 from .qimage import to_pixmap
 from .render_dialog import RenderDialog
 from .run_job import (
@@ -145,6 +146,11 @@ class MainWindow(QMainWindow):
 
         self._sampling: str | None = None
         """Which colour field asked for a pixel, while the canvas takes one."""
+
+        self._preview_cache = PreviewCache()
+        """The last page rendered, so that looking at it twice costs one
+        render. One entry, keyed on what a page's render actually reads —
+        see ``preview_cache``."""
 
         self._preview_job: PreviewJob | None = None
         """The preview being rendered, or None.
@@ -790,6 +796,7 @@ class MainWindow(QMainWindow):
             return
 
         self.document = document
+        self._preview_cache.clear()  # a page of the last plan is nobody's now
         self._remember_directory(path)
         self._remember_recent(path)
         self._current_image = None
@@ -1305,6 +1312,18 @@ class MainWindow(QMainWindow):
         if self.document is None or self._current_image is None:
             return
         request = PreviewRequest.of(self.document, self._current_image)
+
+        held = self._preview_cache.get(request)
+        if held is not None:
+            # Nothing has changed that this page's render reads, so the answer
+            # is already here. Anything still rendering is now unwanted: it
+            # would be answering the same question a second time.
+            self._preview_wanted = None
+            if self._preview_job is not None:
+                self._preview_job.cancel()
+            self._show_preview(held, request.image)
+            return
+
         self._preview_wanted = request
         if self._preview_job is not None:
             # One already going. It cannot be stopped, so it is left to
@@ -1382,11 +1401,23 @@ class MainWindow(QMainWindow):
         if job is None or job.request != self._preview_wanted:
             return
         self._preview_wanted = None
+        self._preview_cache.put(job.request, preview)
+        self._show_preview(preview, job.request.image)
+
+    def _show_preview(self, preview: Preview, image: str) -> None:
+        """Put a rendered page on the canvas and say what it found.
+
+        Shared by the two ways one arrives — off the worker thread, or out of
+        the cache — because a page somebody is about to trust has to look the
+        same and report the same whichever it was. A cached hit that quietly
+        skipped the problem count would be the window going quiet about
+        regions that do not fit.
+        """
         # The same page, rendered: hold the reader's place across the swap,
         # which is what makes the overlay and the output comparable.
         self._remember_view()
         self._canvas.show_page(to_pixmap(preview.image))
-        self._canvas.apply_view_state(self._views.get(job.request.image))
+        self._canvas.apply_view_state(self._views.get(image))
         self._showing_preview = True
         self._update_actions_enabled()
         if preview.problems:
@@ -1547,6 +1578,11 @@ class MainWindow(QMainWindow):
         except (OSError, ComictransError) as exc:
             self._report_failure("rescanning fonts", exc)
             return
+        # The one input a cached preview's key cannot see. resolve_styles goes
+        # to the filesystem for a face, so installing a font changes what a
+        # plan renders as without changing the plan — a region that would not
+        # resolve before now draws. Nothing to compare, so nothing is kept.
+        self._preview_cache.clear()
         self.statusBar().showMessage(f"{count} font families available", 5000)
 
     def _on_edit_header(self) -> None:

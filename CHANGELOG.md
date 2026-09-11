@@ -17,6 +17,10 @@ for themselves. See **Build the application** in `README.md`.
   the render between regions rather than waiting it out, and a bar in the
   status bar fills as each region is erased. `apply` is untouched: it still
   stops between pages, never inside one.
+- **Looking at the same page twice costs one render.** The last rendered page
+  is kept and reused while nothing it was rendered from has changed — three
+  toggles of an eleven-megapixel page went from three renders and 34 seconds
+  to one and 13.
 
 ## 1.0.0 — 2026-09-11
 
