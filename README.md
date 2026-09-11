@@ -33,12 +33,16 @@ nothing else is.
 
 ## Status
 
-Milestones 1, 2 and 4 are implemented: `extract` writes a plan file, `apply`
-renders translated pages from it, and `review` opens a plan file in a GUI to
-check both. Milestone 3 (CBZ/PDF input) is not started.
+**1.0.0.** All three passes are here and in use: `extract` writes a plan file,
+`apply` renders translated pages from it, and `review` opens a plan beside the
+pages it describes. `CHANGELOG.md` says what a release means here — there is no
+download, and the reason is in the first paragraph.
 
-`docs/ROADMAP.md` covers what is planned and not yet built, in the order it
-is worth building.
+Not in it: archive formats. A chapter is a folder of images going in and a
+folder of images coming out; CBZ, CBR and PDF are neither read nor written.
+`docs/ROADMAP.md` covers that and everything else planned, in the order it is
+worth building, and `known-bugs.md` records what is known to be wrong and left
+alone on purpose.
 
 ## Requirements
 
@@ -598,7 +602,7 @@ Comments you add are preserved.
 
 ```yaml
 version: 3
-generator: comictrans 0.1.0
+generator: comictrans 1.0.0
 created: 2026-09-06T19:22:04Z
 source_language: it
 target_language: en

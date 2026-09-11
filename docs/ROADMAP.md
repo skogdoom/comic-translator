@@ -22,7 +22,9 @@ at all.
 
 Sizes are relative effort, not estimates. When a milestone ships, delete
 its section and its row from the table, and say so in the Status section of
-`README.md`.
+`README.md`. Now that 1.0.0 is out, it also earns a line in `CHANGELOG.md` —
+under the next version's heading, not its own: the changelog is a record of
+releases, and milestones accumulate into one.
 
 **The numbers are names, not positions.** They were allocated in the order
 the milestones were thought of, and the order worth building them in has
@@ -33,7 +35,7 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| **11** | **First release (1.0.0)** | **S–M** |
+| **11** | **The macOS pass, on the built application** | **S** |
 | 4.22 | Preview off the main thread | M |
 | 4.9 | Localisation | M |
 | 5 | Validate a plan file | S |
@@ -46,8 +48,10 @@ one section can refer to another without ambiguity.
 | 10 | Code quality review | M |
 | 7 | Security audit | M |
 
-Everything above 11 is what a first release needs. Everything below it is
-what comes after one, and none of it should start before 1.0 is out.
+11 is all that is left of the first release: the version, the notes and
+the documentation have shipped, and what remains is looking at the built
+application on a Mac. Everything below it is what comes after a release, and
+none of it should start before that pass is done.
 
 The 4.x numbering says these follow milestone 4, the review GUI. Milestone
 3 is older than all of them and independent of the GUI; it sits at the
@@ -78,12 +82,12 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-**A release changes what "first" means.** Everything above 11 is there
-because a release needs it, not because it is cheap or because it is ready.
-That is why the region tools, the archive formats and the validate command
-all sit below a line they would otherwise be well up: none of them is what
-makes this releasable, and each is easier to get right once there is a
-released version to compare against.
+**A release changes what "first" means.** Everything that was above 11 was
+there because a release needed it, not because it was cheap or ready. That is
+why the region tools, the archive formats and the validate command all sit
+below a line they would otherwise be well up: none of them is what makes this
+releasable, and each is easier to get right once there is a released version
+to compare against.
 
 The test suite was the exception that proved it, and it went first for
 that reason: not a release blocker, but free, invisible to users, and paid
@@ -107,58 +111,46 @@ plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
 
-## 11 First release (1.0.0)
+## 11 The macOS pass, on the built application
 
-The version, the release notes, and the decisions a release forces that a
-development branch is free to leave open.
+**The mechanical half of the first release has shipped.** The version is
+1.0.0, `CHANGELOG.md` holds the release notes — including what a release
+means here, which is not a download — and its known limitations are held to
+`known-bugs.md` by a test so the two cannot part. What is left is the part
+no test can do.
 
-**What changes mechanically.** `__version__` in `src/comictrans/__init__.py`
-is the single source — hatch reads it from there and a test holds the About
-box to it — so 0.1.0 becomes 1.0.0 in one place. `README.md`'s Status
-section still lists which milestones are implemented, which is a sentence
-for a repository rather than for a release. And there is no changelog:
-release notes need somewhere to live that is not `git log`.
+**Everything below is set from code and has not been seen working.** Not
+because it is doubtful, but because a machine without macOS cannot produce
+evidence about where macOS puts a menu item, and this project does not record
+an argument as a measurement. The bundle itself has been built and run on a
+Mac; these are the details inside it.
 
-**What "released" means here, now that it is settled.** Not a download:
-the build produces an unsigned bundle, and an unsigned bundle is quarantined
-by Gatekeeper anywhere but the machine that built it. So 1.0 is the
-repository, a documented build command, and an `.app` that each person
-makes for themselves. The release notes have to say that in the first
-paragraph rather than the last, because someone expecting a disk image will
-otherwise read everything else as a preamble to one.
+- The application menu says "About Comic Translator", "Hide Comic
+  Translator", "Quit Comic Translator" — not `python3`, and not
+  `comictrans`. This is what `CFBundleName` is for and the reason 4.10 was
+  a release blocker.
+- About and Settings appear in that menu rather than under Help and Edit,
+  which is what `AboutRole` and `PreferencesRole` are for.
+- Whether the merged Settings item shows the text it is given or Qt's own.
+  The About item does not take ours; if Settings does, it reads "Settings…"
+  as macOS 13 and later name it, and if it does not, it reads
+  "Preferences…" and nothing is lost.
+- Cmd+Q, Cmd+, and Cmd+Shift+Z resolve, which they do not under the
+  offscreen platform the suite runs on.
+- Cmd+M minimises the window rather than merging two regions.
+- The Dock icon is the icon, and it is the right drawing at every size the
+  Dock and the Finder ask for — the whole reason there are two drawings and
+  ten slots.
+- The unified title-and-toolbar look, and full screen.
+- The toolbar drawings against real dark-mode chrome, rather than against a
+  palette a test set for itself.
+- The guide the Help menu opens, and the alerts, in both appearances.
 
-**What the release notes have to say that the code cannot.**
-`known-bugs.md` holds four entries and every one is a decision rather than
-a defect — that distinction is the file's whole purpose, and a release is
-exactly when somebody else needs it. Whatever ships as "known limitations"
-should be written from that file rather than alongside it, so the two
-cannot drift apart.
-
-**One pass on a Mac, on the built thing rather than the source tree.**
-This is the whole of what the macOS work has left, and it cannot happen any
-earlier, because none of it exists until there is a bundle. Everything on
-this list is set from code and none of it has been seen working: menu bar
-placement and `AboutRole`, whether the merged Settings item takes the text
-it is given or Qt's own, the unified title-and-toolbar look, full screen,
-the Dock icon, and the toolbar drawings against real dark-mode chrome
-rather than a palette a test set for itself.
-
-The build adds its own half of that list, for the same reason. What has run
-on Linux is the analysis — the spec builds, a frozen binary opens the review
-window and writes its log, the resources and the metadata are in the tree.
-What has not run anywhere is `BUNDLE`, which returns immediately off macOS,
-`iconutil`, and Gatekeeper. So: that the application opens from Finder at
-all, that the icon is the icon at every size the Dock and the Finder ask
-for, that `CFBundleName` does put "Comic Translator" in the application menu
-rather than `python3`, and that the quarantine advice about cloning rather
-than downloading is the right advice.
-
-**The suite was never going to defend this part.** What the tests do check
-is that every drawing an action asks for ships, that each renders at every
-baked size, that it comes out in the colour it was asked for, and that a
-palette change repaints the set — all under the offscreen platform, on
-whatever machine is to hand. None of that is evidence about where macOS
-puts a menu item. A release is the honest deadline for looking.
+**The suite was never going to defend this part.** What the tests do check is
+that every drawing an action asks for ships, that each renders at every baked
+size, in the colour it was asked for, and that a palette change repaints the
+set — all offscreen, on whatever machine is to hand. None of that is evidence
+about a menu bar.
 
 **Two things were deliberately left below this line.** 4.22 would replace
 a working wait cursor with threading, in the one code path that has
