@@ -33,10 +33,12 @@ nothing else is.
 
 ## Status
 
-**1.0.0.** All three passes are here and in use: `extract` writes a plan file,
-`apply` renders translated pages from it, and `review` opens a plan beside the
-pages it describes. `CHANGELOG.md` says what a release means here — there is no
-download, and the reason is in the first paragraph.
+**Released: 1.0.0. This tree: 1.1.0.dev0**, which is work since that release
+rather than a version anybody builds from on purpose. All three passes are
+here and in use: `extract` writes a plan file, `apply` renders translated
+pages from it, and `review` opens a plan beside the pages it describes.
+`CHANGELOG.md` says what a release means here — there is no download, and the
+reason is in the first paragraph.
 
 Not in it: archive formats. A chapter is a folder of images going in and a
 folder of images coming out; CBZ, CBR and PDF are neither read nor written.
