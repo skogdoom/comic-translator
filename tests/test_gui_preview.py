@@ -8,7 +8,7 @@ import pytest
 from comictrans.apply import apply_plan
 from comictrans.config import ApplyConfig
 from comictrans.gui.document import PlanDocument
-from comictrans.gui.preview import render_preview
+from comictrans.gui.preview import Preview, PreviewRequest, render_preview
 from comictrans.imaging import load_page
 from comictrans.model import Box, Color, Geometry, PlanHeader, Region, TextCase
 from comictrans.planfile import write_plan
@@ -78,12 +78,52 @@ def document(tmp_path: Path) -> PlanDocument:
     return PlanDocument.open(plan_path)
 
 
+def _preview(document: PlanDocument, image: str) -> Preview:
+    """Render as the window does: from the snapshot, not from the document.
+
+    ``PreviewRequest.of`` is the only place the document is read, and on the
+    window's thread. Going through it here rather than calling
+    ``render_preview`` with hand-assembled arguments is what keeps these
+    tests honest about what a preview actually works from.
+    """
+    request = PreviewRequest.of(document, image)
+    return render_preview(request.plan, request.plan_path, request.image)
+
+
+def test_a_preview_works_from_a_snapshot_that_a_later_edit_cannot_reach(
+    document: PlanDocument, font_dir: Path
+) -> None:
+    """The reason it can run on a worker thread at all.
+
+    The request holds a frozen ``Plan``. Editing the document afterwards
+    builds a new one and leaves the captured plan alone, so a render already
+    under way cannot see half of an edit — no lock, and nothing to get wrong.
+    """
+    region_id = document.regions_for("page-001.png")[0].id
+    request = PreviewRequest.of(document, "page-001.png")
+    captured = request.plan
+
+    document.set_translation(region_id, "EDITED WHILE THE THREAD WAS RUNNING")
+
+    assert request.plan is captured, "the request still holds what it was given"
+    assert captured.regions[0].translation != "EDITED WHILE THE THREAD WAS RUNNING"
+    assert document.plan.regions[0].translation == "EDITED WHILE THE THREAD WAS RUNNING"
+
+    from_snapshot = render_preview(request.plan, request.plan_path, request.image)
+    from_document = _preview(document, "page-001.png")
+
+    assert not np.array_equal(
+        np.asarray(from_snapshot.image.convert("RGB")),
+        np.asarray(from_document.image.convert("RGB")),
+    ), "the snapshot renders what it captured, not what the document says now"
+
+
 def test_render_preview_matches_apply_pixel_for_pixel(
     document: PlanDocument, font_dir: Path
 ) -> None:
     # The whole point of calling render_page directly is that this can never
     # drift from what a real `comictrans apply` of the same plan writes.
-    preview = render_preview(document, "page-001.png")
+    preview = _preview(document, "page-001.png")
     assert preview.image.size == (600, 400)
     assert [o.region_id for o in preview.outcomes] == ["page-001"]
     assert preview.outcomes[0].rendered
@@ -97,10 +137,10 @@ def test_render_preview_matches_apply_pixel_for_pixel(
 
 def test_render_preview_reflects_an_unsaved_edit(document: PlanDocument, font_dir: Path) -> None:
     region_id = document.regions_for("page-001.png")[0].id
-    before = render_preview(document, "page-001.png")
+    before = _preview(document, "page-001.png")
 
     document.set_translation(region_id, "A COMPLETELY DIFFERENT LINE")
-    after = render_preview(document, "page-001.png")
+    after = _preview(document, "page-001.png")
 
     assert not np.array_equal(
         np.asarray(before.image.convert("RGB")), np.asarray(after.image.convert("RGB"))
@@ -110,7 +150,7 @@ def test_render_preview_reflects_an_unsaved_edit(document: PlanDocument, font_di
 def test_render_preview_never_writes_the_plan_file(document: PlanDocument, font_dir: Path) -> None:
     original = document.path.read_text(encoding="utf-8")
     document.set_translation(document.regions_for("page-001.png")[0].id, "SOMETHING ELSE")
-    render_preview(document, "page-001.png")
+    _preview(document, "page-001.png")
     assert document.path.read_text(encoding="utf-8") == original
 
 
@@ -141,6 +181,6 @@ def test_problems_flags_a_region_that_does_not_fit(tmp_path: Path, font_dir: Pat
     write_plan(plan, plan_path)
     document = PlanDocument.open(plan_path)
 
-    preview = render_preview(document, "page-001.png")
+    preview = _preview(document, "page-001.png")
     assert preview.problems
     assert preview.problems[0].failed

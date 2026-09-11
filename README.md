@@ -383,9 +383,16 @@ Overlay** while the rendered page is up: one button, and its label says which
 way it goes. Your place is kept across the swap in both directions — the zoom,
 the position, and the region you had selected.
 
-Rendering a large page takes a moment, and the window does not answer while
-it does. It says so: a wait cursor, and `rendering preview…` in the status
-bar, replaced by what the preview found once it is done.
+Rendering a large page takes a moment, and the window stays yours while it
+happens — the render runs on a worker thread, so you can keep reading, keep
+typing, and change page. The status bar says `rendering preview…` and then
+says what the preview found.
+
+Change page while one is rendering and the result is dropped rather than
+painted over the page you moved to. Press it again before the first has
+finished and it renders once more, from the plan as it now stands; press it
+again with nothing changed and it does not, because that is the same
+question.
 
 **File > Extract Pages…** (`Ctrl+Shift+E`) runs the `extract` pass without
 leaving the window, and opens the plan it wrote. It is the only thing here

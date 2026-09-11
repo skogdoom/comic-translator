@@ -38,8 +38,8 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.22 | Preview off the main thread | M |
 | 4.9 | Localisation | M |
+| 12 | What one page costs to render | M |
 | 5 | Validate a plan file | S |
 | 4.26 | Extract text for one region | M |
 | 4.27 | Lock a region | M |
@@ -99,10 +99,13 @@ at 56.
 **Measurement comes before the thing it would justify.** The suite's
 saving was found by timing it rather than by guessing which tests looked
 slow, and then confirmed by counting the calls rather than by trusting the
-clock. The same is owed to 4.26 and 4.22: what a crop does to recognition
-accuracy, and what a thread does and does not do about three copies of an
-eleven-megapixel page, are numbers somebody has to produce before either
-design is settled.
+clock. Preview on a thread paid that out: the guess in its own section was
+"three copies of an eleven-megapixel page, about 120MB", and measuring found
+116MB retained and a 540MB peak, most of it inside a single `erase` call —
+which is milestone 12, and would not have been found by shipping the thread
+and moving on. The same is still owed to 4.26: what a crop does to
+recognition accuracy is a number somebody has to produce before that design
+is settled.
 
 One ordering was a judgement call rather than a dependency, and it paid out:
 **rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
@@ -113,43 +116,16 @@ plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
 
-**Two things were deliberately held back from 1.0.0.** 4.22 would have
-replaced a working wait cursor with threading, in the one code path that has
-produced a segfault in this project — risk taken on immediately before a
-release, for a benefit 4.21 already largely delivered. And 4.9 would have
+**Two things were deliberately held back from 1.0.0.** Putting preview on a
+thread would have replaced a working wait cursor with threading, in the one
+code path that has produced a segfault in this project — risk taken on
+immediately before a release, for a benefit 4.21 already largely delivered.
+It has since shipped, and found milestone 12 on the way. And 4.9 would have
 shipped translation machinery for a single language while freezing every
 string just as the milestones below started adding more, which under the
 documentation rule above makes every one of them run a translation pass too.
 Both are improvements. Neither was what made 1.0 releasable, and both are now
 simply next.
-
-## 4.22 Preview off the main thread
-
-What the wait cursor papers over, done properly: `render_preview` on a
-`RunJob`, so
-the window stays live while a page renders and the render can be called
-off. The harness exists — 4.14 and 4.6 built it, and by now it is a base
-class and one `work()` method.
-
-**No longer gated.** This waited on entry 5 of `known-bugs.md` — the
-window seen vanishing during preview — because that entry ruled out every
-thread-related explanation on the grounds that preview was synchronous, and
-putting it on a thread would have retired the reasoning while the hunt was
-still open. The crash turned out to be a stale shiboken wrapper outliving
-`QGraphicsScene.clear()`, which is fixed and the entry deleted, so nothing
-is being disturbed by moving preview off the main thread now.
-
-What a wait cursor could not touch is still here: three copies of an
-eleven-megapixel page per preview, about 120MB of them. A thread makes the
-window answer while that happens; it does not make it less. Worth measuring
-before deciding this milestone is only about threading.
-
-**Ungated, and held back from 1.0.0 rather than gated.** The gate came off
-when that crash was explained, but this is threading in the one code path
-that has produced a segfault in this project, replacing a wait cursor that
-already works, and immediately before a first release was the wrong moment
-for it. That moment has passed. 4.26 wants the same harness, so the pair can
-be built together.
 
 ## 4.9 Localisation
 
@@ -177,6 +153,34 @@ language to open it in. The tests that hold the guide to the code it
 describes — the outline colours, the flag names, every link against every
 anchor — run over every file in that directory, so a translation is held to
 the same rules the moment it is dropped in.
+
+## 12 What one page costs to render
+
+`render_page` peaks at about sixteen copies of the page it is rendering.
+Measured while putting preview on a thread, on
+`tests/fixtures/11-complex_six_panel_page.png` (11 MP): 540MB of process
+peak against a 57MB baseline, of which **one `erase` call accounts for
+356MB**. The second adds a page copy; the third through tenth add nothing,
+the allocator reusing what the first freed. The numbers and how they were
+taken are in `docs/ARCHITECTURE.md`.
+
+**It is not a GUI milestone.** `apply` calls the same `render_page` on every
+page of every chapter and pays the same peak, unmeasured, on the command
+line. Preview is only where somebody finally looked.
+
+**What it needs first is the rest of the measurement.** Which intermediates
+inside `erase` are page-sized, how many exist at once, and which are masks
+that could be smaller dtypes or views rather than copies. Five hundred
+megabytes for one page is a number, not a diagnosis, and the fix should
+follow from knowing which allocation is which rather than from a guess about
+numpy.
+
+**What it must not cost.** `apply` and `render_preview` call the same
+function and must go on doing so — a rendering path that got cheaper only
+for the window would be the drift `render_preview` exists to avoid. And the
+output has to be identical afterwards: `test_render_preview_matches_apply_pixel_for_pixel`
+is the guard, and a pixel-for-pixel comparison against pages rendered before
+the change is the honest way to hold it.
 
 ## 5 Validate a plan file
 
@@ -220,10 +224,12 @@ the window does — every other edit replaces the reviewer's text with the
 reviewer's text. So it asks first when `source_text` is not what extract
 left there, and it is one undo step like any other edit.
 
-**It wants the worker thread, which is why it sits after 4.22.** A
+**It wants the worker thread, which preview has now built out.** A
 recogniser is seconds, not milliseconds, and unlike preview this is a
-per-balloon action rather than an occasional one; a wait cursor is the
-wrong answer at that frequency.
+per-balloon action rather than an occasional one; a wait cursor is the wrong
+answer at that frequency. `PreviewJob` is the shape to copy — one unit of
+work, no page loop, nothing to cancel — and a per-region request keyed the
+same way answers the same staleness question.
 
 `apply` is untouched and still runs no OCR. This is `review` doing what
 `extract` does, to one region.

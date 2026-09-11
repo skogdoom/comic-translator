@@ -730,6 +730,70 @@ rather than on every keystroke — `Ctrl+R`, not automatic. Both read from the
 same `PlanDocument`, so a preview always reflects the edit you just made,
 saved or not.
 
+**A preview runs on a worker thread, and what makes that safe is that it
+does not hold the document.** `PreviewRequest.of` takes a snapshot on the
+window's thread — a frozen `Plan` and the path its images resolve against —
+and that is all the job is given. Editing the document while a render is in
+flight builds a new `Plan` and leaves the captured one alone, so there is
+nothing to lock and nothing to half-read. It is the rule `RenderJob` already
+followed; the preview joins it, which is why `render_preview` stopped taking
+a `PlanDocument`.
+
+**Nothing cancels a preview, and it does not pretend to.** The other two
+jobs stop between pages, which is a real place to stop because more pages
+are coming. A preview is one page: `render_page` has no seam inside it, and
+cutting one for the window's convenience would be a change to the pipeline
+every `apply` run pays for. So a preview nobody wants any more is left to
+finish into nothing, and the window's job is to recognise the result on
+arrival and drop it.
+
+What makes a result unwanted is not that the plan has moved on. A preview
+answers the plan as it stood when it was asked for, and an edit made while
+it rendered makes the answer older than the question rather than wrong —
+which is exactly what used to happen anyway, since the edit could not have
+been made during a render that blocked. What makes it unwanted is that
+nobody is waiting: the page changed, another plan is open, the overlay is
+back, or a newer preview was asked for. All four clear or replace
+`_preview_wanted`, and `_on_preview_ready` shows only a result whose request
+still matches it.
+
+Matching on the request rather than on a counter buys one thing for free:
+two presses with nothing changed in between produce equal requests, so the
+render already running *is* the answer to the second one and no second
+render happens.
+
+**One preview thread, never two.** A request arriving while one runs is
+remembered, not started; the running job's `finished` starts it. That keeps
+the peak at one render's worth of memory rather than two, which on the
+numbers below is the difference worth having.
+
+**What a thread does not fix, measured.** A preview of an 11 MP page
+(`tests/fixtures/11-complex_six_panel_page.png`, 2840x3880, ten regions)
+costs, from a 57MB baseline:
+
+| | |
+| --- | --- |
+| retained after one preview | +116 MB |
+| process peak RSS | 540 MB |
+| one RGB copy of that page | 33 MB |
+
+So the peak is about sixteen copies of the page, not the three a
+back-of-envelope count of "source, erased, rendered" suggests. A thread makes
+the window answer while that happens; it does not make it less, and two
+previews at once would double it — which is the other reason only one runs.
+
+Where it goes is not evenly spread, and that is the useful part. Stepping
+through the render: `load_page` peaks at 78MB, and `render_page` takes it to
+467MB (traced allocations; RSS peaks higher still). Inside `render_page`, the
+**first `erase` call alone accounts for 356MB of that**; the second adds one
+page copy and calls three through ten add nothing at all, the allocator
+reusing what the first freed.
+
+That is not a preview problem and not a GUI problem. `apply` calls the same
+`render_page` on every page of every chapter and pays exactly the same peak,
+on the command line, where nothing has ever measured it. It belongs to
+`erase.py` — see the roadmap.
+
 **Why `render_preview` calls `render_page` directly instead of its own
 rendering path.** So it cannot drift. If preview had its own drawing code, a
 bug fixed in `render_page` would need fixing twice, and a difference between

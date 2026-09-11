@@ -78,6 +78,7 @@ from comictrans.gui.main_window import (
     CLEAR_RECENT_TEXT,
     OVERLAY_TEXT,
     PREVIEW_TEXT,
+    PREVIEW_WORKING,
     MainWindow,
 )
 from comictrans.gui.preferences import Preferences
@@ -116,6 +117,25 @@ def _catch_alerts(
 
     monkeypatch.setattr(QMessageBox, "exec", answered)
     return shown
+
+
+def _settle_preview(window: MainWindow) -> None:
+    """Let a preview finish, the way the run tests let a run finish.
+
+    Waited for rather than polled: the thread is joined, and then the event
+    loop is turned over, because the result is a queued signal and arrives
+    only once the main thread processes events. Calling `_on_render_preview`
+    and asserting immediately would be asserting before the render started.
+
+    Loops because a superseded request starts a second job from the first
+    one's `finished`, which is a thread this has not waited for yet.
+    """
+    for _ in range(5):
+        job = window._preview_job
+        if job is None:
+            break
+        job.wait()
+        QApplication.processEvents()
 
 
 def _header(**overrides: object) -> PlanHeader:
@@ -767,70 +787,172 @@ def test_opening_a_broken_plan_shows_an_error_and_keeps_the_old_document(
     assert window.document is original_document
 
 
-def test_the_preview_says_it_is_working_while_it_is_working(
+def test_the_window_keeps_working_while_a_preview_renders(
     qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Both signals have to be *set* before the render, not after it.
+    """The whole of this milestone, and the one thing the old version could not do.
 
-    The render blocks this thread, so anything raised afterwards arrives
-    once it is over and pointless. The spy reads the status bar and the
-    cursor from inside the call, which is the only moment that can tell the
-    difference.
-
-    What this cannot check is the other half. ``currentMessage`` is the
-    status bar's state, not its pixels, so it reads back the same whether or
-    not the bar was actually repainted — measured: dropping the ``repaint``
-    leaves this test green. That call is there for the screen, and only a
-    screen can show it.
+    The render is made slow on purpose so there is a middle to look at. What
+    is checked from that middle is not that the window *could* respond but
+    that it does: an edit made while the thread is running reaches the
+    document, and the status bar is saying a render is going.
     """
-    from PySide6.QtGui import QGuiApplication
+    import time
 
-    from comictrans.gui import main_window as mw
+    from comictrans.gui import run_job as rj
 
     window = MainWindow()
     window.open_plan(two_page_plan)
+    region_id = window.document.ordered_ids()[0]  # type: ignore[union-attr]
 
-    during: dict[str, object] = {}
-    render = mw.render_preview
+    real = rj.render_preview
 
-    def spy(document: object, image: str) -> object:
-        during["message"] = window.statusBar().currentMessage()
-        cursor = QGuiApplication.overrideCursor()
-        during["shape"] = cursor.shape() if cursor is not None else None
-        return render(document, image)
+    def slow(*args: object, **kwargs: object) -> object:
+        time.sleep(0.2)
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(mw, "render_preview", spy)
+    monkeypatch.setattr(rj, "render_preview", slow)
     window._on_render_preview()
 
-    assert during["message"] == mw.PREVIEW_WORKING
-    assert during["shape"] == Qt.CursorShape.WaitCursor
-    assert QGuiApplication.overrideCursor() is None, "the cursor is put back afterwards"
-    assert window.statusBar().currentMessage() != mw.PREVIEW_WORKING, (
+    assert window._preview_job is not None
+    assert window._preview_job.isRunning(), "the render is on its own thread"
+    assert window.statusBar().currentMessage() == PREVIEW_WORKING
+
+    # The point of all of it: this thread is free while that one works.
+    window.document.set_translation(region_id, "TYPED WHILE IT RENDERED")  # type: ignore[union-attr]
+    QApplication.processEvents()
+    assert window.document.region(region_id).translation == "TYPED WHILE IT RENDERED"  # type: ignore[union-attr]
+
+    _settle_preview(window)
+    assert window._showing_preview
+    assert window.statusBar().currentMessage() != PREVIEW_WORKING, (
         "the working message is replaced by what the preview found"
     )
 
 
-def test_a_preview_that_fails_puts_the_cursor_back_and_stops_saying_it_is_working(
-    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Otherwise the box saying it failed sits over a status bar saying it has not."""
-    from PySide6.QtGui import QGuiApplication
+def _slow_render(monkeypatch: pytest.MonkeyPatch, seconds: float = 0.2) -> None:
+    """Give a preview a middle, so a test can do something during it."""
+    import time
 
-    from comictrans.gui import main_window as mw
+    from comictrans.gui import run_job as rj
+
+    real = rj.render_preview
+
+    def slow(*args: object, **kwargs: object) -> object:
+        time.sleep(seconds)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rj, "render_preview", slow)
+
+
+def test_a_preview_that_lands_after_you_have_moved_on_is_dropped(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The defect a thread makes possible, and the reason for _preview_wanted.
+
+    Rendering used to block, so the page could not change underneath it.
+    Now it can — and a result arriving for the page you have left would be
+    painted over the page you are on.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._on_image_selected("page-001.png")
+
+    _slow_render(monkeypatch)
+    window._on_render_preview()
+    assert window._preview_job is not None and window._preview_job.isRunning()
+
+    window._on_image_selected("page-002.png")
+    _settle_preview(window)
+
+    assert window._current_image == "page-002.png"
+    assert not window._showing_preview, "the render of the page we left was dropped"
+    assert window._canvas._items, "and the outlines of the page we are on are up"
+
+
+def test_asking_again_while_one_renders_renders_again_rather_than_twice_over(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A job cannot be stopped, so a superseded one is left to finish into nothing.
+
+    What must not happen is two jobs at once, or the first one's result being
+    shown and then the second one's painted over it.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    region_id = window.document.ordered_ids()[0]  # type: ignore[union-attr]
+
+    _slow_render(monkeypatch)
+    window._on_render_preview()
+    first = window._preview_job
+    assert first is not None
+
+    window.document.set_translation(region_id, "CHANGED MID-RENDER")  # type: ignore[union-attr]
+    window._on_render_preview()
+
+    assert window._preview_job is first, "still one thread, not two"
+    assert window._preview_wanted is not None, "and the newer request is remembered"
+    assert window._preview_wanted.plan.regions[0].translation == "CHANGED MID-RENDER"
+
+    _settle_preview(window)
+
+    assert window._showing_preview
+    assert window._preview_job is None
+    assert window._preview_wanted is None, "nothing left outstanding"
+
+
+def test_asking_for_the_same_preview_twice_renders_it_once(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Falls out of matching on the request rather than on a counter.
+
+    Two presses with nothing changed in between are the same question, so
+    the answer already being computed is the answer.
+    """
+    from comictrans.gui import run_job as rj
 
     window = MainWindow()
     window.open_plan(two_page_plan)
 
-    def refuse(document: object, image: str) -> object:
+    started = []
+    real = rj.render_preview
+
+    def counted(*args: object, **kwargs: object) -> object:
+        started.append(args)
+        import time
+
+        time.sleep(0.2)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rj, "render_preview", counted)
+
+    window._on_render_preview()
+    window._on_render_preview()
+    _settle_preview(window)
+
+    assert window._showing_preview
+    assert len(started) == 1, f"rendered {len(started)} times for one unchanged page"
+
+
+def test_a_preview_that_fails_stops_saying_it_is_working(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Otherwise the box saying it failed sits over a status bar saying it has not."""
+    from comictrans.gui import run_job as rj
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    def refuse(*args: object, **kwargs: object) -> object:
         raise InputError("no font for that")
 
-    monkeypatch.setattr(mw, "render_preview", refuse)
+    monkeypatch.setattr(rj, "render_preview", refuse)
     said = _catch_alerts(monkeypatch)
 
     window._on_render_preview()
+    _settle_preview(window)
 
     assert said, "the failure is reported"
-    assert QGuiApplication.overrideCursor() is None, "and the cursor is not left spinning"
     assert window.statusBar().currentMessage() == ""
     assert not window._showing_preview, "a failed preview leaves the overlay up"
 
@@ -845,6 +967,7 @@ def test_render_preview_shows_a_different_image_and_can_return_to_the_overlay(
     assert before_items  # the overlay is showing region outlines
 
     window._on_render_preview()
+    _settle_preview(window)
 
     assert not window._canvas._items, "preview mode has no clickable region outlines"
     assert window._showing_preview
@@ -886,6 +1009,7 @@ def test_render_preview_reports_a_font_error_instead_of_crashing(
 
     shown = _catch_alerts(monkeypatch)
     window._on_render_preview()
+    _settle_preview(window)
 
     assert shown
     assert not window._showing_preview
@@ -1803,6 +1927,7 @@ def test_a_chosen_zoom_survives_the_preview_round_trip(
     window._canvas.set_zoom(2.0)
 
     window._on_render_preview()
+    _settle_preview(window)
     assert window._showing_preview
     assert window._canvas.zoom == pytest.approx(2.0)
 
@@ -2546,6 +2671,7 @@ def test_a_rendered_preview_leaves_edit_mode(
     window._edit_shape_action.setChecked(True)
 
     window._on_render_preview()
+    _settle_preview(window)
 
     assert window._canvas.mode is CanvasMode.SELECT
     assert not window._edit_shape_action.isChecked()
@@ -2875,6 +3001,7 @@ def test_the_selected_region_survives_the_preview_round_trip(
     window._go_to_region("page-001-002")
 
     window._on_render_preview()
+    _settle_preview(window)
     window._on_back_to_overlay()
 
     assert window._current_region == "page-001-002"
@@ -2891,6 +3018,7 @@ def test_one_action_swaps_between_the_overlay_and_the_rendered_page(
     assert [a.text() for a in window._toolbar.actions()].count(OVERLAY_TEXT) == 0
 
     window._preview_action.trigger()
+    _settle_preview(window)
 
     assert window._showing_preview
     assert window._preview_action.text() == OVERLAY_TEXT, "it now says what it will do"
