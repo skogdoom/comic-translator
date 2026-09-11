@@ -491,8 +491,10 @@ class MainWindow(QMainWindow):
 
         self._about_action = QAction(f"&About {about.NAME}", self)
         # macOS keeps About in the application menu, not in Help. The role is
-        # what moves it; Preferences already carries its own. Neither has
-        # been seen doing it — there is no Mac here to look at.
+        # what moves it; Preferences already carries its own. Both have been
+        # seen doing it, on a built application — which is also where the
+        # item's title turned out not to be ours to set: see the note on
+        # Preferences above.
         self._about_action.setMenuRole(QAction.MenuRole.AboutRole)
         self._about_action.triggered.connect(self._on_about)
         help_menu.addAction(self._about_action)

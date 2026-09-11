@@ -1453,13 +1453,31 @@ container whose codes are not guessable — a 32-pixel image in the 16-point
 slot and in the 32-point one differ by four bytes, with no error if you get
 it wrong — so Apple's own tool does that part.
 
-**What none of this can check.** No `.app` is produced anywhere but on a Mac,
-because PyInstaller bundles the interpreter and libraries of the machine it
-runs on. What has been run on Linux is the whole analysis: the spec builds, a
-frozen binary launches, opens the review window under the offscreen platform
-and writes its log, and the resources and metadata are all in the tree. What
-has not been run is `BUNDLE` — which on any other platform returns
-immediately — `iconutil`, and Gatekeeper.
+**What none of this can check, and what checked it.** No `.app` is produced
+anywhere but on a Mac, because PyInstaller bundles the interpreter and
+libraries of the machine it runs on. What runs on Linux is the whole
+analysis: the spec builds, a frozen binary launches, opens the review window
+under the offscreen platform and writes its log, and the resources and
+metadata are all in the tree. `BUNDLE` returns immediately off macOS, so it,
+`iconutil` and the icon itself were only ever going to be answered by
+building one.
+
+They have been. The application opens from Finder, the application menu
+carries the bundle's name, and the icon reads at every size the Dock and the
+Finder ask for — which is what the ten slots and the two drawings were for,
+and the only evidence that the points-not-pixels rule was the right way round.
+The toolbar in real dark-mode chrome was checked in the same pass. Gatekeeper
+still has not been: an unsigned bundle is quarantined on a machine other than
+the one that built it, and nobody has carried one to a second Mac. The advice
+to clone rather than download a zip rests on how macOS marks archives, not on
+having watched it happen.
+
+**The interpreter is pinned because the bundle carries it.** `requires-python`
+is a floor, so on a Mac with a newer Python installed `uv` will build an
+application running one the suite has never executed a line on — measured, on
+a bundle that shipped Python 3.14 against a suite that has only ever run 3.12.
+`.python-version` makes the tested version the default and the build warns,
+rather than refuses, when something overrides it.
 
 **Testing.** `gui.document` and `gui.preview` are tested like any other
 module, no different setup. The widget tests build a real `QApplication`

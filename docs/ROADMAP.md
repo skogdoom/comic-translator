@@ -35,7 +35,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| **11** | **The macOS pass, on the built application** | **S** |
 | 4.22 | Preview off the main thread | M |
 | 4.9 | Localisation | M |
 | 5 | Validate a plan file | S |
@@ -48,10 +47,9 @@ one section can refer to another without ambiguity.
 | 10 | Code quality review | M |
 | 7 | Security audit | M |
 
-11 is all that is left of the first release: the version, the notes and
-the documentation have shipped, and what remains is looking at the built
-application on a Mac. Everything below it is what comes after a release, and
-none of it should start before that pass is done.
+**1.0.0 is out.** Everything a first release needed has shipped, and the
+macOS pass that could only happen on a built application has been done.
+Everything in this table is what comes after a release.
 
 The 4.x numbering says these follow milestone 4, the review GUI. Milestone
 3 is older than all of them and independent of the GUI; it sits at the
@@ -82,12 +80,13 @@ rewriting the moment a polygon could move, so it snapshots whole plans
 instead, and dragging a polygon vertex accurately means being able to see
 it.
 
-**A release changes what "first" means.** Everything that was above 11 was
-there because a release needed it, not because it was cheap or ready. That is
-why the region tools, the archive formats and the validate command all sit
-below a line they would otherwise be well up: none of them is what makes this
-releasable, and each is easier to get right once there is a released version
-to compare against.
+**A release changed what "first" meant.** The milestones above the line were
+there because a release needed them, not because they were cheap or ready.
+That is why the region tools, the archive formats and the validate command
+sat below a line they would otherwise have been well up: none of them was
+what made this releasable, and each is easier to get right against a released
+version. That line has now been crossed, and what is left is in the order it
+is worth building rather than in the order a release forced.
 
 The test suite was the exception that proved it, and it went first for
 that reason: not a release blocker, but free, invisible to users, and paid
@@ -111,73 +110,15 @@ plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
 
-## 11 The macOS pass, on the built application
-
-**Mostly done.** The version, the release notes and the documentation have
-shipped, the application has been built and run on a Mac, and most of what
-could only be seen there has been. What is left is two items and a race.
-
-**Confirmed on a built bundle.** The application menu reads "About Comic
-Translator" / "Hide" / "Quit" rather than `python3` or `comictrans`, which is
-what `CFBundleName` was a release blocker for. About and Settings appear in
-that menu rather than under Help and Edit. Cmd+Q, Cmd+, and Cmd+Shift+Z
-resolve, which they do not under the offscreen platform the suite runs on.
-Cmd+M minimises the window rather than merging two regions.
-
-**Settled, and it changed the code.** The merged Settings item reads
-"Preferences" whatever the action's text says — seen, on a build whose text
-was "&Settings…". Qt titles the items it moves into the application menu
-itself, the same way About takes the application name. So 4.24's rename was
-changed back: a command called Settings that opens a window called
-Preferences is exactly what that milestone set out to stop, and the HIG name
-is unreachable without a translator over Qt's own catalogue, which belongs
-to 4.9.
-
-**Still not looked at.**
-
-- The Dock icon: that it is the icon, and the right drawing at every size the
-  Dock and the Finder ask for. This is the whole reason there are two
-  drawings and ten slots, and none of it has been seen.
-- The toolbar drawings against real dark-mode chrome, rather than against a
-  palette a test set for itself. The unified title-and-toolbar look and full
-  screen go with it, as does the guide the Help menu opens and the alerts, in
-  both appearances.
-
-**One crash, seen once.** Quitting the application segfaulted during
-teardown: the `QApplication` destructor deletes the window, which deletes its
-child actions, and cleaning one action's connection freed a
-`functools.partial` holding a bound method of the window — dropping the last
-reference to a wrapper whose C++ object was part-way through the destructor
-the whole chain was running inside. The same shape as the canvas segfault
-this project has already had, where *dropping* a stale wrapper is what kills
-the process.
-
-The partial is gone: the recent menu's per-path argument rides on the action
-now. That removes the object the trace died on and it does not prove the race
-is gone — six runs of the real window left alive at interpreter exit under
-the offscreen platform exit cleanly, so there is nothing here to reproduce it
-with. If it recurs, the next trace decides whether this was the whole of it.
-
-It also surfaced something worth more than the crash: the bundle was running
-**Python 3.14**, because `requires-python` is a floor and `uv` picked the
-newest interpreter the Mac had. The suite has never executed a line on
-anything but 3.12. `.python-version` now pins it, and the build says so when
-something overrides that.
-
-**The suite was never going to defend this part.** What the tests do check is
-that every drawing an action asks for ships, that each renders at every baked
-size, in the colour it was asked for, and that a palette change repaints the
-set — all offscreen, on whatever machine is to hand. None of that is evidence
-about a Dock icon.
-
-**Two things were deliberately left below this line.** 4.22 would replace
-a working wait cursor with threading, in the one code path that has
+**Two things were deliberately held back from 1.0.0.** 4.22 would have
+replaced a working wait cursor with threading, in the one code path that has
 produced a segfault in this project — risk taken on immediately before a
-release, for a benefit 4.21 already largely delivered. And 4.9 would ship
-translation machinery for a single language while freezing every string
-just as the milestones below start adding more, which under the
-documentation rule above makes every one of them run a translation pass
-too. Both are improvements. Neither is what makes 1.0 releasable.
+release, for a benefit 4.21 already largely delivered. And 4.9 would have
+shipped translation machinery for a single language while freezing every
+string just as the milestones below started adding more, which under the
+documentation rule above makes every one of them run a translation pass too.
+Both are improvements. Neither was what made 1.0 releasable, and both are now
+simply next.
 
 ## 4.22 Preview off the main thread
 
@@ -200,12 +141,12 @@ eleven-megapixel page per preview, about 120MB of them. A thread makes the
 window answer while that happens; it does not make it less. Worth measuring
 before deciding this milestone is only about threading.
 
-**Ungated, and still below the release line.** The gate came off when that
-crash was explained, but this is threading in the one code path that has
-produced a segfault in this project, replacing a wait cursor that already
-works. Immediately before a first release is the wrong moment for it. 4.26
-wants the same harness and is below the line too, so the pair can be built
-together afterwards.
+**Ungated, and held back from 1.0.0 rather than gated.** The gate came off
+when that crash was explained, but this is threading in the one code path
+that has produced a segfault in this project, replacing a wait cursor that
+already works, and immediately before a first release was the wrong moment
+for it. That moment has passed. 4.26 wants the same harness, so the pair can
+be built together.
 
 ## 4.9 Localisation
 
