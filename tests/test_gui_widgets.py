@@ -51,7 +51,7 @@ from .conftest import (
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QDesktopServices, QKeyEvent
+from PySide6.QtGui import QAction, QDesktopServices, QKeyEvent, QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -61,7 +61,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from comictrans.gui import extract_dialog, logfile, run_job
+from comictrans.gui import about, extract_dialog, logfile, run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -93,6 +93,28 @@ BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
 BALLOON_B = Box(300, 60, 500, 200)
 TEXT_B = Box(330, 110, 470, 140)
+
+
+def _catch_alerts(
+    monkeypatch: pytest.MonkeyPatch,
+    answer: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
+) -> list[QMessageBox]:
+    """Answer every alert with ``answer``, and collect the boxes it opened.
+
+    The seam is ``exec``, not the static ``QMessageBox.question``/``critical``
+    helpers, because ``gui.alerts`` does not use those: they take a window
+    title macOS throws away. Patching the thing that would have blocked leaves
+    the real box built, so a test can read back both strings it carries —
+    which is the half a title would have taken with it.
+    """
+    shown: list[QMessageBox] = []
+
+    def answered(box: QMessageBox) -> int:
+        shown.append(box)
+        return int(answer)
+
+    monkeypatch.setattr(QMessageBox, "exec", answered)
+    return shown
 
 
 def _header(**overrides: object) -> PlanHeader:
@@ -305,6 +327,86 @@ def test_review_tells_the_platform_what_the_application_is_called(
         QApplication.setApplicationName(was_name)
 
 
+def _menu_items(window: MainWindow, title: str) -> list[QAction]:
+    """Every action in the named top-level menu, separators left out."""
+    for action in window.menuBar().actions():
+        if action.text() == title:
+            menu = action.menu()
+            assert menu is not None, f"{title} is not a menu"
+            return [item for item in menu.actions() if not item.isSeparator()]
+    raise AssertionError(f"no {title} menu")
+
+
+def test_nothing_takes_the_shortcut_macos_reserves_for_minimising(qapp: object) -> None:
+    """Cmd+M minimises a window on every Mac, so it is not ours to spend.
+
+    Qt adds no Window menu of its own, so a window that does not define
+    Minimise has no Cmd+M at all — which is how Merge Region came to hold it.
+    """
+    window = MainWindow()
+    minimise = QKeySequence("Ctrl+M")
+
+    taken = {
+        action.text(): action.shortcuts()
+        for action in window.findChildren(QAction)
+        if minimise in action.shortcuts()
+    }
+    assert list(taken) == ["&Minimise"], f"Cmd+M is Minimise and nothing else, got {taken}"
+
+
+def test_the_window_menu_opens_the_way_a_mac_window_menu_opens(qapp: object) -> None:
+    """Minimise and Zoom first, then this window's own panels."""
+    window = MainWindow()
+    items = [action.text() for action in _menu_items(window, "&Window")]
+
+    assert items[:2] == ["&Minimise", "&Zoom"]
+    assert items[2:] == ["Pages", "Region", "Run", "&Reset Layout"]
+
+
+def test_zoom_is_a_toggle_and_not_a_one_way_trip(qapp: object) -> None:
+    window = MainWindow()
+    window._on_zoom_window()
+    assert window.isMaximized()
+    window._on_zoom_window()
+    assert not window.isMaximized()
+
+
+def test_only_the_commands_that_stop_to_ask_carry_an_ellipsis(qapp: object) -> None:
+    """A checkable item is a mode you are in, not a command awaiting input.
+
+    Merge Region had one because a second click follows, which is true of
+    Edit Region Shape and Add Region too — and neither of those wore it.
+    """
+    window = MainWindow()
+    wearing = [
+        action.text()
+        for action in window.findChildren(QAction)
+        if action.isCheckable() and action.text().endswith("…")
+    ]
+    assert wearing == [], f"a mode does not open a dialog: {wearing}"
+
+
+def test_every_menu_role_macos_moves_is_spelled_out(qapp: object) -> None:
+    """Not left to Qt's heuristic, which reads the English label.
+
+    ``detectMenuRole`` looks for "about", "quit", "exit", "preference" and
+    friends in the item's own text — a match that goes away the first time
+    one of these is translated, taking the item out of the application menu
+    with it.
+    """
+    window = MainWindow()
+    roles = {
+        action.text(): action.menuRole()
+        for action in window.findChildren(QAction)
+        if action.menuRole() not in (QAction.MenuRole.TextHeuristicRole, QAction.MenuRole.NoRole)
+    }
+    assert roles == {
+        f"&About {about.NAME}": QAction.MenuRole.AboutRole,
+        "&Settings…": QAction.MenuRole.PreferencesRole,
+        "&Quit": QAction.MenuRole.QuitRole,
+    }
+
+
 def test_the_name_macos_reads_is_the_one_handed_to_qt(tmp_path: Path) -> None:
     """macOS titles "About X", "Hide X" and "Quit X" from argv[0], not from us.
 
@@ -456,15 +558,76 @@ def test_closing_with_unsaved_changes_asks_and_can_be_cancelled(
     window.open_plan(two_page_plan)
     window._inspector._translation.setPlainText("EDITED")
 
-    monkeypatch.setattr(
-        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Cancel)
-    )
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Cancel)
     assert window._confirm_discard_if_dirty() is False
 
-    monkeypatch.setattr(
-        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard)
-    )
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Discard)
     assert window._confirm_discard_if_dirty() is True
+
+
+def test_the_unsaved_changes_alert_offers_to_save_and_saving_is_enough(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discard and Cancel alone make Cancel the only way to keep the work."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("EDITED")
+
+    shown = _catch_alerts(monkeypatch, QMessageBox.StandardButton.Save)
+    assert window._confirm_discard_if_dirty() is True
+
+    offered = shown[0].standardButtons()
+    assert offered & QMessageBox.StandardButton.Save, "keeping the work is a button"
+    assert offered & QMessageBox.StandardButton.Discard
+    assert offered & QMessageBox.StandardButton.Cancel
+    assert shown[0].defaultButton() == shown[0].button(QMessageBox.StandardButton.Save)
+
+    assert not window.document.dirty, "and pressing it saved"  # type: ignore[union-attr]
+    on_disk = load_plan(two_page_plan, check_images=False)
+    assert on_disk.regions[0].translation == "EDITED"
+
+
+def test_a_save_that_fails_is_not_permission_to_close_over_it(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole reason the save path reports rather than raises."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._inspector._translation.setPlainText("EDITED")
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise InputError("the directory has gone")
+
+    monkeypatch.setattr(type(window.document), "save", refuse)
+    shown = _catch_alerts(monkeypatch, QMessageBox.StandardButton.Save)
+
+    assert window._confirm_discard_if_dirty() is False, "a failed save is not a saved plan"
+    assert len(shown) == 2, "the question, then the failure"
+    assert "the directory has gone" in shown[1].informativeText()
+
+
+def test_an_alert_says_what_happened_without_using_a_window_title(
+    qapp: object, two_page_plan: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """macOS drops a message box's title, so nothing may live only there.
+
+    ``QMessageBox`` overrides ``setWindowTitle`` for exactly that reason. An
+    alert whose framing sentence went in as the title would reach a Mac as
+    the bare detail — here, a parse error with nothing saying it came from
+    opening a plan.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    broken = tmp_path / "broken.yaml"
+    broken.write_text("not a plan file at all: [", encoding="utf-8")
+
+    shown = _catch_alerts(monkeypatch)
+    window.open_plan(broken)
+
+    assert shown, "the failure is reported"
+    assert "plan" in shown[0].text().lower(), "the message says what was being done"
+    assert shown[0].informativeText(), "and the detail is under it, not in a title"
+    assert shown[0].windowTitle() == "", "nothing is put where macOS will not show it"
 
 
 def test_close_event_is_actually_wired_to_the_dirty_guard(
@@ -476,16 +639,12 @@ def test_close_event_is_actually_wired_to_the_dirty_guard(
     window.open_plan(two_page_plan)
     window._inspector._translation.setPlainText("EDITED")
 
-    monkeypatch.setattr(
-        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Cancel)
-    )
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Cancel)
     event = QCloseEvent()
     window.closeEvent(event)
     assert not event.isAccepted(), "cancelling the prompt must keep the window open"
 
-    monkeypatch.setattr(
-        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard)
-    )
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Discard)
     event = QCloseEvent()
     window.closeEvent(event)
     assert event.isAccepted()
@@ -501,12 +660,7 @@ def test_opening_a_broken_plan_shows_an_error_and_keeps_the_old_document(
     broken = tmp_path / "broken.yaml"
     broken.write_text("not a plan file at all: [", encoding="utf-8")
 
-    shown: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox,
-        "critical",
-        staticmethod(lambda *a: shown.append(a[2]) or QMessageBox.StandardButton.Ok),
-    )
+    shown = _catch_alerts(monkeypatch)
     window.open_plan(broken)
 
     assert shown, "a plan that fails to parse must be reported, not silently ignored"
@@ -570,11 +724,8 @@ def test_a_preview_that_fails_puts_the_cursor_back_and_stops_saying_it_is_workin
     def refuse(document: object, image: str) -> object:
         raise InputError("no font for that")
 
-    said: list[str] = []
     monkeypatch.setattr(mw, "render_preview", refuse)
-    monkeypatch.setattr(
-        QMessageBox, "critical", staticmethod(lambda *a, **k: said.append(a[2]) or None)
-    )
+    said = _catch_alerts(monkeypatch)
 
     window._on_render_preview()
 
@@ -633,12 +784,7 @@ def test_render_preview_reports_a_font_error_instead_of_crashing(
     window = MainWindow()
     window.open_plan(plan_path)
 
-    shown: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox,
-        "critical",
-        staticmethod(lambda *a: shown.append(a[2]) or QMessageBox.StandardButton.Ok),
-    )
+    shown = _catch_alerts(monkeypatch)
     window._on_render_preview()
 
     assert shown
@@ -1000,15 +1146,14 @@ def test_a_plan_that_has_gone_is_dropped_when_it_is_chosen(
     window.open_plan(two_page_plan)
     assert _recent_labels(window)[0].endswith(two_page_plan.name)
 
-    said: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox, "warning", staticmethod(lambda *a, **k: said.append(a[2]) or None)
-    )
+    said = _catch_alerts(monkeypatch)
     two_page_plan.unlink()
     window._on_open_recent(two_page_plan)
 
     assert _recent_labels(window) == [], "the entry goes when the file is not there"
-    assert said and str(two_page_plan) in said[0], "and it says which one"
+    assert said, "and it says so"
+    assert two_page_plan.name in said[0].text(), "naming which one"
+    assert str(two_page_plan.parent) in said[0].informativeText(), "and where it was"
 
 
 def test_clear_menu_empties_the_list(qapp: object, tmp_path: Path, two_page_plan: Path) -> None:

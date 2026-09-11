@@ -136,7 +136,7 @@ class RenderDialog(QDialog):
         self._erase_help.setWordWrap(True)
         self._quieten(self._erase_help)
 
-        self._force = QCheckBox("Overwrite pages already in that directory")
+        self._force = QCheckBox("overwrite pages already in that directory")
 
         # Red rather than the usual grey: this is the one message here that
         # is stopping something from happening.

@@ -308,7 +308,7 @@ fill colour is disabled while it is chosen, because nothing is painted with
 it. This is the field to reach for when a fill colour appears to do nothing:
 under the default `flat`, it only ever repaints pixels that read as lettering.
 
-**Edit > Merge Region…** (`Ctrl+M`) folds two regions into one, for the
+**Edit > Merge Region** (`Ctrl+Shift+M`) folds two regions into one, for the
 balloon detection traced as two: select one, then click the other. The merged
 outline is the convex hull of both, its colours are read from the page inside
 that shape, and the texts are joined in reading order. The earlier region
@@ -401,7 +401,7 @@ happily, because a preview is ephemeral and output files are not.
 There is no equivalent of `--skip-hash-check`, and that is deliberate. The
 window verifies every page's hash when it opens a plan and refuses one whose
 images have changed, so a render started from an open plan has already passed
-the check that flag exists to skip. **Reload** checks again.
+the check that flag exists to skip. **File > Revert to Saved** checks again.
 
 The run happens on a worker thread, so the window stays usable while a
 chapter renders: a panel opens along the bottom, naming the page being
@@ -441,8 +441,9 @@ A line under the canvas says what a click does in whatever mode the window is
 in — placing corners, reshaping, merging, taking a colour — and stays there
 for as long as the mode does, rather than scrolling past in the status bar.
 
-The **Window** menu closes and reopens the three panels, and **Reset
-Layout** puts them back where they started. The layout is remembered between
+The **Window** menu opens with **Minimise** (`Ctrl+M`) and **Zoom**, the two
+every window has, then closes and reopens the three panels; **Reset Layout**
+puts them back where they started. The layout is remembered between
 sessions, with one exception: the Run panel always starts closed, because a
 new session has nothing to report yet. A run opens it, and it comes back
 wherever you left it.
@@ -457,7 +458,8 @@ layout, the preferences below, and that list. All three live in the
 application's own settings rather than in your plans, and each can be
 cleared without disturbing the others.
 
-**Edit > Preferences…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere) sets what a
+**Settings…** (`Cmd+,` on macOS, `Ctrl+,` elsewhere — in the application
+menu on macOS, under Edit elsewhere) sets what a
 new run starts from: the language pair, OCR languages and recogniser a new
 plan is written with, a font to record in its header, and the output
 directory, erase strategy and format the render dialog opens holding. The
@@ -471,7 +473,7 @@ none of them is written into a plan that exists. A default font that quietly
 won over a plan's header would mean the same plan renders differently on two
 machines, and re-runnability — edit a translation, run it again, and only
 that text changes — is the property the two passes exist to have. Edit >
-Plan Header changes *this* plan; Preferences decides what a *new* one starts
+Plan Header changes *this* plan; Settings decides what a *new* one starts
 from.
 
 Fields write through as you edit them, so there is nothing to apply and
@@ -547,9 +549,10 @@ marker says so.
 
 `Ctrl+S` saves back to the file it was opened from; **Save As** writes
 elsewhere and refuses to overwrite an existing file without confirming.
-Closing the window, reloading, or opening a different plan while there are
-unsaved changes asks first. Like every other pass, `review` never writes to
-a source image — only ever to the plan file you explicitly save to.
+Closing the window, reverting, or opening a different plan while there are
+unsaved changes asks first, and offers to save rather than only to discard.
+Like every other pass, `review` never writes to a source image — only ever
+to the plan file you explicitly save to.
 
 ## The plan file
 
