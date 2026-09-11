@@ -11,3 +11,18 @@ build/
 
 # Personal Claude Code overrides; the shared ones are in settings.json
 .claude/settings.local.json
+
+# Pages dropped into tests/fixtures/ to run detection against. The test runner
+# picks up every image in that directory, and the ones worth committing are
+# already committed — so a page arriving here is somebody's real scan, which is
+# somebody else's copyright and not this repository's to carry. Every suffix
+# `imaging.IMAGE_SUFFIXES` matches, since that is what the runner looks for.
+#
+# Ignoring does not untrack: the fixtures already in git stay in git and the
+# suite still reads them. A new one that genuinely belongs here needs
+# `git add -f`, which is the deliberate act it should be.
+tests/fixtures/*.png
+tests/fixtures/*.jpg
+tests/fixtures/*.jpeg
+tests/fixtures/*.tif
+tests/fixtures/*.tiff
