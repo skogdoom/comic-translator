@@ -13,8 +13,6 @@ at the others' state.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
@@ -25,7 +23,6 @@ from PySide6.QtGui import (
     QAction,
     QCloseEvent,
     QDesktopServices,
-    QGuiApplication,
     QKeySequence,
 )
 from PySide6.QtWidgets import (
@@ -47,6 +44,7 @@ from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
 from . import about, alerts, help_dialog, icons, recent
 from .about_dialog import AboutDialog
+from .busy_bar import BusyBar
 from .canvas import (
     COLOR_APPROXIMATE,
     COLOR_EXACT,
@@ -67,10 +65,18 @@ from .logfile import log_directory, set_notifier
 from .page_list import PageList
 from .preferences import Preferences, load_preferences, save_preferences
 from .preferences_dialog import PreferencesDialog
-from .preview import render_preview
+from .preview import Preview
+from .preview_cache import PreviewCache
 from .qimage import to_pixmap
 from .render_dialog import RenderDialog
-from .run_job import ExtractJob, RenderJob, RenderRequest, RunJob
+from .run_job import (
+    ExtractJob,
+    PreviewJob,
+    PreviewRequest,
+    RenderJob,
+    RenderRequest,
+    RunJob,
+)
 from .run_panel import RunPanel
 from .sampling import color_at, sample_region_colors
 
@@ -140,6 +146,27 @@ class MainWindow(QMainWindow):
 
         self._sampling: str | None = None
         """Which colour field asked for a pixel, while the canvas takes one."""
+
+        self._preview_cache = PreviewCache()
+        """The last page rendered, so that looking at it twice costs one
+        render. One entry, keyed on what a page's render actually reads —
+        see ``preview_cache``."""
+
+        self._preview_job: PreviewJob | None = None
+        """The preview being rendered, or None.
+
+        Its own slot rather than ``_job``: that one is the chapter-wide
+        pass, and starting it greys out every command that could change
+        what it is rendering. A preview must not — the whole point of
+        moving it off this thread is that the window goes on working
+        while it runs."""
+
+        self._preview_wanted: PreviewRequest | None = None
+        """What the last preview asked for, or None once it has landed.
+
+        A job cannot be stopped, so a superseded one is recognised on
+        arrival instead: a result whose request is not this one is
+        dropped. See ``_on_preview_ready``."""
 
         self._help: HelpDialog | None = None
         """The guide, once it has been asked for. Kept so that asking again
@@ -220,8 +247,12 @@ class MainWindow(QMainWindow):
         self._run_panel.row_activated.connect(self._on_run_row_activated)
         self._run_panel.cancel_requested.connect(self._on_run_cancel)
 
-        # A permanent widget, so the zoom stays readable behind the transient
-        # messages the status bar shows for saves and preview results.
+        # Permanent widgets, so they stay put behind the transient messages
+        # the status bar shows for saves and preview results. The bar sits to
+        # the left of the zoom because it comes and goes, and a thing that
+        # appears should not push a thing that is always there.
+        self._busy = BusyBar()
+        self.statusBar().addPermanentWidget(self._busy)
         self._zoom_label = QLabel()
         self.statusBar().addPermanentWidget(self._zoom_label)
 
@@ -765,11 +796,12 @@ class MainWindow(QMainWindow):
             return
 
         self.document = document
+        self._preview_cache.clear()  # a page of the last plan is nobody's now
         self._remember_directory(path)
         self._remember_recent(path)
         self._current_image = None
         self._current_region = None
-        self._showing_preview = False
+        self._forget_pending_preview()
         self._page = None
         self._views.clear()  # a different plan, a different set of pages
         self._pages.set_document(document)
@@ -864,7 +896,7 @@ class MainWindow(QMainWindow):
         self._remember_view()  # the outgoing page, while it is still current
         self._current_image = image
         self._current_region = None
-        self._showing_preview = False
+        self._forget_pending_preview()
         try:
             page = load_page(self.document.source_path(image))
         except ComictransError as exc:
@@ -1245,46 +1277,147 @@ class MainWindow(QMainWindow):
         else:
             self._on_render_preview()
 
-    @contextmanager
-    def _busy(self, message: str) -> Iterator[None]:
-        """Say that something slow is running, before it starts running.
+    def _forget_pending_preview(self) -> None:
+        """Take the rendered page down, and stop wanting whatever is rendering.
 
-        ``showMessage`` only posts: the paint happens the next time the
-        event loop turns, and the whole problem here is that the next thing
-        this thread does is not turn the event loop for several seconds. So
-        the status bar is repainted on the spot. ``repaint`` rather than
-        ``processEvents`` deliberately — it paints without also delivering
-        input, so a second Ctrl+R arriving mid-render cannot re-enter this.
+        The two belong together. A render in flight was started for the page
+        and the plan as they were; arriving at another page, or opening
+        another plan, makes it an answer to a question nobody is asking any
+        more — and one that would otherwise still match ``_preview_wanted``
+        and be painted over whatever is on screen now.
 
-        The cursor is restored on the way out however that happens, which is
-        what puts it back before a failure's message box rather than showing
-        that box under a spinning wait cursor.
+        The thread is asked to stop, and now can: ``render_page`` checks
+        between regions when the preview hands it something to check. It
+        stops part-way through a page, which is safe for a preview and for
+        nothing else — what is abandoned is thrown away rather than written.
+        What it leaves is the same as what a finished one leaves: nothing.
+
+        Asking is not the same as having stopped. The check happens between
+        regions, so the thread runs on for up to one erase; its result lands
+        in ``_on_preview_ready``, which by then has nothing to match it
+        against.
         """
-        self.statusBar().showMessage(message)
-        self.statusBar().repaint()
-        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            yield
-        finally:
-            QGuiApplication.restoreOverrideCursor()
+        self._showing_preview = False
+        self._preview_wanted = None
+        if self._preview_job is not None:
+            self._preview_job.cancel()
 
     def _on_render_preview(self) -> None:
+        """Start a render of the current page. Returns before it is done.
+
+        The window stays live while it runs — that is the whole of this
+        change — so what used to be one blocking call is now three places:
+        here, ``_on_preview_ready`` and ``_on_preview_failed``.
+        """
         if self.document is None or self._current_image is None:
             return
-        try:
-            with self._busy(PREVIEW_WORKING):
-                preview = render_preview(self.document, self._current_image)
-        except ComictransError as exc:
-            # The working message would otherwise sit there claiming a render
-            # is still going, behind the box saying it is not.
-            self.statusBar().clearMessage()
-            alerts.report(self, "The preview could not be rendered.", str(exc))
+        request = PreviewRequest.of(self.document, self._current_image)
+
+        held = self._preview_cache.get(request)
+        if held is not None:
+            # Nothing has changed that this page's render reads, so the answer
+            # is already here. Anything still rendering is now unwanted: it
+            # would be answering the same question a second time.
+            self._preview_wanted = None
+            if self._preview_job is not None:
+                self._preview_job.cancel()
+            self._show_preview(held, request.image)
             return
+
+        self._preview_wanted = request
+        if self._preview_job is not None:
+            # One already going. It cannot be stopped, so it is left to
+            # finish into nothing: _preview_wanted has moved on, and its
+            # result will be dropped on arrival.
+            return
+        job = PreviewJob(request, self)
+        job.progressed.connect(self._on_preview_progress)
+        job.completed.connect(self._on_preview_ready)
+        job.failed.connect(self._on_preview_failed)
+        job.finished.connect(self._on_preview_thread_done)
+        self._preview_job = job
+        self.statusBar().showMessage(PREVIEW_WORKING)
+        self._busy.set_busy(True)
+        job.start()
+
+    def _on_preview_progress(self, done: int, total: int, image: str) -> None:
+        """Regions erased, from the worker. The run panel's signal, reused.
+
+        Ignored for a render nobody is waiting for any more — the thread it
+        comes from has been asked to stop but has not noticed yet, and a bar
+        that kept counting for it would be counting the wrong page.
+        """
+        if self._preview_wanted is not None and self._preview_wanted.image == image:
+            self._busy.advance(done, total)
+
+    def _on_preview_thread_done(self) -> None:
+        """The worker has stopped. Start the next render if one is waiting.
+
+        ``finished`` rather than ``completed``, because this has to run after
+        a failure too, and because a thread must have actually stopped before
+        its object is dropped.
+        """
+        job, self._preview_job = self._preview_job, None
+        if job is not None:
+            job.deleteLater()
+        if self._preview_wanted is not None:
+            # Superseded while it ran: whatever asked is still waiting. The
+            # bar stays up across the handover rather than blinking off and
+            # on again — from where anyone is sitting it is one wait.
+            self._on_render_preview()
+            return
+        self._busy.set_busy(False)
+
+    def _on_preview_failed(self, message: str) -> None:
+        self._preview_wanted = None
+        # Both down before the alert, not after it. The alert is modal and
+        # sits there for as long as it takes somebody to read it, and a
+        # message and a bar both claiming a render is still going would sit
+        # behind it saying the opposite of what it says. ``finished`` would
+        # otherwise take the bar down only once the box was dismissed.
+        self.statusBar().clearMessage()
+        self._busy.set_busy(False)
+        alerts.report(self, "The preview could not be rendered.", message)
+
+    def _on_preview_ready(self, preview: object) -> None:
+        """Put a finished render on the canvas — if it is still the one wanted.
+
+        What makes a result stale is not that the plan has moved on. A
+        preview is of the plan as it stood when it was asked for, and an edit
+        made while it rendered does not make the answer wrong, only older
+        than the question — the same as before this ran on a thread, where
+        the edit simply could not have happened yet.
+
+        What makes it stale is that nobody is waiting for it: the page has
+        changed, another plan is open, the overlay has been put back, or a
+        newer preview has been asked for. All four clear or replace
+        ``_preview_wanted``, so matching against it is the whole check. The
+        job cannot be called off, so this is where a dropped one is dropped.
+        """
+        if preview is None:
+            return  # stopped part-way; there is nothing to show and nobody waiting
+        assert isinstance(preview, Preview)
+        job = self._preview_job
+        if job is None or job.request != self._preview_wanted:
+            return
+        self._preview_wanted = None
+        self._preview_cache.put(job.request, preview)
+        self._show_preview(preview, job.request.image)
+
+    def _show_preview(self, preview: Preview, image: str) -> None:
+        """Put a rendered page on the canvas and say what it found.
+
+        Shared by the two ways one arrives — off the worker thread, or out of
+        the cache — because a page somebody is about to trust has to look the
+        same and report the same whichever it was. A cached hit that quietly
+        skipped the problem count would be the window going quiet about
+        regions that do not fit.
+        """
         # The same page, rendered: hold the reader's place across the swap,
         # which is what makes the overlay and the output comparable.
         self._remember_view()
         self._canvas.show_page(to_pixmap(preview.image))
-        self._canvas.apply_view_state(self._views.get(self._current_image))
+        self._canvas.apply_view_state(self._views.get(image))
         self._showing_preview = True
         self._update_actions_enabled()
         if preview.problems:
@@ -1445,6 +1578,11 @@ class MainWindow(QMainWindow):
         except (OSError, ComictransError) as exc:
             self._report_failure("rescanning fonts", exc)
             return
+        # The one input a cached preview's key cannot see. resolve_styles goes
+        # to the filesystem for a face, so installing a font changes what a
+        # plan renders as without changing the plan — a region that would not
+        # resolve before now draws. Nothing to compare, so nothing is kept.
+        self._preview_cache.clear()
         self.statusBar().showMessage(f"{count} font families available", 5000)
 
     def _on_edit_header(self) -> None:
@@ -1669,6 +1807,7 @@ class MainWindow(QMainWindow):
         """
         if self._current_image is None:
             return
+        self._forget_pending_preview()
         keep = self._current_region
         self._on_image_selected(self._current_image)
         if keep is not None and self.document is not None and keep in self.document.ordered_ids():
@@ -1686,6 +1825,13 @@ class MainWindow(QMainWindow):
             self._job.cancel()
             self._job.wait()
             self._job = None
+        # Told to stop and then waited for, the same as the pass above. A
+        # QThread destroyed while it is still running aborts the process, and
+        # the wait is now one region rather than one page.
+        if self._preview_job is not None:
+            self._preview_job.cancel()
+            self._preview_job.wait()
+            self._preview_job = None
         set_notifier(None)
         self._save_layout()
         event.accept()

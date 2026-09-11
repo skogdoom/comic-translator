@@ -50,6 +50,8 @@ from ..model import Plan, TextCase
 from ..ocr import get_recognizer
 from ..planfile import write_plan
 from ..progress import CancelCheck, PageProgress, ProgressCallback
+from ..render import RenderCancelled
+from .preview import Preview, PreviewRequest, render_preview
 
 log = logging.getLogger(__name__)
 
@@ -240,4 +242,56 @@ class ExtractJob(RunJob):
         return report
 
 
-__all__ = ["ExtractJob", "ExtractRequest", "RenderJob", "RenderRequest", "RunJob"]
+# -- previewing --------------------------------------------------------
+
+
+class PreviewJob(RunJob):
+    """``render_preview`` on a worker thread. Completes with a ``Preview``.
+
+    **It stops inside the page, which the other two jobs do not.** They stop
+    between pages, because a chapter has more coming; a preview is one page,
+    so stopping at all means stopping part-way through one. That is safe here
+    and nowhere else: a half-rendered preview is discarded rather than shown,
+    where a half-written page would be a file somebody keeps. ``apply`` passes
+    neither hook to ``render_page`` and so cannot reach either behaviour.
+
+    ``progressed`` carries regions rather than pages — ``(done, total,
+    image)`` counting regions erased. Erasing is 80% of a preview's time,
+    measured, so a bar following it follows the wait.
+
+    Completes with ``None`` rather than a ``Preview`` when it was stopped.
+    Not ``failed``: nothing failed.
+    """
+
+    def __init__(self, request: PreviewRequest, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.request = request
+
+    def work(self, progress: ProgressCallback, should_cancel: CancelCheck) -> Preview | None:
+        request = self.request
+
+        def on_region(done: int, total: int) -> None:
+            progress(PageProgress(index=done, total=total, image=request.image))
+
+        try:
+            return render_preview(
+                request.plan,
+                request.plan_path,
+                request.image,
+                on_region=on_region,
+                should_cancel=should_cancel,
+            )
+        except RenderCancelled:
+            log.debug("preview of %s cancelled", request.image)
+            return None
+
+
+__all__ = [
+    "ExtractJob",
+    "ExtractRequest",
+    "PreviewJob",
+    "PreviewRequest",
+    "RenderJob",
+    "RenderRequest",
+    "RunJob",
+]

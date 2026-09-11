@@ -383,9 +383,29 @@ Overlay** while the rendered page is up: one button, and its label says which
 way it goes. Your place is kept across the swap in both directions — the zoom,
 the position, and the region you had selected.
 
-Rendering a large page takes a moment, and the window does not answer while
-it does. It says so: a wait cursor, and `rendering preview…` in the status
-bar, replaced by what the preview found once it is done.
+Rendering a large page takes a moment, and the window stays yours while it
+happens — the render runs on a worker thread, so you can keep reading, keep
+typing, and change page. The status bar says `rendering preview…` with a bar
+beside it, and then says what the preview found. The bar waits until the page
+has been opened and its regions counted, and then fills as each one is
+erased, which is where almost all of the time goes.
+
+Change page while one is rendering and it stops — between regions, so the
+balloon it was working on is finished and the rest never start — and nothing
+is shown. Nothing is written either way: an abandoned preview leaves exactly
+what a finished one leaves, which is nothing. Press the command again before
+the first has finished and it renders once more from the plan as it now
+stands; press it again with nothing changed and it does not, because that is
+the same question.
+
+Looking at the same page twice costs one render. The last rendered page is
+kept, so toggling back to it is immediate — and any edit that page's render
+would notice throws it away, as does installing a font and rescanning. One
+page is kept, not the chapter: a rendered page is tens of megabytes.
+
+`apply` is untouched by any of this. It stops between pages, never inside
+one, so every page a cancelled run wrote is one a complete run would have
+written.
 
 **File > Extract Pages…** (`Ctrl+Shift+E`) runs the `extract` pass without
 leaving the window, and opens the plan it wrote. It is the only thing here

@@ -254,7 +254,7 @@ class RenderDialog(QDialog):
         from a plain command-line run, and each of them is a flag there too.
         """
         config = replace(
-            apply_config_for(self._document),
+            apply_config_for(self._document.plan),
             erase=EraseConfig(strategy=str(self._erase.currentData())),
         )
         return RenderRequest(

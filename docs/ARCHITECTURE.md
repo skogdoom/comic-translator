@@ -536,12 +536,14 @@ decides, and what draws.
 ```
 document.py   the loaded plan, its edits, and where they save — no Qt
 preview.py     render_page called on the current document — no Qt
+preview_cache.py the last page rendered, and what it was rendered from — no Qt
 about.py       version, author, licence and installed libraries — no Qt
 alerts.py      the two strings an alert has, since macOS drops its title
 qimage.py      the one function that turns a Pillow image into a QPixmap
 icons.py       the toolbar's drawings, tinted; and the application's own
 canvas.py      the page: a pixmap, and clickable region outlines over it
 hint_line.py    the line under it: what a click does, elided to fit
+busy_bar.py     the status bar's indeterminate bar, while a page renders
 sampling.py    colours read off the page for a region drawn by hand
 inspector.py   one region's fields, writing straight through to the document
 color_box.py    a colour field: a swatch, the standard values, the eyedropper
@@ -729,6 +731,180 @@ in sync. Rendering a real preview erases and typesets, the actual work
 rather than on every keystroke — `Ctrl+R`, not automatic. Both read from the
 same `PlanDocument`, so a preview always reflects the edit you just made,
 saved or not.
+
+**A preview runs on a worker thread, and what makes that safe is that it
+does not hold the document.** `PreviewRequest.of` takes a snapshot on the
+window's thread — a frozen `Plan` and the path its images resolve against —
+and that is all the job is given. Editing the document while a render is in
+flight builds a new `Plan` and leaves the captured one alone, so there is
+nothing to lock and nothing to half-read. It is the rule `RenderJob` already
+followed; the preview joins it, which is why `render_preview` stopped taking
+a `PlanDocument`.
+
+**A preview stops inside the page; nothing else does.** The other two jobs
+stop between pages, because a chapter has more coming. A preview is one page,
+so stopping at all means stopping part-way through one — which is safe here
+and nowhere else: what is abandoned is thrown away rather than written, where
+a half-written page would be a file somebody keeps.
+
+So `render_page` grew two optional hooks, `on_region` and `should_cancel`,
+and **both are off by default**. `apply` passes neither, which is the whole
+of how its promise survives: a cancelled `apply` goes on stopping between
+pages, and every page it wrote is one a complete run would have written. That
+is not left to a default — a test watches the call apply makes and asserts
+neither keyword is in it, because a default is an easy thing to start
+relying on by accident.
+
+Both hooks live in the erase loop, and that is measured. On an
+eleven-megapixel page with ten regions the three loops in `render_page` cost
+0.099s, 1.280s and 0.002s per region: erasing is 80% of the whole preview,
+and the other two are below the granularity anyone could see on a bar.
+Cancelling is checked in the planning loop as well, which costs one call per
+region and takes the worst case from "the whole page" down to "the region
+being erased". Never *inside* an erase: a half-erased region would be a
+balloon with part of it repainted, which is the one thing this must not
+produce even for something thrown away.
+
+`should_cancel` raises `RenderCancelled` rather than returning a sentinel. A
+half-erased page is not a result, and a return value saying so would have to
+be handled by every caller including the two that can never see it. It is
+deliberately not a `ComictransError`: nothing failed, so the `RunJob`
+machinery that turns one of those into a red message never sees it, and
+`PreviewJob` completes with `None` instead.
+
+Being unwanted and being stopped are two different things, and the window
+does both. What makes a result unwanted is not that the plan has moved on: a
+preview answers the plan as it stood when it was asked for, and an edit made
+while it rendered makes the answer older than the question rather than wrong
+— which is what used to happen anyway, since the edit could not have been
+made during a render that blocked. What makes it unwanted is that nobody is
+waiting: the page changed, another plan is open, the overlay is back, or a
+newer preview was asked for. All four clear or replace `_preview_wanted`, and
+`_on_preview_ready` shows only a result whose request still matches it.
+
+The first three also cancel the thread, because there is nothing to wait for.
+The fourth does not: a superseded request wants the *next* render, and
+stopping the current one only to start another immediately would throw away
+whatever it had already erased. Asking is not the same as having stopped
+either — the check is between regions, so the thread runs on for up to one
+erase and its result lands in a handler that no longer has anything to match
+it against.
+
+Matching on the request rather than on a counter buys one thing for free:
+two presses with nothing changed in between produce equal requests, so the
+render already running *is* the answer to the second one and no second
+render happens.
+
+**One preview thread, never two.** A request arriving while one runs is
+remembered, not started; the running job's `finished` starts it. That keeps
+the peak at one render's worth of memory rather than two, which on the
+numbers below is the difference worth having.
+
+**The bar is the first animation this window could honestly have.** While the render blocked, the event loop was not turning: the status
+bar had to be repainted by hand to get one message onto the screen, and a
+spinner would have been a still picture of a spinner. With the render on a
+worker thread the loop turns throughout, so `busy_bar.py` shows a
+`QProgressBar` with an empty range — Qt's indeterminate mode, animated from
+its own timer — beside the status bar's message for as long as a render is
+in flight.
+
+It starts indeterminate and becomes determinate, which is the shape of what
+is actually known: a preview has to open the page and plan its regions before
+it can say how many there are to erase. Until the first count arrives the
+only true statement is *something is happening*; from then on there is a real
+fraction and it shows it. `set_busy` puts it back to waiting on the way in,
+or the next preview would open on the last one's finished bar.
+
+The fraction counts regions erased, reusing `RunJob.progressed` — the run
+panel's own signal, carrying regions here instead of pages. That the unit is
+regions-erased is the measurement above, not a guess: a bar following the
+80% follows the wait. The run panel's bar counts pages and stays a different
+thing for a different job.
+
+It goes down on the thread's `finished`, except on failure, where it goes
+down first. A failure opens a modal alert, which sits there for as long as it
+takes somebody to read it, and `finished` is delivered only once that box is
+dismissed — so a bar left to it would spin behind an alert saying the render
+had stopped. A superseded request is the other exception in the other
+direction: the bar stays up across the handover from one thread to the next,
+because from where anyone is sitting that is one wait.
+
+That it animates is measured rather than assumed, and the measuring took two
+attempts. Grabbing the whole window came back byte-identical across half a
+second, which reads as a still bar and is not — the bar repaints on its own
+timer and the window's cached frame did not follow. Grabbing the bar itself
+gives six distinct frames a quarter-second apart, under the offscreen
+platform, on this machine. The test polls for the first frame that differs
+rather than sleeping for a fixed time, so it usually costs one repaint.
+
+**Looking at the same page twice costs one render.** Toggling between the
+overlay and the rendered page is the common gesture, and it used to cost a
+full render each way: measured, three toggles of an eleven-megapixel page
+with nothing edited between them ran three renders and 34 seconds, none of
+the work new. With `preview_cache.py` the same three toggles run one render
+and 13 seconds, and an edit still costs a render — which is the half worth
+checking, since a cache that swallowed an edit would be worse than no cache.
+
+**One entry, because a retained preview holds its image**: 33MB for a page
+that size, standing, under a render whose transient peak is already 540MB.
+What one entry buys is the gesture that repeats. What more would buy is
+returning to a page previewed earlier and untouched since, which is rarer by
+a long way and costs 33MB a page to hold.
+
+**The key is not the plan, and that is the whole design.** A `PreviewRequest`
+carries the whole `Plan`, so keying on it would miss the moment anything on
+any other page changed — during a review, most edits. What a page's render
+actually reads is its own regions, the header the styles come from, and the
+file on disk; the key is those three and nothing else. A test edits a region
+on another page and asserts the plan changed while the key did not.
+
+The file on disk is in the key as `(mtime_ns, size)`. The plan's hash says
+what a page was when the window opened it, not what it is now, and every
+uncached render re-read the file — a cache that stopped looking would be the
+one place this window went blind to a page being replaced under it. One
+`stat` per lookup, immediately before a call that would otherwise read the
+whole file, is not the per-entry cost that kept a stat out of the recent-files
+menu.
+
+**Fonts are the input the key cannot see**, so Rescan Fonts throws the cache
+away. `resolve_styles` goes to the filesystem for a face, which means
+installing a font changes what a plan renders as without changing the plan: a
+region that would not resolve before now draws. There is nothing in the plan
+to compare, so nothing is kept.
+
+The failure this design is shaped around is the quiet one. Everything else in
+the preview path fails loudly; showing an old render as though it were
+current would not. So the key is exact and dull — no heuristics, no
+"probably unchanged", no expiry — and a hit goes through the same
+`_show_preview` a fresh render does, because a cached page that went quiet
+about regions that do not fit would be worse than the render it saved.
+
+**What a thread does not fix, measured.** A preview of an 11 MP page
+(`tests/fixtures/11-complex_six_panel_page.png`, 2840x3880, ten regions)
+costs, from a 57MB baseline:
+
+| | |
+| --- | --- |
+| retained after one preview | +116 MB |
+| process peak RSS | 540 MB |
+| one RGB copy of that page | 33 MB |
+
+So the peak is about sixteen copies of the page, not the three a
+back-of-envelope count of "source, erased, rendered" suggests. A thread makes
+the window answer while that happens; it does not make it less, and two
+previews at once would double it — which is the other reason only one runs.
+
+Where it goes is not evenly spread, and that is the useful part. Stepping
+through the render: `load_page` peaks at 78MB, and `render_page` takes it to
+467MB (traced allocations; RSS peaks higher still). Inside `render_page`, the
+**first `erase` call alone accounts for 356MB of that**; the second adds one
+page copy and calls three through ten add nothing at all, the allocator
+reusing what the first freed.
+
+That is not a preview problem and not a GUI problem. `apply` calls the same
+`render_page` on every page of every chapter and pays exactly the same peak,
+on the command line, where nothing has ever measured it. It belongs to
+`erase.py` — see the roadmap.
 
 **Why `render_preview` calls `render_page` directly instead of its own
 rendering path.** So it cannot drift. If preview had its own drawing code, a

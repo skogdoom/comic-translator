@@ -13,7 +13,7 @@ from comictrans.config import ApplyConfig, TypesetConfig
 from comictrans.fonts import FontFace, resolve
 from comictrans.imaging import PageImage, PageMeta
 from comictrans.model import Box, Color, Geometry, Region, TextCase
-from comictrans.render import RegionStyle, plan_region, render_page
+from comictrans.render import RegionStyle, RenderCancelled, plan_region, render_page
 
 INK = Color(20, 20, 20)
 FILL = Color(250, 250, 250)
@@ -170,3 +170,78 @@ def vars_of(region: Region) -> dict[str, object]:
     from dataclasses import fields
 
     return {f.name: getattr(region, f.name) for f in fields(region)}
+
+
+# -- stopping and reporting, for the preview only ------------------------------
+
+
+def _two_regions() -> tuple[Region, ...]:
+    return (
+        _region("left", LEFT, 1, "HELLO"),
+        _region("right", RIGHT, 2, "THERE"),
+    )
+
+
+def test_render_page_reports_each_region_as_it_erases_it(style: RegionStyle) -> None:
+    """The units the preview's bar counts in.
+
+    Regions erased, not regions planned or drawn: measured on an
+    eleven-megapixel page, erasing is 80% of a preview at 1.28s a region
+    against 0.099s to plan one and 0.002s to draw one.
+    """
+    seen: list[tuple[int, int]] = []
+    styles = {"left": style, "right": style}
+
+    render_page(
+        _page(),
+        _two_regions(),
+        styles,
+        ApplyConfig(),
+        on_region=lambda done, total: seen.append((done, total)),
+    )
+
+    assert seen == [(0, 2), (1, 2), (2, 2)], (
+        "before each erase and once at the end, so the bar neither starts full "
+        "nor stops short of full"
+    )
+
+
+def test_render_page_stops_between_regions_when_asked(style: RegionStyle) -> None:
+    """And stops *between* them: an erase that started is allowed to finish.
+
+    A half-erased region would be a page with part of a balloon repainted,
+    which is the one thing this must not produce even for something thrown
+    away.
+    """
+    erased: list[tuple[int, int]] = []
+    styles = {"left": style, "right": style}
+
+    def stop_after_the_first() -> bool:
+        return len(erased) >= 1
+
+    with pytest.raises(RenderCancelled):
+        render_page(
+            _page(),
+            _two_regions(),
+            styles,
+            ApplyConfig(),
+            on_region=lambda done, total: erased.append((done, total)),
+            should_cancel=stop_after_the_first,
+        )
+
+    assert erased == [(0, 2)], "it stopped before erasing the second"
+
+
+def test_render_page_cannot_be_stopped_when_nobody_passes_a_way_to(
+    style: RegionStyle,
+) -> None:
+    """The default, and the half of apply's promise that lives here.
+
+    With no hooks there is no way in: the page is rendered whole. What apply
+    passes is asserted in ``test_apply.py``, where apply is.
+    """
+    styles = {"left": style, "right": style}
+    image, outcomes = render_page(_page(), _two_regions(), styles, ApplyConfig())
+
+    assert len(outcomes) == 2, "a page rendered in full, with no hooks to stop it"
+    assert image.size == (700, 420)

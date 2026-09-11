@@ -9,11 +9,20 @@ never disagree about the same region.
 
 No Qt here either. What this module returns is a Pillow image; turning that
 into something a widget can paint is the canvas's job.
+
+**It takes a frozen ``Plan``, not the open document**, and that is not
+tidiness. A preview runs on a worker thread, beside a window whose document
+is still being edited: a job holding the live ``PlanDocument`` would be
+reading regions out from under whoever is typing into them. It is the same
+rule ``RenderJob`` already follows, for the same reason — what a job works
+from is settled before it starts. ``PreviewRequest.of`` is where the snapshot
+is taken, on the window's thread, where the document belongs.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PIL import Image
 
@@ -25,7 +34,9 @@ from ..config import (
     TypesetConfig,
 )
 from ..imaging import load_page
-from ..render import RegionOutcome, render_page
+from ..model import Plan
+from ..progress import CancelCheck
+from ..render import RegionOutcome, RegionProgress, render_page
 from .document import PlanDocument
 
 
@@ -46,7 +57,7 @@ class Preview:
         )
 
 
-def apply_config_for(document: PlanDocument) -> ApplyConfig:
+def apply_config_for(plan: Plan) -> ApplyConfig:
     """The same defaults ``apply`` uses for this plan, with no overrides.
 
     Everything here comes from the plan's own header. Nothing the window is
@@ -59,7 +70,7 @@ def apply_config_for(document: PlanDocument) -> ApplyConfig:
     That is a choice made in front of you, not folded in silently, and it is
     the only way the two differ.
     """
-    header = document.plan.header
+    header = plan.header
     return ApplyConfig(
         typeset=TypesetConfig(
             font_size_min_ratio=header.font_size_min_ratio,
@@ -71,16 +82,72 @@ def apply_config_for(document: PlanDocument) -> ApplyConfig:
     )
 
 
-def render_preview(document: PlanDocument, image: str) -> Preview:
+@dataclass(frozen=True, slots=True)
+class PreviewRequest:
+    """One page to render, settled before the thread starts.
+
+    A frozen ``Plan`` and a path, not the open ``PlanDocument``: the window
+    goes on being edited while a preview runs, and a job reading regions out
+    of a document somebody is typing into is the race ``RenderJob`` avoids
+    the same way.
+
+    Here rather than beside the job that runs it, because this module imports
+    no Qt and the tests for what a preview *is* should not need a display to
+    build one. ``run_job`` holds the thread; this holds what the thread is
+    given.
+    """
+
+    plan: Plan
+    plan_path: Path
+    image: str
+
+    @classmethod
+    def of(cls, document: PlanDocument, image: str) -> PreviewRequest:
+        """Take the snapshot, on the thread the document belongs to."""
+        return cls(document.plan, document.path, image)
+
+
+def source_path(plan_path: Path, image: str) -> Path:
+    """Where an image lives, resolved against the plan's own directory.
+
+    The same one-liner as ``apply.source_for`` and ``PlanDocument``\'s own,
+    and here rather than borrowed from either: this module may not import
+    ``apply`` (it would pull the whole pipeline in for one join) and must not
+    reach into the document it deliberately no longer holds.
+    """
+    return (plan_path.parent / image).resolve()
+
+
+def render_preview(
+    plan: Plan,
+    plan_path: Path,
+    image: str,
+    *,
+    on_region: RegionProgress | None = None,
+    should_cancel: CancelCheck | None = None,
+) -> Preview:
     """Render one page as ``apply`` would, without writing anything anywhere.
 
     The source image is opened read-only through the same ``load_page`` apply
     uses; nothing here ever touches it, and nothing here touches the plan
     file either — only ``PlanDocument.save`` writes.
+
+    Runs on a worker thread, so everything it needs arrives frozen: a
+    ``Plan``, which is immutable, and the path its images are resolved
+    against. Nothing it touches can be edited while it runs.
+
+    Raises :class:`RenderCancelled` if ``should_cancel`` says so part-way
+    through. Nothing is written either way, so an abandoned preview leaves
+    exactly what a finished one does: nothing.
     """
-    page = load_page(document.source_path(image))
-    styles = resolve_styles(document.plan, cli_font=None)
+    page = load_page(source_path(plan_path, image))
+    styles = resolve_styles(plan, cli_font=None)
     rendered, outcomes = render_page(
-        page, document.regions_for(image), styles, apply_config_for(document)
+        page,
+        plan.regions_for(image),
+        styles,
+        apply_config_for(plan),
+        on_region=on_region,
+        should_cancel=should_cancel,
     )
     return Preview(rendered, tuple(outcomes))
