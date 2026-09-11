@@ -269,10 +269,6 @@ uv run comictrans review pages/comic-plan.yaml
 middle with its balloons outlined, and one region's source text, translation
 and colours on the right](docs/images/review-window.png)
 
-*English lettering being translated into Swedish, over one of the pages in
-`tests/fixtures/`. The status bar is reporting what the last preview render
-found — three regions on this page whose text does not fit yet.*
-
 Opens a plan file in a window — **Comic Translator**, which is what the
 application calls itself; `comictrans` remains what you type. Run it without
 a path and it opens empty, ready to open a plan or extract one. Needs
