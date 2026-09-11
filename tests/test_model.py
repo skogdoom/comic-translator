@@ -15,6 +15,7 @@ from comictrans.model import (
     polygon_bounds,
     polygon_is_simple,
     polygons_overlap,
+    with_image_order,
 )
 
 from .conftest import make_plan
@@ -86,6 +87,63 @@ def test_plan_groups_regions_by_image_in_first_seen_order() -> None:
     )
     assert plan.image_names() == ("b.png", "a.png")
     assert [r.id for r in plan.regions_for("b.png")] == ["b-1", "b-2"]
+
+
+def _three_page_plan() -> object:
+    return make_plan(
+        PlanHeader(2, "g", "now", "it", "en", "fake", "F", TextCase.UPPER, 0.012, 0.9),
+        (
+            _region("a.png", "a-1"),
+            _region("a.png", "a-2"),
+            _region("b.png", "b-1"),
+            _region("c.png", "c-1"),
+        ),
+    )
+
+
+def test_with_image_order_moves_the_regions_with_the_pages() -> None:
+    """The two lists are one order, and this is where that is enforced.
+
+    Walking region by region follows the regions list and takes for granted
+    that it is grouped by page in page order. Reordering pages alone would
+    leave the page list and the next-region key disagreeing, on a plan that
+    still reads as perfectly valid.
+    """
+    reordered = with_image_order(_three_page_plan(), ("c.png", "a.png", "b.png"))
+
+    assert reordered.image_names() == ("c.png", "a.png", "b.png")
+    assert [r.id for r in reordered.regions] == ["c-1", "a-1", "a-2", "b-1"]
+
+
+def test_with_image_order_keeps_the_order_within_a_page() -> None:
+    """Pages move; the reading order inside one is not this function's business."""
+    reordered = with_image_order(_three_page_plan(), ("b.png", "a.png", "c.png"))
+
+    assert [r.id for r in reordered.regions_for("a.png")] == ["a-1", "a-2"]
+
+
+def test_a_page_the_caller_did_not_name_keeps_its_place_at_the_end() -> None:
+    """A partial list reorders what it knows about and cannot lose a page."""
+    reordered = with_image_order(_three_page_plan(), ("c.png",))
+
+    assert reordered.image_names() == ("c.png", "a.png", "b.png")
+    assert len(reordered.regions) == 4
+
+
+def test_a_name_the_plan_does_not_have_is_ignored() -> None:
+    """A stale list — from a page list not yet rebuilt — must not throw."""
+    reordered = with_image_order(_three_page_plan(), ("gone.png", "b.png"))
+
+    assert reordered.image_names() == ("b.png", "a.png", "c.png")
+
+
+def test_reordering_to_the_order_already_in_place_changes_nothing() -> None:
+    plan = _three_page_plan()
+
+    reordered = with_image_order(plan, plan.image_names())
+
+    assert reordered.image_names() == plan.image_names()
+    assert [r.id for r in reordered.regions] == [r.id for r in plan.regions]
 
 
 def test_region_is_actionable_only_with_a_translation() -> None:

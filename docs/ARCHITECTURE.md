@@ -664,6 +664,30 @@ provenance — and the reviewer is not the authority on which engine ran. They
 are shown, because knowing what made a plan is useful, and they are labels
 rather than fields, because there is nothing to decide.
 
+**A plan has one order, and `with_image_order` is what keeps it one.** The
+page list shows `images`; walking region by region follows `regions` and
+takes for granted that it is grouped by page in page order — which is what
+makes `Ctrl+Down` walk the comic rather than walk the file. Those are two
+lists that have to agree, and nothing about the schema makes them: a plan
+with its pages in one order and its regions in another reads back as
+perfectly valid and behaves as though the window were lying.
+
+So reordering is one function in `model.py` that moves both, and everything
+that reorders goes through it — the page list's drag, and `merge_plans`,
+which carries the previous plan's order across a re-extraction the way it
+carries translations and notes. Its sorts are stable, so regions keep their
+reading order inside a page and a page nobody named keeps its place at the
+end; a name the plan does not have is ignored. Between those two rules a
+partial or stale list can reorder what it knows about and cannot lose a
+page.
+
+The window holds the other half of that bargain. `_resync_page_rows` puts
+the rows back in the plan's order whenever the two have parted — after an
+undo, which changes the whole list rather than the single row's label a
+refresh repaints, and after a reorder the plan could not carry out
+literally. It is the same rule the canvas keeps for a reshape the document
+refuses: what is on screen is never something the document does not have.
+
 **Where "the next region" is decided.** In `document.py`, not in the window,
 as `adjacent_region` over the plan's own region order. Which region comes
 after this one is a question about a plan, not about a widget, and asking it

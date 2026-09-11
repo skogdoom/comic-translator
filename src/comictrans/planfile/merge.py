@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 
-from ..model import Box, Plan, Region
+from ..model import Box, Plan, Region, with_image_order
 
 log = logging.getLogger(__name__)
 
@@ -135,9 +135,13 @@ def merge_plans(
             region_id,
         )
 
-    # The fresh run's pages, not the old plan's: which files exist and what
-    # they hash to is measured, like the polygons and the colours, and the
-    # point of re-extracting is to measure it again.
-    return Plan(header=fresh.header, images=fresh.images, regions=tuple(regions)), MergeReport(
+    # Which pages exist and what they hash to comes from the fresh run:
+    # that is measured, like the polygons and the colours, and measuring it
+    # again is the point of re-extracting. The *order* is not measured. It
+    # is a decision somebody made by dragging rows about, so it is carried
+    # like the translations and the notes are — pages the previous plan knew
+    # keep its order, and pages it did not are new and go after them.
+    merged = Plan(header=fresh.header, images=fresh.images, regions=tuple(regions))
+    return with_image_order(merged, previous.image_names()), MergeReport(
         carried=tuple(carried), dropped=dropped, added=tuple(added)
     )

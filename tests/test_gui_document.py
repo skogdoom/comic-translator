@@ -277,6 +277,79 @@ def _apart(index: int, **overrides: object) -> Region:
     )
 
 
+def _three_pages() -> PlanDocument:
+    return _document(
+        _apart(1),
+        _apart(2),
+        _region("page-002.png", id="r3", polygon=Box(0, 0, 100, 100).as_polygon()),
+        _region("page-003.png", id="r4", polygon=Box(0, 0, 100, 100).as_polygon()),
+    )
+
+
+def test_reordering_pages_moves_the_regions_with_them() -> None:
+    """One order: the page list and stepping region by region agree or neither does."""
+    doc = _three_pages()
+
+    assert doc.reorder_images(("page-003.png", "page-001.png", "page-002.png"))
+
+    assert doc.images() == ("page-003.png", "page-001.png", "page-002.png")
+    assert doc.ordered_ids() == ("r4", "r1", "r2", "r3")
+
+
+def test_reordering_pages_is_one_undo_step_and_undoes_whole() -> None:
+    doc = _three_pages()
+    before = doc.images()
+
+    doc.reorder_images(("page-003.png", "page-002.png", "page-001.png"))
+    assert doc.dirty
+    assert doc.undo()
+
+    assert doc.images() == before
+    assert doc.ordered_ids() == ("r1", "r2", "r3", "r4")
+    assert not doc.dirty, "undoing back to the last save clears the marker"
+
+
+def test_a_reorder_that_lands_where_it_started_is_not_an_edit() -> None:
+    """A drag dropped back on its own row should not cost an undo step.
+
+    The same bargain a polygon drag strikes: what did not change is not an
+    edit, and the dirty marker should not claim otherwise.
+    """
+    doc = _three_pages()
+
+    assert not doc.reorder_images(doc.images())
+
+    assert not doc.dirty
+    assert not doc.can_undo
+
+
+def test_reordering_does_not_disturb_the_reading_order_inside_a_page() -> None:
+    doc = _three_pages()
+
+    doc.reorder_images(("page-002.png", "page-001.png", "page-003.png"))
+
+    assert [r.id for r in doc.regions_for("page-001.png")] == ["r1", "r2"]
+
+
+def test_a_reordered_plan_still_reads_back_in_that_order(tmp_path: Path) -> None:
+    """The order has to survive the file, or the whole feature is a session's whim.
+
+    ``dumps`` builds the document from the ``Plan`` rather than patching the
+    YAML that was read, so both lists come out in the order the plan holds
+    them — but that is the sort of thing worth a test rather than a reading
+    of the writer.
+    """
+    doc = _three_pages()
+    doc.reorder_images(("page-003.png", "page-001.png", "page-002.png"))
+
+    path = tmp_path / "comic-plan.yaml"
+    doc.save_as(path)
+    reopened = PlanDocument.open(path, check_images=False)
+
+    assert reopened.images() == ("page-003.png", "page-001.png", "page-002.png")
+    assert reopened.ordered_ids() == ("r4", "r1", "r2", "r3")
+
+
 def test_ordered_ids_is_the_plans_own_order() -> None:
     doc = _document(_apart(1), _apart(2), _apart(3))
     assert doc.ordered_ids() == ("r1", "r2", "r3")

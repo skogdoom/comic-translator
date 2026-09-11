@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         self._run_dock.hide()
 
         self._pages.image_selected.connect(self._on_image_selected)
+        self._pages.order_changed.connect(self._on_pages_reordered)
         self._canvas.region_selected.connect(self._on_region_selected)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._canvas.polygon_edited.connect(self._on_polygon_edited)
@@ -1086,6 +1087,40 @@ class MainWindow(QMainWindow):
         self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
 
+    def _resync_page_rows(self) -> None:
+        """Put the rows in the plan's order, when the two have parted.
+
+        The canvas keeps the same rule for a reshape the document refuses:
+        what is on screen is never something the document does not have.
+        Here the rows can part from the plan two ways — an undone reorder,
+        which changes the whole list rather than the one row's label that
+        ``_refresh_page_visuals`` repaints, and a reorder the plan could not
+        carry out exactly, since ``with_image_order`` ignores a name it does
+        not know and leaves a page nobody named at the end.
+
+        Rebuilt with the signals blocked, so that putting the selection back
+        does not read as choosing a page and reload one that never changed.
+        """
+        if self.document is None or self._pages.current_order() == self.document.images():
+            return
+        with QSignalBlocker(self._pages):
+            self._pages.set_document(self.document)
+            if self._current_image is not None:
+                self._pages.select_image(self._current_image)
+
+    def _on_pages_reordered(self, names: list[str]) -> None:
+        """A row was dragged. The widget has already moved it; record it.
+
+        The plan's page order and its region order move together — see
+        ``model.with_image_order`` — so this is also what keeps stepping
+        region by region walking the comic in the order the list shows.
+        """
+        if self.document is None or not self.document.reorder_images(names):
+            return
+        self._resync_page_rows()
+        self._refresh_page_visuals()
+        self._update_actions_enabled()
+
     def _on_undo(self) -> None:
         if self.document is not None and self.document.undo():
             self._reload_from_document()
@@ -1110,6 +1145,7 @@ class MainWindow(QMainWindow):
             and self._current_region not in self.document.ordered_ids()
         ):
             self._current_region = None
+        self._resync_page_rows()
         self._refresh_page_visuals()
         self._canvas.set_selected(self._current_region)
         self._inspector.set_region(self.document, self._current_region)
