@@ -1032,6 +1032,88 @@ def test_the_recent_list_outlives_the_window_that_made_it(
     assert _recent_labels(MainWindow(settings=settings))[0].endswith(two_page_plan.name)
 
 
+def test_the_page_list_lets_rows_be_dragged_within_itself_only(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A page cannot be dragged in from elsewhere: the pages are what extract
+    found, and this is about their order rather than their membership."""
+    from PySide6.QtWidgets import QListWidget
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    assert window._pages.dragDropMode() == QListWidget.DragDropMode.InternalMove
+    assert window._pages.current_order() == window.document.images()  # type: ignore[union-attr]
+
+
+def test_a_drop_reports_the_order_the_rows_are_in_afterwards(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The override emits after ``super()``, which is the whole of its job.
+
+    It cannot check more than that here: moving a row needs a real drag
+    session, and a synthesised ``QDropEvent`` does not give ``QListWidget``
+    one — so the rows stay put and the reported order is the one they are
+    already in. What this does prove is that a drop is reported at all, and
+    reported from after the base class has had it rather than before.
+    """
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QDropEvent
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    pages = window._pages
+
+    reported: list[list[str]] = []
+    pages.order_changed.connect(reported.append)
+
+    pages.setCurrentRow(1)
+    event = QDropEvent(
+        QPointF(5, 1),
+        Qt.DropAction.MoveAction,
+        pages.mimeData([pages.item(1)]),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    pages.dropEvent(event)
+
+    assert reported == [list(pages.current_order())]
+
+
+def test_dragging_a_page_reorders_the_plan(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    reversed_order = list(reversed(window.document.images()))  # type: ignore[union-attr]
+
+    window._on_pages_reordered(reversed_order)
+
+    assert list(window.document.images()) == reversed_order  # type: ignore[union-attr]
+    assert window.document.dirty  # type: ignore[union-attr]
+    assert "[*]" in window.windowTitle(), "the title says the plan has moved on"
+
+
+def test_undoing_a_reorder_puts_the_rows_back_too(qapp: object, two_page_plan: Path) -> None:
+    """The rows are what changed, and one row's label is all a refresh repaints.
+
+    Without rebuilding the list here, undo would leave the window showing an
+    order the plan no longer has — the two disagreeing with nothing on
+    screen to say which is right.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    before = window._pages.current_order()
+    showing = window._current_image
+
+    window._on_pages_reordered(list(reversed(before)))
+    assert window._pages.current_order() != before or len(before) < 2
+
+    window._on_undo()
+
+    assert window._pages.current_order() == before
+    assert window._pages.current_order() == window.document.images()  # type: ignore[union-attr]
+    assert window._current_image == showing, "undoing an order does not change the page shown"
+
+
 def test_the_run_dock_stays_closed_however_the_last_session_left_it(
     qapp: object, tmp_path: Path
 ) -> None:

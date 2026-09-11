@@ -209,3 +209,73 @@ def test_the_pages_come_from_the_fresh_run() -> None:
     merged, _ = merge_plans(old, fresh)
 
     assert merged.image_names() == ("p.png", "blank.png")
+
+
+def test_re_extracting_keeps_a_hand_made_page_order() -> None:
+    """The pages are measured again; the order they are in was a decision.
+
+    ``extract`` lists pages in whatever order the directory scan produced,
+    so without this a re-extraction would silently undo every drag someone
+    did in the page list.
+    """
+    order = ("c.png", "a.png", "b.png")
+    previous = make_plan(
+        _header(),
+        tuple(_region(f"r-{name}", Box(0, 0, 10, 10), image=name) for name in order),
+    )
+    fresh = make_plan(
+        _header(),
+        tuple(
+            _region(f"r-{name}", Box(0, 0, 10, 10), image=name)
+            for name in ("a.png", "b.png", "c.png")
+        ),
+    )
+
+    merged, _report = merge_plans(previous, fresh)
+
+    assert merged.image_names() == order
+    assert [region.image for region in merged.regions] == list(order), (
+        "regions follow the pages, or walking region by region and the page "
+        "list would disagree about what comes next"
+    )
+
+
+def test_a_page_the_previous_plan_never_had_goes_after_the_ones_it_did() -> None:
+    """A new page has no place in an order nobody has put it in yet."""
+    previous = make_plan(
+        _header(),
+        (
+            _region("r-b", Box(0, 0, 10, 10), image="b.png"),
+            _region("r-a", Box(0, 0, 10, 10), image="a.png"),
+        ),
+    )
+    fresh = make_plan(
+        _header(),
+        tuple(
+            _region(f"r-{name[0]}", Box(0, 0, 10, 10), image=name)
+            for name in ("a.png", "b.png", "new.png")
+        ),
+    )
+
+    merged, _report = merge_plans(previous, fresh)
+
+    assert merged.image_names() == ("b.png", "a.png", "new.png")
+
+
+def test_re_extracting_still_takes_the_pages_themselves_from_the_fresh_run() -> None:
+    """Order is carried; membership and hashes are measured, not carried."""
+    previous = make_plan(
+        _header(),
+        (_region("r-gone", Box(0, 0, 10, 10), image="gone.png"),),
+        digests={"gone.png": "0" * 64},
+    )
+    fresh = make_plan(
+        _header(),
+        (_region("r-a", Box(0, 0, 10, 10), image="a.png"),),
+        digests={"a.png": "f" * 64},
+    )
+
+    merged, _report = merge_plans(previous, fresh)
+
+    assert merged.image_names() == ("a.png",), "a page that is gone is gone"
+    assert merged.sha256_for("a.png") == "f" * 64, "and the hash is this run's"

@@ -393,6 +393,32 @@ def polygons_overlap(first: Polygon, second: Polygon) -> bool:
     return point_in_polygon(first[0], second) or point_in_polygon(second[0], first)
 
 
+def with_image_order(plan: Plan, names: Sequence[str]) -> Plan:
+    """The same plan with its pages in ``names`` order, and regions following.
+
+    **Both lists move together, and that is the point.** ``images`` is the
+    order pages are reviewed and rendered in; ``regions`` is the order
+    walking region by region follows, and it takes for granted that it is
+    grouped by page in page order — which is what makes stepping through a
+    plan step through the comic. Reordering one without the other would
+    leave the page list and the next-region key disagreeing about what comes
+    after what, on a plan that still reads as valid.
+
+    Sorting is stable throughout, so regions keep their order within a page
+    and pages the caller did not name keep theirs at the end. A name that is
+    not in the plan is ignored. Between them those two rules mean a partial
+    or stale list can reorder what it knows about and cannot lose a page.
+    """
+    wanted = {name: index for index, name in enumerate(names)}
+    after_the_named = len(wanted)
+    images = tuple(sorted(plan.images, key=lambda image: wanted.get(image.name, after_the_named)))
+
+    settled = {image.name: index for index, image in enumerate(images)}
+    unknown_page = len(settled)
+    regions = tuple(sorted(plan.regions, key=lambda r: settled.get(r.image, unknown_page)))
+    return replace(plan, images=images, regions=regions)
+
+
 def convex_hull(points: Sequence[Point]) -> Polygon:
     """The smallest convex ring containing every point, in whole pixels.
 

@@ -29,6 +29,7 @@ from ..model import (
     convex_hull,
     polygon_is_simple,
     polygons_overlap,
+    with_image_order,
 )
 from ..planfile import load_plan, write_plan
 from ..planfile.schema import (
@@ -395,6 +396,23 @@ class PlanDocument:
         self._undo.append(self.plan)
         self.plan = self._redo.pop()
         self._run = None
+        return True
+
+    def reorder_images(self, names: Sequence[str]) -> bool:
+        """Put the pages in ``names`` order. False when that changes nothing.
+
+        One undo step per reorder, never coalesced: ``run=None`` both pushes
+        unconditionally and ends whatever typing run was open, because a
+        drag is a different act from the sentence somebody was in the middle
+        of.
+
+        A reorder that lands where it started is not an edit — the same
+        bargain a polygon drag strikes — so it does not go on the undo stack
+        and does not mark the plan dirty.
+        """
+        if self.plan.image_names() == tuple(names):
+            return False
+        self._record(with_image_order(self.plan, names), run=None)
         return True
 
     def set_translation(self, region_id: str, translation: str) -> Region:

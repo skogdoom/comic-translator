@@ -33,7 +33,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.23 | Page order | S–M |
 | 4.24 | Interface review: conventions and wording | M |
 | 4.7 | Help instructions | S–M |
 | 4.10 | Package as an application | M |
@@ -110,32 +109,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.23 Page order
-
-Reorder a plan's pages by dragging rows in the page list.
-
-**One order, not two.** The plan's `images` list is already a sequence;
-this makes that sequence mean something and makes it editable. Review
-follows it, and so does anything that writes pages into a single file — 8
-and 6 below. A separate reading order and writing order would be two
-things to keep in step for a case nobody has asked for.
-
-**Until 8 lands it is half a feature, and that is the honest half.**
-`apply` writes one file per source image, named after the source, so on its
-own the order decides the sequence pages are worked in and nothing about
-what ends up on disk. The half that works immediately — reviewing a chapter
-in reading order instead of in whatever order the filenames happen to sort
-— is worth having by itself. Once an archive is being written, the same
-list becomes the reading order of the thing someone else opens.
-
-**One rule needs writing down.** `extract` builds its image list from the
-directory scan, so re-extracting over a plan whose pages have been
-reordered by hand must not put them back. Re-extraction already knows how
-to keep hand edits to regions; this is the same promise for the list.
-
-Regions name their image by name rather than by index, so reordering does
-not touch them.
 
 ## 4.24 Interface review: conventions and wording
 
@@ -486,8 +459,9 @@ closely — how it is validated, and what happens when it names something
 that is not `rar` at all.
 
 **Naming inside the archive carries the reading order, not the source
-filenames.** A reader sorts entries by name, so the order 4.23 lets someone
-set has to survive into the archive as a zero-padded prefix or equivalent.
+filenames.** A reader sorts entries by name, so the page order somebody
+set by dragging rows has to survive into the archive as a zero-padded prefix
+or equivalent.
 Source names that happen to sort correctly today are luck, not a
 guarantee, and a reordered chapter would silently come out in the old
 order if the entry names were copied straight through.
@@ -530,7 +504,8 @@ is picked up rather than guessing now.
 
 What is already known: it extends `render_dialog`'s format choice and
 `apply.output_path`, both of which assume one output file per source image
-today. And it is what makes 4.23's page order mean something on disk.
+today. And it is the other milestone that makes the page order mean
+something on disk rather than only in the window.
 
 ## 10 Code quality review
 

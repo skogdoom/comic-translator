@@ -76,8 +76,8 @@ it may hold hours of translation — unless you pass `--force` to discard it or
 ### Re-extracting
 
 `--merge` re-detects the pages and then carries your work across from the
-existing plan: edited translations, `notes`, `skip` flags and `font` /
-`font_size` overrides. Everything measured from the page — polygons, colours,
+existing plan: edited translations, `notes`, `skip` flags, `font` /
+`font_size` overrides, and the order you put the pages in. Everything measured from the page — polygons, colours,
 confidence, the OCR text — comes from the new run, which is the point of
 re-running it.
 
@@ -233,6 +233,13 @@ between regions, the preview toggle, and both whole-chapter runs — as icons
 rather than words, because as words they came to more than the window is
 wide. Hover any of them for its name; the menus keep the words permanently,
 with the shortcuts beside them.
+
+**Pages are reordered by dragging their rows** in the list on the left.
+That is one order, not two: it is the order you review in, the order `apply`
+works through, and — once a whole chapter can be written into a single file
+— the order somebody else will read it in. Regions move with their pages, so
+`Ctrl+Down` keeps walking the comic in the order you can see. Re-extracting
+does not undo it.
 
 The overlay uses the same colours as `--debug-dir`: green for a traced
 contour, orange for approximate, violet for a shape drawn or edited here by
