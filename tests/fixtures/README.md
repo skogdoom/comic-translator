@@ -1,8 +1,15 @@
 # Fixture images
 
-Drop real scanned pages here. Nothing in this directory is committed as image
-data by the tool itself, and the synthetic pages the unit tests use are
-generated in `tests/conftest.py` rather than stored.
+Drop real scanned pages here. Git ignores every image in this directory, so a
+page you drop in stays on your disk — it is your scan, and somebody else's
+copyright, and not this repository's to carry. The synthetic pages the unit
+tests use are generated in `tests/conftest.py` rather than stored.
+
+The images that *are* committed here are the exception, and a deliberate one:
+a dozen synthetic comic pages covering the cases listed below, so that the
+detection pipeline has something to be held to on any machine. Adding another
+means `git add -f`, which is the point — committing an image into this
+repository should take a decision.
 
 `tests/test_fixtures.py` picks up any `.png`, `.jpg`, `.jpeg`, `.tif`, or
 `.tiff` file in this directory and runs the real detection pipeline over it,
