@@ -58,6 +58,36 @@ uv sync --group dev
 uv run comictrans --help
 ```
 
+## Build the application
+
+`review` runs perfectly well from the command line, and on macOS it can also
+be a real application with a Dock icon and its own name in the menu bar:
+
+```
+git clone https://github.com/skogdoom/scanlation-tool-osx
+cd scanlation-tool-osx
+uv sync --group dev --extra gui --group bundle
+uv run --extra gui --group bundle tools/build_app.py
+```
+
+That writes `dist/Comic Translator.app`. Drag it to `/Applications` if you
+want it there.
+
+**It is unsigned, and that is the decision rather than an omission.** There
+is no Developer ID, no notarisation and no stapling, so the bundle is
+quarantined by Gatekeeper on any machine but the one that built it. It is
+something you build, not something you download — which is the same bargain
+the disclaimer above already strikes rather than a weaker one dressed up.
+
+**Clone, do not download the zip.** macOS marks a downloaded archive with a
+quarantine attribute and everything unpacked from it inherits the mark,
+including whatever you then build. A `git clone` carries no such attribute.
+Build from a zip and the application will refuse to open and look broken.
+
+The build only works on macOS: PyInstaller bundles the interpreter and
+libraries of the machine it runs on and does not cross-compile. Anywhere else
+the script says so and stops.
+
 ## extract
 
 ```
@@ -738,6 +768,14 @@ src/comictrans/gui/resources/appicon/recreate-icons.py
 
 The suite runs that script's `--check` mode, so a master edited without
 regenerating fails `pytest` rather than shipping a stale icon.
+
+Both drawings go into the `.icns` the application bundle carries, at
+different sizes: the simplified one in the 16- and 32-point slots, where the
+master's fur lines and page edges are the mud it exists to avoid, and the
+master from 128 points up, where that detail is the drawing. `tools/` holds
+the build script and the PyInstaller spec; the slot rule and the Info.plist
+keys are tested on any platform, because none of them fails loudly enough to
+notice on a Mac.
 
 ## Licence
 

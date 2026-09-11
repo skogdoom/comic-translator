@@ -1366,6 +1366,74 @@ even though the Save panel has already asked: the cost of the extra
 confirmation is one click in a rare case, and the cost of being wrong about
 what every file panel on every platform does is somebody's plan file.
 
+### The application bundle
+
+`tools/build_app.py` and `tools/comictrans.spec` build `Comic Translator.app`
+on the machine that will run it. Neither is part of the package: the bundler
+lives in its own `bundle` dependency group so that installing `comictrans`
+for the command line does not pull one, and `tools/` is outside
+`src/comictrans` so nothing ships in the wheel.
+
+**Unsigned is the decision.** No Developer ID, no notarisation, no stapling —
+so the bundle is quarantined by Gatekeeper anywhere but where it was built,
+which makes it a thing you build rather than a thing you download. That is
+the same bargain the README's disclaimer already strikes. The consequence
+worth writing down is the one nobody expects: macOS marks a downloaded zip
+with a quarantine attribute and everything built from its contents inherits
+it, while a `git clone` does not — so the instructions say clone, and say
+why, rather than leaving someone to meet Gatekeeper and conclude the build
+is broken.
+
+**`CFBundleName` is the whole point.** macOS titles "About X", "Hide X" and
+"Quit X" from `qt_mac_applicationName()`, which reads `CFBundleName` out of
+`Info.plist` and falls back to the `argv[0]`-derived name only when there is
+no bundle. `gui.app` passes the name as `argv[0]`, which is what makes the
+unbundled case right; the moment a bundle exists that file outranks it, and
+one that omitted the key would put `comictrans` back in that menu.
+
+**Three settings that fail silently, and are therefore tested.** The spec is
+a Python file PyInstaller `exec`s with five names injected, so the tests
+inject recorders instead and read back what it would have asked for. That
+reaches `CFBundleName`; it reaches `console=False`, which PyInstaller turns
+into `LSBackgroundOnly` — an application with no Dock icon and no menu bar —
+and which COLLECT and BUNDLE each inherit from the object below them; and it
+reaches the two collections the analysis cannot find on its own.
+
+Those two are `collect_data_files`, which carries `gui/resources/` — nothing
+imports the toolbar drawings, the application icon or the guide, and all
+three fail as a warning in a log — and `copy_metadata`, which carries the
+distribution metadata the About dialog reads itself from. `recursive=True`
+walks the *required* dependencies, which is not all of them: PySide6 is an
+extra, so it is required by nothing and its metadata was simply absent from
+a build until it was named. Extras are asked for one at a time and skipped
+when missing, because which of them are installed is the builder's choice.
+
+**The icon is rendered per slot, from both drawings.** `.icns` holds one
+image per size rather than one scalable drawing, which is the distinction
+`resources/appicon/` was built around. The slot rule is keyed on **points**,
+not pixels: a 16x16@2x slot is 32 pixels shown at 16 points, physically the
+same size as a 16x16 on a display without Retina, and it wants the same
+drawing. Keyed on pixels it would get the detailed master while the 32-point
+slot beside it got the simplified one — the two swapped, at exactly the
+sizes the second drawing exists for. So the simplified drawing covers 16 and
+32 points (the menu bar, the Finder list, the sidebar) and the master covers
+128 and up (the Dock, Finder's icon view). Measured, the choice is not
+cosmetic: at 32 pixels 105 of 1024 pixels differ between the two by more
+than 8/255.
+
+The PNGs are rendered here and assembled by `iconutil`. `.icns` is a typed
+container whose codes are not guessable — a 32-pixel image in the 16-point
+slot and in the 32-point one differ by four bytes, with no error if you get
+it wrong — so Apple's own tool does that part.
+
+**What none of this can check.** No `.app` is produced anywhere but on a Mac,
+because PyInstaller bundles the interpreter and libraries of the machine it
+runs on. What has been run on Linux is the whole analysis: the spec builds, a
+frozen binary launches, opens the review window under the offscreen platform
+and writes its log, and the resources and metadata are all in the tree. What
+has not been run is `BUNDLE` — which on any other platform returns
+immediately — `iconutil`, and Gatekeeper.
+
 **Testing.** `gui.document` and `gui.preview` are tested like any other
 module, no different setup. The widget tests build a real `QApplication`
 under `QT_QPA_PLATFORM=offscreen` and skip — rather than fail — on a machine

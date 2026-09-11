@@ -4,8 +4,8 @@
 returns nothing on macOS, and half of these commands — reshape a region,
 merge two, walk to the next flagged one — have no standard pixmap in any Qt
 style to return. There is no route that avoids shipping images, so they are
-shipped, and shipping them is the same packaging the ``.icns`` icon and
-milestone 4.10's build config need anyway.
+shipped, and shipping them is the same packaging the ``.icns`` icon and the
+application bundle need anyway.
 
 **Why drawn here rather than taken from a set.** An icon set carries a
 licence, and a licence has to be recorded in ``LICENSE`` and in the About

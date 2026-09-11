@@ -36,6 +36,13 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
 ]
+# The macOS application bundler, for tools/build_app.py. Its own group and
+# emphatically not a runtime dependency: installing comictrans for the
+# command line must not pull a bundler nobody is going to run. Not in `dev`
+# either, so the everyday `uv sync --group dev` stays small.
+bundle = [
+    "pyinstaller>=6.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -63,7 +70,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "PTH", "ARG", "C4"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src/comictrans"]
+files = ["src/comictrans", "tools"]
 strict = true
 warn_unreachable = true
 
@@ -90,6 +97,16 @@ follow_imports = "skip"
 module = ["PySide6.*"]
 ignore_missing_imports = true
 
+# The bundler lives in its own dependency group, so it is absent from the
+# environment the type check usually runs in.
+[[tool.mypy.overrides]]
+module = ["PyInstaller.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# tools/ is not a package and is not installed; this is what lets the tests
+# import the bundle build script and check the parts of it that do not need
+# a Mac.
+pythonpath = ["tools"]

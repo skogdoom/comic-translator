@@ -33,7 +33,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.10 | Package as an application | M |
 | **11** | **First release (1.0.0)** | **S–M** |
 | 4.22 | Preview off the main thread | M |
 | 4.9 | Localisation | M |
@@ -108,58 +107,6 @@ plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
 
-## 4.10 Package as an application
-
-`uv run <something>` produces a runnable `.app`. Unsigned, built by
-whoever is going to use it.
-
-py2app, PyInstaller and briefcase all work. PyInstaller is the least
-macOS-specific and the best documented.
-
-**Distribution is decided, and it decides the shape of everything else
-here.** No Developer ID, no notarisation, no stapling — which means the
-bundle is quarantined by Gatekeeper on any machine but the one that built
-it, so it is never a download. What ships is the repository and a
-documented command; what someone ends up with is an `.app` they built
-themselves. That matches the disclaimer in `README.md` rather than
-straining against it.
-
-Two consequences worth having in writing before the script exists. The
-bundler is a development dependency and must stay one: putting PyInstaller
-in the runtime dependencies would have everyone who installs `comictrans`
-for the command line pull a bundler they will never run. And a source tree
-downloaded as a zip carries macOS's quarantine attribute into whatever is
-built from it, while a `git clone` does not — so the build instructions
-should say clone, and say why, rather than leaving someone to meet
-Gatekeeper and conclude the build is broken.
-
-**`CFBundleName` has to be "Comic Translator", and it is not optional.**
-macOS titles its application menu — "About X", "Hide X", "Quit X" — from
-`qt_mac_applicationName()`, which reads `CFBundleName` out of the bundle's
-`Info.plist` and only falls back to the `argv[0]`-derived name when there
-is no bundle. `gui.app` sets the application name before Qt starts, which
-is what makes the unbundled case right; the moment a bundle exists,
-`Info.plist` outranks it and a bundle that omits the key would put
-`comictrans` back in that menu. Set it, and set `CFBundleDisplayName` with
-it.
-
-**The icon set is already two drawings, and an `.icns` wants both.** That
-format holds one image per size rather than one scalable drawing, which is
-exactly the distinction `resources/appicon/` was built around: render the
-1024 master into the large slots, where its fur lines and page edges read,
-and the derived 512 icon into the small ones, where they would turn to mud.
-Rendering one file into every slot throws away the reason there are two.
-
-On macOS the Dock reads the bundle rather than `setWindowIcon`, so until
-this milestone the icon is visible everywhere except the first place a Mac
-user looks.
-
-The bundle needs Pillow, numpy and OpenCV whatever else happens: the review
-window renders previews through `render_page`, which erases and typesets
-like any other page. Since 4.6 it needs pyobjc-Vision too — extract runs from
-the window now, so the recogniser is part of the application rather than
-something only the command line reaches.
-
 ## 11 First release (1.0.0)
 
 The version, the release notes, and the decisions a release forces that a
@@ -173,8 +120,8 @@ for a repository rather than for a release. And there is no changelog:
 release notes need somewhere to live that is not `git log`.
 
 **What "released" means here, now that it is settled.** Not a download:
-4.10 builds an unsigned bundle, and an unsigned bundle is quarantined by
-Gatekeeper anywhere but the machine that built it. So 1.0 is the
+the build produces an unsigned bundle, and an unsigned bundle is quarantined
+by Gatekeeper anywhere but the machine that built it. So 1.0 is the
 repository, a documented build command, and an `.app` that each person
 makes for themselves. The release notes have to say that in the first
 paragraph rather than the last, because someone expecting a disk image will
@@ -191,9 +138,20 @@ cannot drift apart.
 This is the whole of what the macOS work has left, and it cannot happen any
 earlier, because none of it exists until there is a bundle. Everything on
 this list is set from code and none of it has been seen working: menu bar
-placement and `AboutRole`, the unified title-and-toolbar look, full screen,
+placement and `AboutRole`, whether the merged Settings item takes the text
+it is given or Qt's own, the unified title-and-toolbar look, full screen,
 the Dock icon, and the toolbar drawings against real dark-mode chrome
 rather than a palette a test set for itself.
+
+The build adds its own half of that list, for the same reason. What has run
+on Linux is the analysis — the spec builds, a frozen binary opens the review
+window and writes its log, the resources and the metadata are in the tree.
+What has not run anywhere is `BUNDLE`, which returns immediately off macOS,
+`iconutil`, and Gatekeeper. So: that the application opens from Finder at
+all, that the icon is the icon at every size the Dock and the Finder ask
+for, that `CFBundleName` does put "Comic Translator" in the application menu
+rather than `python3`, and that the quarantine advice about cloning rather
+than downloading is the right advice.
 
 **The suite was never going to defend this part.** What the tests do check
 is that every drawing an action asks for ships, that each renders at every
