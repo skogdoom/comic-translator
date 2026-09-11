@@ -1,4 +1,7 @@
-# comictrans
+<img src="src/comictrans/gui/resources/appicon/dog-book-master-1024.svg"
+     alt="A dog in glasses, sitting on a book" width="160">
+
+# Comic Translator
 
 Translate scanned comic pages from a source language into a target language
 in two passes, with the translation done by hand in between.
@@ -262,14 +265,16 @@ uv sync --extra gui
 uv run comictrans review pages/comic-plan.yaml
 ```
 
+![The review window: the plan's pages listed on the left, a comic page in the
+middle with its balloons outlined, and one region's source text, translation
+and colours on the right](docs/images/review-window.png)
+
 Opens a plan file in a window — **Comic Translator**, which is what the
-application calls itself; `comictrans` remains what you type. Pages on the
-left, the current page in the middle with its region polygons overlaid, one
-region's fields on the right.
-Run it without a path and it opens empty, ready to open a plan or extract
-one. Needs PySide6, a separate extra like tesseract — most work on this
-repository never opens a window. Without it, `review` fails with a clear
-message rather than an import error.
+application calls itself; `comictrans` remains what you type. Run it without
+a path and it opens empty, ready to open a plan or extract one. Needs
+PySide6, a separate extra like tesseract — most work on this repository never
+opens a window. Without it, `review` fails with a clear message rather than
+an import error.
 
 The toolbar carries the commands you reach for while reading a chapter —
 open and save, undo and redo, the four region tools, the three ways to step
