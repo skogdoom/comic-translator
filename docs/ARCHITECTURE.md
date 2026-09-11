@@ -961,6 +961,23 @@ refused to open over a missing asset would be the worse failure. Every
 icon-only button carries its menu label as a tooltip, since a picture on
 its own is not a word.
 
+**One grid, or a row of them does not read as a set.** Every drawing is 24
+units square with a stroke of 2, and its ink — the shape plus that stroke —
+fits a 20-unit box centred on the canvas. That rule arrived late, from a
+screenshot: the bar looked small and ragged, and measuring said why. The set
+ran from 14 units across (the region arrows) to 22 (the eye), with drawings
+as much as 2 units off centre — the up arrow high and the down arrow low,
+side by side. Fifteen drawings were refitted to the grid by scaling their
+geometry and leaving `stroke-width` alone, which is the difference between
+making a drawing bigger and making it bolder, and the arrows grew by about
+half. `GRID` and `INK` in `icons.py` are the rule; a test measures the ink of
+every shipped drawing off the pixmap the window gets, so the next one added
+cannot quietly sit small or off centre.
+
+That was the whole change: the toolbar's icon size was left alone, because a
+larger one grows the bar it sits in — measured at one pixel of bar per pixel
+of icon — and the bar's height was not on offer.
+
 **The application icon is a different kind of drawing, and is kept
 differently.** It is full colour and meant to be looked at, where the
 toolbar's are line art meant to be tinted, so it never goes through the

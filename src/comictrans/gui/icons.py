@@ -19,6 +19,19 @@ dark chrome is invisible, and a set per theme is a set to keep in step. The
 drawings are shape only; the colour comes from the palette at load time, so
 they follow a light window, a dark one, and a disabled button without
 anything being drawn twice.
+
+**They are drawn to one grid, and that is what makes a row of them look
+like a set.** 24 units square, stroke 2, and the ink — the drawing plus its
+stroke — fits a 20-unit box centred on the canvas. A drawing that ignores
+that is not wrong on its own and is wrong beside the others: measured before
+the rule existed, this set ranged from 14 units across (the region arrows)
+to 22 (the eye), and sat as much as 2 units off centre — with the up arrow
+high and the down arrow low, side by side on the bar. That reads as icons of
+different sizes that do not line up, which is exactly what it was.
+
+:data:`GRID`, :data:`INK` and the tolerance a test holds them to are below.
+The rule is about the *ink*, not the coordinates: stroke width counts, since
+what a person sees is where the paint ends.
 """
 
 from __future__ import annotations
@@ -41,6 +54,17 @@ Full colour and drawn to be looked at, where the toolbar's are line art
 drawn to be tinted — so this one is never passed through :func:`_tinted`,
 and it does not follow the palette. It lives beside its 1024 master and the
 script that derives it; edit the master, not this.
+"""
+
+GRID = 24
+"""The side of the square every drawing is laid out on."""
+
+INK = 20
+"""How much of that square the drawing, stroke included, fills and centres on.
+
+Its larger dimension, not both: an arrow is narrow and an eye is wide, and
+forcing either to a square would distort it. What has to match across the set
+is how much room each one takes and where its middle is.
 """
 
 SIZES = (16, 20, 24, 32, 40, 48, 64)

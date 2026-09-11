@@ -77,6 +77,67 @@ def test_the_drawings_render_at_every_size_the_window_asks_for(qapp: object) -> 
         assert _opaque_colors(icon), f"{name} renders nothing at 24px"
 
 
+def _ink_box(name: str, size: int = 64) -> tuple[float, float, float, float]:
+    """``(width, height, centre x, centre y)`` of a drawing, in grid units.
+
+    Measured off the pixmap the window actually gets rather than off the
+    file, so the answer includes everything between the two: the stroke, the
+    rasteriser, and the tint. Grid units rather than pixels so the numbers
+    read as the drawing was laid out.
+    """
+    image = icons.icon(name, QColor(0, 0, 0)).pixmap(size, size).toImage()
+    left, top, right, bottom = size, size, -1, -1
+    for y in range(size):
+        for x in range(size):
+            if image.pixelColor(x, y).alpha():
+                left, right = min(left, x), max(right, x)
+                top, bottom = min(top, y), max(bottom, y)
+    assert right >= 0, f"{name} drew nothing"
+    unit = icons.GRID / size
+    return (
+        (right - left + 1) * unit,
+        (bottom - top + 1) * unit,
+        (left + right + 1) / 2 * unit - icons.GRID / 2,
+        (top + bottom + 1) / 2 * unit - icons.GRID / 2,
+    )
+
+
+def test_every_drawing_fills_the_same_box_and_sits_in_the_middle_of_it(qapp: object) -> None:
+    """What makes a row of them read as one set rather than fifteen pictures.
+
+    Measured before this rule existed: the set ran from 14 grid units across
+    to 22, and as much as 2 off centre — the up arrow high, the down arrow
+    low, next to each other on the bar. The toolbar looked ragged and small,
+    and that was why.
+
+    The tolerances are what a 64px raster of a 24-unit grid can say: one
+    pixel is 0.375 of a unit, so a drawing is held to half a unit of centre
+    and a unit of size rather than to the number it was fitted to.
+    """
+    for name in sorted(icons.available()):
+        width, height, centre_x, centre_y = _ink_box(name)
+
+        assert abs(max(width, height) - icons.INK) <= 1.0, (
+            f"{name} is {max(width, height):.2f} units where the set is {icons.INK}"
+        )
+        assert abs(centre_x) <= 0.5 and abs(centre_y) <= 0.5, (
+            f"{name} sits at ({centre_x:+.2f}, {centre_y:+.2f}) rather than in the middle"
+        )
+        assert min(width, height) > 0, name
+
+
+def test_no_drawing_reaches_the_edge_of_its_canvas(qapp: object) -> None:
+    """The margin the grid leaves is what stops a button looking crowded.
+
+    Two units all round at :data:`icons.INK` of :data:`icons.GRID`. A drawing
+    that fills its canvas would sit tighter in the toolbar than the rest and
+    risk being clipped by a style that insets the icon at all.
+    """
+    for name in sorted(icons.available()):
+        width, height, _x, _y = _ink_box(name)
+        assert max(width, height) < icons.GRID - 1, f"{name} nearly fills its canvas"
+
+
 def test_a_drawing_comes_out_in_the_colour_it_was_asked_for(qapp: object) -> None:
     """The point of tinting: one set of files, whatever colour the theme is."""
     for asked in (QColor(255, 0, 0), QColor(0, 128, 255)):
