@@ -1,0 +1,240 @@
+"""The macOS application build, checked from a machine that cannot run it.
+
+Nothing here produces a bundle: PyInstaller does not cross-compile, so the
+`.app` itself can only be made on a Mac. What can be checked anywhere is
+everything that decides what goes into one — the refusal, the icon slots, and
+the Info.plist keys the spec asks for — and those are exactly the parts that
+fail silently. An icon in the wrong slot is a blurry Dock, a missing
+``CFBundleName`` is the application menu saying ``python3``, and
+``LSBackgroundOnly`` set by accident is an application with no Dock icon at
+all. None of the three raises anything.
+
+The spec is run here rather than read for strings. It is a Python file that
+PyInstaller ``exec``s with five names injected, so injecting recorders
+instead runs its real code — including the part that skips an extra this
+machine does not have — and hands back what it would have asked the bundler
+to build.
+"""
+
+from __future__ import annotations
+
+import sys
+import types
+from pathlib import Path
+from typing import Any
+
+import build_app
+import pytest
+
+SPEC = Path(build_app.__file__).parent / "comictrans.spec"
+
+
+def test_a_bundle_is_refused_where_one_cannot_be_built(monkeypatch: pytest.MonkeyPatch) -> None:
+    """And says why, rather than failing inside a bundler three minutes later."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    with pytest.raises(SystemExit) as refusal:
+        build_app.check_platform()
+
+    said = str(refusal.value)
+    assert "macOS" in said
+    assert "cross-compile" in said, "the reason, not just the refusal"
+
+
+def test_a_mac_is_not_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    build_app.check_platform()
+
+
+def test_the_iconset_is_exactly_the_ten_slots_apple_reads() -> None:
+    """``iconutil`` ignores a file it does not recognise, without saying so."""
+    names = {build_app.slot_name(points, scale) for points, scale in build_app.ICON_SLOTS}
+    assert names == {
+        "icon_16x16.png",
+        "icon_16x16@2x.png",
+        "icon_32x32.png",
+        "icon_32x32@2x.png",
+        "icon_128x128.png",
+        "icon_128x128@2x.png",
+        "icon_256x256.png",
+        "icon_256x256@2x.png",
+        "icon_512x512.png",
+        "icon_512x512@2x.png",
+    }
+
+
+def test_which_drawing_a_slot_gets_follows_points_and_not_pixels() -> None:
+    """A 16x16@2x slot is 32 pixels shown at 16 points, and wants the small one.
+
+    Keyed off pixels it would get the detailed master while the 32-point slot
+    beside it got the simplified drawing — the two swapped, at the sizes where
+    the difference is the whole reason there are two drawings.
+    """
+    assert build_app.drawing_for(16) == build_app.DERIVED
+    assert build_app.drawing_for(32) == build_app.DERIVED
+    assert build_app.drawing_for(128) == build_app.MASTER
+    assert build_app.drawing_for(512) == build_app.MASTER
+
+    at_16_points = {build_app.drawing_for(points) for points, _scale in build_app.ICON_SLOTS[:2]}
+    assert at_16_points == {build_app.DERIVED}, "both 16-point slots, one drawing"
+
+
+def test_the_rendered_slots_are_the_sizes_they_are_named_for(qapp: object, tmp_path: Path) -> None:
+    from PySide6.QtGui import QImage
+
+    iconset = build_app.build_iconset(tmp_path)
+
+    written = sorted(path.name for path in iconset.iterdir())
+    assert len(written) == len(build_app.ICON_SLOTS)
+    for points, scale in build_app.ICON_SLOTS:
+        image = QImage(str(iconset / build_app.slot_name(points, scale)))
+        assert image.width() == image.height() == points * scale
+        assert image.hasAlphaChannel(), "an icon without a cut-out is a square"
+
+
+def test_the_two_drawings_are_actually_different_where_it_matters(
+    qapp: object, tmp_path: Path
+) -> None:
+    """Otherwise the slot rule is a comment rather than a decision."""
+    from PySide6.QtGui import QImage
+
+    build_app.render(build_app.MASTER, 32, tmp_path / "master.png")
+    build_app.render(build_app.DERIVED, 32, tmp_path / "derived.png")
+
+    master = QImage(str(tmp_path / "master.png"))
+    derived = QImage(str(tmp_path / "derived.png"))
+    changed = sum(
+        1
+        for y in range(32)
+        for x in range(32)
+        if abs(master.pixelColor(x, y).value() - derived.pixelColor(x, y).value()) > 8
+    )
+    assert changed > 50, f"only {changed} of 1024 pixels differ; the simplification does nothing"
+
+
+class _Recorder:
+    """Stands in for one of the five names PyInstaller injects into a spec.
+
+    Calling it keeps the keyword arguments and hands back something the next
+    call can reach into — the spec reads ``analysis.pure`` and passes the
+    results of one call into the next, so the stand-in has to answer for any
+    attribute rather than only be callable.
+    """
+
+    def __init__(self, name: str, seen: dict[str, Any]) -> None:
+        self._name = name
+        self._seen = seen
+
+    def __call__(self, *args: object, **kwargs: object) -> _Recorder:
+        self._seen[self._name] = kwargs
+        return self
+
+    def __getattr__(self, attribute: str) -> _Recorder:
+        return _Recorder(f"{self._name}.{attribute}", self._seen)
+
+
+def _run_spec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Execute the spec with the bundler stubbed, and return its arguments."""
+    hooks = types.ModuleType("PyInstaller.utils.hooks")
+
+    def collect_data_files(package: str) -> list[tuple[str, str]]:
+        return [(f"{package}/resources", "comictrans/resources")]
+
+    def copy_metadata(distribution: str, recursive: bool = False) -> list[tuple[str, str]]:
+        if distribution == "definitely-not-installed":
+            raise ValueError(distribution)
+        return [(f"{distribution}.dist-info", ".")]
+
+    hooks.collect_data_files = collect_data_files  # type: ignore[attr-defined]
+    hooks.copy_metadata = copy_metadata  # type: ignore[attr-defined]
+    utils = types.ModuleType("PyInstaller.utils")
+    utils.hooks = hooks  # type: ignore[attr-defined]
+    root = types.ModuleType("PyInstaller")
+    root.utils = utils  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "PyInstaller", root)
+    monkeypatch.setitem(sys.modules, "PyInstaller.utils", utils)
+    monkeypatch.setitem(sys.modules, "PyInstaller.utils.hooks", hooks)
+    monkeypatch.setenv("COMICTRANS_ICNS", "/somewhere/Comic Translator.icns")
+
+    seen: dict[str, Any] = {}
+    namespace: dict[str, Any] = {
+        name: _Recorder(name, seen) for name in ("Analysis", "PYZ", "EXE", "COLLECT", "BUNDLE")
+    }
+    exec(compile(SPEC.read_text(encoding="utf-8"), str(SPEC), "exec"), namespace)
+    seen["namespace"] = namespace
+    return seen
+
+
+def test_the_bundle_is_named_so_that_the_application_menu_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one string this milestone exists to turn on.
+
+    macOS titles "About X", "Hide X" and "Quit X" from ``CFBundleName``, and
+    falls back to the ``argv[0]`` name only when there is no bundle — so a
+    bundle that omits the key puts ``comictrans`` back in that menu.
+    """
+    from comictrans.gui import about
+
+    plist = _run_spec(monkeypatch)["BUNDLE"]["info_plist"]
+    assert plist["CFBundleName"] == about.NAME
+    assert plist["CFBundleDisplayName"] == about.NAME
+
+
+def test_the_bundle_is_not_built_as_a_background_application(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PyInstaller reads ``console=True`` as ``LSBackgroundOnly``.
+
+    Which is an application with no Dock icon and no menu bar — and nothing
+    in this repository can launch a bundle to find that out.
+    """
+    seen = _run_spec(monkeypatch)
+    assert seen["EXE"]["console"] is False
+    assert seen["BUNDLE"]["info_plist"]["LSBackgroundOnly"] is False
+
+
+def test_the_bundle_carries_the_files_nothing_imports(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The icons, the guide and the metadata the About dialog reads.
+
+    None of the three is reachable by import, so the analysis would not find
+    any of them, and all three fail quietly rather than loudly.
+    """
+    carried = [source for source, _destination in _run_spec(monkeypatch)["Analysis"]["datas"]]
+
+    assert "comictrans/resources" in carried, "the icons and the guide"
+    assert "comictrans.dist-info" in carried, "what the About dialog reads itself from"
+    assert "pyside6.dist-info" in carried, (
+        "PySide6 is an extra, so a recursive walk of the required dependencies "
+        "does not reach it — measured on a build, where it was simply absent"
+    )
+
+
+def test_an_extra_this_machine_does_not_have_does_not_stop_the_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Which extras are installed is the builder's choice, not the spec's."""
+    namespace = _run_spec(monkeypatch)["namespace"]
+    # extra_metadata reads EXTRAS out of the namespace it was defined in, so
+    # this replaces the list it walks without touching the file.
+    namespace["EXTRAS"] = ("pyside6", "definitely-not-installed")
+
+    assert namespace["extra_metadata"]() == [("pyside6.dist-info", ".")]
+
+
+def test_the_icon_comes_from_the_environment_rather_than_a_written_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing icon is not an error PyInstaller reports.
+
+    It is Python's own icon on somebody's Dock, so the spec must not be
+    runnable without the step that renders one.
+    """
+    seen = _run_spec(monkeypatch)
+    assert seen["BUNDLE"]["icon"] == "/somewhere/Comic Translator.icns"
+
+    monkeypatch.delenv("COMICTRANS_ICNS")
+    namespace: dict[str, Any] = {
+        name: _Recorder(name, {}) for name in ("Analysis", "PYZ", "EXE", "COLLECT", "BUNDLE")
+    }
+    with pytest.raises(KeyError):
+        exec(compile(SPEC.read_text(encoding="utf-8"), str(SPEC), "exec"), namespace)

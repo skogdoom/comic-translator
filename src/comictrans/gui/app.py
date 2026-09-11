@@ -132,7 +132,7 @@ def run(plan_path: Path | None = None) -> int:
         #
         # The bold title beside the Apple menu is a different thing again:
         # that is the process, which is the interpreter, and only a real
-        # bundle changes it. 4.10 sets CFBundleName and gets both.
+        # bundle changes it. The bundle sets CFBundleName and gets both.
         app = QApplication.instance() or QApplication([about.NAME])
     except Exception as exc:  # Qt's own platform-plugin failures vary by OS and are not typed
         raise GuiUnavailableError(
@@ -146,8 +146,9 @@ def run(plan_path: Path | None = None) -> int:
 
     # Set on the application rather than the window, so every window and
     # dialog this process opens inherits it. On macOS the Dock reads the
-    # bundle instead, which is milestone 4.10's business — this is what shows
-    # before there is a bundle, and everywhere that is not a Mac.
+    # bundle instead, where the .icns tools/build_app.py renders answers for
+    # it — this is what shows before there is a bundle, and everywhere that
+    # is not a Mac.
     from . import icons
 
     # Static on QGuiApplication rather than a call on the instance, which
