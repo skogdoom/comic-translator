@@ -385,8 +385,9 @@ the position, and the region you had selected.
 
 Rendering a large page takes a moment, and the window stays yours while it
 happens — the render runs on a worker thread, so you can keep reading, keep
-typing, and change page. The status bar says `rendering preview…` and then
-says what the preview found.
+typing, and change page. The status bar says `rendering preview…` with a
+bar moving beside it, and then says what the preview found. The bar reports
+no percentage because there is none to report: a preview is one page.
 
 Change page while one is rendering and the result is dropped rather than
 painted over the page you moved to. Press it again before the first has

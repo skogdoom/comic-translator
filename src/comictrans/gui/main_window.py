@@ -44,6 +44,7 @@ from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
 from . import about, alerts, help_dialog, icons, recent
 from .about_dialog import AboutDialog
+from .busy_bar import BusyBar
 from .canvas import (
     COLOR_APPROXIMATE,
     COLOR_EXACT,
@@ -240,8 +241,12 @@ class MainWindow(QMainWindow):
         self._run_panel.row_activated.connect(self._on_run_row_activated)
         self._run_panel.cancel_requested.connect(self._on_run_cancel)
 
-        # A permanent widget, so the zoom stays readable behind the transient
-        # messages the status bar shows for saves and preview results.
+        # Permanent widgets, so they stay put behind the transient messages
+        # the status bar shows for saves and preview results. The bar sits to
+        # the left of the zoom because it comes and goes, and a thing that
+        # appears should not push a thing that is always there.
+        self._busy = BusyBar()
+        self.statusBar().addPermanentWidget(self._busy)
         self._zoom_label = QLabel()
         self.statusBar().addPermanentWidget(self._zoom_label)
 
@@ -1303,6 +1308,7 @@ class MainWindow(QMainWindow):
         job.finished.connect(self._on_preview_thread_done)
         self._preview_job = job
         self.statusBar().showMessage(PREVIEW_WORKING)
+        self._busy.set_busy(True)
         job.start()
 
     def _on_preview_thread_done(self) -> None:
@@ -1316,14 +1322,22 @@ class MainWindow(QMainWindow):
         if job is not None:
             job.deleteLater()
         if self._preview_wanted is not None:
-            # Superseded while it ran: whatever asked is still waiting.
+            # Superseded while it ran: whatever asked is still waiting. The
+            # bar stays up across the handover rather than blinking off and
+            # on again — from where anyone is sitting it is one wait.
             self._on_render_preview()
+            return
+        self._busy.set_busy(False)
 
     def _on_preview_failed(self, message: str) -> None:
         self._preview_wanted = None
-        # The working message would otherwise sit there claiming a render is
-        # still going, behind the box saying it is not.
+        # Both down before the alert, not after it. The alert is modal and
+        # sits there for as long as it takes somebody to read it, and a
+        # message and a bar both claiming a render is still going would sit
+        # behind it saying the opposite of what it says. ``finished`` would
+        # otherwise take the bar down only once the box was dismissed.
         self.statusBar().clearMessage()
+        self._busy.set_busy(False)
         alerts.report(self, "The preview could not be rendered.", message)
 
     def _on_preview_ready(self, preview: object) -> None:

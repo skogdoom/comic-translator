@@ -542,6 +542,7 @@ qimage.py      the one function that turns a Pillow image into a QPixmap
 icons.py       the toolbar's drawings, tinted; and the application's own
 canvas.py      the page: a pixmap, and clickable region outlines over it
 hint_line.py    the line under it: what a click does, elided to fit
+busy_bar.py     the status bar's indeterminate bar, while a page renders
 sampling.py    colours read off the page for a region drawn by hand
 inspector.py   one region's fields, writing straight through to the document
 color_box.py    a colour field: a swatch, the standard values, the eyedropper
@@ -766,6 +767,35 @@ render happens.
 remembered, not started; the running job's `finished` starts it. That keeps
 the peak at one render's worth of memory rather than two, which on the
 numbers below is the difference worth having.
+
+**The indeterminate bar is the first animation this window could honestly
+have.** While the render blocked, the event loop was not turning: the status
+bar had to be repainted by hand to get one message onto the screen, and a
+spinner would have been a still picture of a spinner. With the render on a
+worker thread the loop turns throughout, so `busy_bar.py` shows a
+`QProgressBar` with an empty range — Qt's indeterminate mode, animated from
+its own timer — beside the status bar's message for as long as a render is
+in flight.
+
+No number, because there is none: a preview is one page, so a percentage
+would have to be invented. The run panel's bar counts pages and is a
+different thing for a different job.
+
+It goes down on the thread's `finished`, except on failure, where it goes
+down first. A failure opens a modal alert, which sits there for as long as it
+takes somebody to read it, and `finished` is delivered only once that box is
+dismissed — so a bar left to it would spin behind an alert saying the render
+had stopped. A superseded request is the other exception in the other
+direction: the bar stays up across the handover from one thread to the next,
+because from where anyone is sitting that is one wait.
+
+That it animates is measured rather than assumed, and the measuring took two
+attempts. Grabbing the whole window came back byte-identical across half a
+second, which reads as a still bar and is not — the bar repaints on its own
+timer and the window's cached frame did not follow. Grabbing the bar itself
+gives six distinct frames a quarter-second apart, under the offscreen
+platform, on this machine. The test polls for the first frame that differs
+rather than sleeping for a fixed time, so it usually costs one repaint.
 
 **What a thread does not fix, measured.** A preview of an 11 MP page
 (`tests/fixtures/11-complex_six_panel_page.png`, 2840x3880, ten regions)

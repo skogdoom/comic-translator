@@ -934,6 +934,131 @@ def test_asking_for_the_same_preview_twice_renders_it_once(
     assert len(started) == 1, f"rendered {len(started)} times for one unchanged page"
 
 
+def test_the_busy_bar_reports_no_number_because_a_preview_has_none(qapp: object) -> None:
+    """An empty range is Qt's indeterminate mode, and the rule behind the rest.
+
+    It is what makes Qt animate the bar from its own timer, and it is why
+    there is no value to update from anywhere: a preview is one page, so a
+    percentage would have to be invented.
+    """
+    from comictrans.gui.busy_bar import BusyBar
+
+    bar = BusyBar()
+    assert bar.minimum() == bar.maximum() == 0
+    assert not bar.isTextVisible(), "there is no percentage to draw"
+    assert bar.isHidden(), "and nothing to say while nothing is running"
+
+
+def test_the_busy_bar_actually_moves(qapp: object) -> None:
+    """The animation itself, not just the mode that should produce one.
+
+    Grabbing the bar rather than the window: a grab of the whole window came
+    back identical across half a second, which reads as a still bar and is
+    not — the bar repaints on its own timer and the window's cached frame did
+    not follow. Polled rather than slept: it passes on the first frame that
+    differs, which is usually the first one asked for.
+    """
+    import hashlib
+    import time
+
+    from comictrans.gui.busy_bar import BusyBar
+
+    bar = BusyBar()
+    bar.set_busy(True)
+    bar.show()
+    QApplication.processEvents()
+
+    first = hashlib.md5(bytes(bar.grab().toImage().constBits())).hexdigest()
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        QApplication.processEvents()
+        if hashlib.md5(bytes(bar.grab().toImage().constBits())).hexdigest() != first:
+            bar.hide()
+            return
+    bar.hide()
+    raise AssertionError("the indeterminate bar never repainted differently")
+
+
+def test_the_busy_bar_shows_while_a_preview_renders(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Possible only because the render moved off this thread.
+
+    While it blocked, the event loop was not turning and an animation would
+    have been a still picture of one.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    assert window._busy.isHidden()
+
+    _slow_render(monkeypatch)
+    window._on_render_preview()
+
+    # isHidden, not isVisible: a child of a window nobody showed is never
+    # "visible", so isVisible would read False throughout and pass for the
+    # wrong reason. What is being asserted is the widget's own state.
+    assert not window._busy.isHidden(), "something is happening and it says so"
+
+    _settle_preview(window)
+    assert window._busy.isHidden(), "and it stops saying so when it stops"
+
+
+def test_the_busy_bar_stays_up_across_a_superseded_preview(
+    qapp: object, two_page_plan: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One handover between two threads, and one wait from where anyone sits."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    region_id = window.document.ordered_ids()[0]  # type: ignore[union-attr]
+
+    _slow_render(monkeypatch)
+    window._on_render_preview()
+    window.document.set_translation(region_id, "SUPERSEDED")  # type: ignore[union-attr]
+    window._on_render_preview()
+
+    first = window._preview_job
+    assert first is not None
+    first.wait()
+    QApplication.processEvents()
+
+    assert not window._busy.isHidden(), "the second render is still going"
+
+    _settle_preview(window)
+    assert window._busy.isHidden()
+
+
+def test_the_busy_bar_goes_down_before_a_failure_alert_blocks(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The alert is modal and sits there; a bar behind it must not still spin.
+
+    Taking it down on the thread's ``finished`` would be too late — that is
+    delivered only once the box has been dismissed.
+    """
+    from comictrans.gui import run_job as rj
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    def refuse(*args: object, **kwargs: object) -> object:
+        raise InputError("no font for that")
+
+    monkeypatch.setattr(rj, "render_preview", refuse)
+
+    seen: list[bool] = []
+
+    def catch(box: QMessageBox) -> int:
+        seen.append(not window._busy.isHidden())
+        return int(QMessageBox.StandardButton.Ok)
+
+    monkeypatch.setattr(QMessageBox, "exec", catch)
+
+    window._on_render_preview()
+    _settle_preview(window)
+
+    assert seen == [False], "the bar was down by the time the alert opened"
+
+
 def test_a_preview_that_fails_stops_saying_it_is_working(
     qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

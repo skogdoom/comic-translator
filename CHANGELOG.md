@@ -14,7 +14,9 @@ for themselves. See **Build the application** in `README.md`.
 
 - **The preview renders on a worker thread.** The window stays yours while a
   page renders: keep reading, keep typing, change page. A result for a page
-  you have left is dropped rather than painted over the one you are on.
+  you have left is dropped rather than painted over the one you are on, and
+  a moving bar in the status bar says while it is going — the first animation
+  this window could have, since a blocked one cannot animate anything.
 
 ## 1.0.0 — 2026-09-11
 
