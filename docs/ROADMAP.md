@@ -12,6 +12,11 @@ Nothing here is a commitment, and nothing here is a work item an agent
 should pick up on its own — the same rule `known-bugs.md` carries. Work a
 milestone when the request names it.
 
+The numbered sections are the plan. **Ideas, not milestones** at the end is
+a step further back: things worth looking into that have not been decided
+on, kept unnumbered so that nothing can refer to one as though it were
+scheduled.
+
 **A milestone includes its own documentation.** A milestone that changes
 what the window does updates the in-application guide in the same change —
 that is live now, since the guide has shipped — and once 4.9 has shipped, it
@@ -429,3 +434,83 @@ handling wants reading closely.
 
 Last on the list, and the only item here that is a recurring activity
 rather than something that ships once and is deleted from this file.
+
+## Ideas, not milestones
+
+Things to look into, none of them decided. **Unnumbered on purpose**: a
+number in this file is a name that other sections refer to and that the
+table above orders, and none of these has earned one. Nothing here is
+planned, nothing here is sized, and nothing here should be started without
+the decision being made first.
+
+What each note is for is the part that would otherwise be rediscovered: what
+it would cost, and what it runs into. Several of these are not features on
+top of the tool as it stands — they are changes to what it promises.
+
+**Rotate a region.** Cheaper than it looks, and it splits in two. A `Region`
+already holds an arbitrary polygon, so a rotated outline is representable
+today with no schema change and no `PLAN_VERSION` bump — a tilted rectangle
+is just four points. What that does *not* buy is rotated text: the
+typesetter fits each line to the widest horizontal run inside the polygon on
+every row of its band, so text inside a tilted outline would still be laid
+out level. So this is worth having on its own, for a balloon that sits at an
+angle, and it is not a step towards the next one.
+
+**Rotated and vertical text.** The other half, and a different order of
+work. It needs a field on a region — an angle, or a writing mode — which the
+reader rejects until `PLAN_VERSION` goes up, and it needs the typesetter to
+stop thinking in horizontal bands, which is the shape of `typeset` rather
+than a parameter to it. Vertical CJK is more again: line breaking and
+hyphenation are not the same algorithm turned sideways. Worth knowing which
+of the two is actually wanted before either is designed.
+
+**A plugin system (experimental).** Plan file in, plan file out, with each
+plugin under a Plugin menu, carrying its own configuration, and a dialog
+only if it needs one. Ship one simple example.
+
+The shape is already right in two ways worth noticing. Plan-in, plan-out
+keeps plugins away from the images entirely, so "source images are never
+modified" survives without anyone having to enforce it. And the reader
+rejects unknown keys, so a plugin cannot invent plan fields — it is
+constrained to the schema whether its author meant to be or not. Undo fits
+too: the history is whole-plan snapshots, so a plugin rewriting everything
+is one step like any other edit.
+
+What it does cost is the network promise. "No network calls anywhere in the
+pipeline" is an invariant today and would become "this tool makes none; a
+plugin you installed might", which is a different sentence and has to be
+written as one — in `README.md`, not only here. Running third-party code
+also lands on a project whose disclaimer is already about unreviewed code;
+that is worth a paragraph rather than a footnote. Discovery needs a
+directory to read plugins from, which is a new read location, and the
+example should not be case switching — the header already has `case`, and an
+example that duplicates a built-in teaches the wrong thing.
+
+**Extracting and rendering emphasis, italic and bold.** This one is not a
+feature, it is a change to an invariant, and should be decided as one.
+`CLAUDE.md` says emphasis renders as bold, never italic, that a bold face is
+never synthesised, and that the oblique face is never used. Bold already
+works: `**bold**` in a translation is parsed in `typeset`. So what is being
+asked for is the italic half, and the invariant exists to stop it being
+faked. Doing it honestly means requiring a real italic face, which means
+`fonts` resolving a third file per family and a plan that names a family
+without one failing the same way a missing bold does. Doing it dishonestly
+means synthesising a slant, which is the thing the rule forbids. The
+extraction half is separate again and probably harder: telling italic from
+upright in scanned comic lettering is not something either recogniser
+reports.
+
+**Sound effects, identified and lettered over the artwork.** Half of this
+exists. `erase: none` is already documented as being for exactly this — it
+paints nothing and letters straight onto the page — so the render side needs
+no new machinery, and a region can already carry it per region.
+
+What is missing is the other two thirds. Detection would have to tell a
+sound effect from a balloon, which is a new class of thing for `detect` to
+recognise rather than a threshold to move, and the flag on `extract` is the
+easy part of that. And the colour: a sound effect has no balloon to sample,
+so "a visible colour" means choosing one for contrast against whatever is
+underneath, which is a decision nothing in the tool makes yet —
+`sample_colors` reads the colours that are there. Note which pass may do
+that: `review` may measure the page, `apply` may not, so the choice has to
+be made at extract time and recorded, like every other colour in a plan.
