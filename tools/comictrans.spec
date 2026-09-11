@@ -33,7 +33,17 @@ from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 from comictrans import __version__ as VERSION
 
 NAME = "Comic Translator"
+
 IDENTIFIER = "io.github.skogdoom.comictrans"
+"""Reverse DNS from the owner and the distribution, and not to be tidied.
+
+It survived the repository being renamed because it never named the
+repository — but the reason to leave it alone is stronger than that. macOS
+identifies an installed application by this string: its preferences, its
+Launch Services registration, anything it is ever granted. Changing it after
+1.0.0 shipped would make the next build a different application that happens
+to look the same, having forgotten everything the last one was told.
+"""
 
 EXTRAS = ("pyside6", "pytesseract")
 """Distributions from the project's extras, whose metadata ``recursive=True``

@@ -75,8 +75,8 @@ uv run comictrans --help
 be a real application with a Dock icon and its own name in the menu bar:
 
 ```
-git clone https://github.com/skogdoom/scanlation-tool-osx
-cd scanlation-tool-osx
+git clone https://github.com/skogdoom/comic-translator
+cd comic-translator
 uv sync --group dev --extra gui --group bundle
 uv run --extra gui --group bundle tools/build_app.py
 ```
