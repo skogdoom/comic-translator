@@ -174,7 +174,7 @@ class ExtractDialog(QDialog):
             self._engine.addItem(label, value)
         self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
 
-        self._force = QCheckBox("Overwrite it, discarding everything in it")
+        self._force = QCheckBox("overwrite it, discarding everything in it")
         self._force.hide()  # shown only when there is something to overwrite
         self._force.toggled.connect(self._validate)
 

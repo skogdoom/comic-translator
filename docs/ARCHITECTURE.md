@@ -537,6 +537,7 @@ decides, and what draws.
 document.py   the loaded plan, its edits, and where they save — no Qt
 preview.py     render_page called on the current document — no Qt
 about.py       version, author, licence and installed libraries — no Qt
+alerts.py      the two strings an alert has, since macOS drops its title
 qimage.py      the one function that turns a Pillow image into a QPixmap
 icons.py       the toolbar's drawings, tinted; and the application's own
 canvas.py      the page: a pixmap, and clickable region outlines over it
@@ -1235,18 +1236,120 @@ Loading falls back field by field rather than all at once. A settings file is
 hand-editable and outlives the version that wrote it, so a stale engine name
 costs that one field and leaves the rest of the file standing.
 
+### Interface conventions
+
+Settled once, so that the next label added does not have to be argued about
+from first principles. Apple's Human Interface Guidelines decide where
+something is; the rules below decide what it is called.
+
+**Two cases, told apart by where the words are, not by what they mean.**
+Anything you invoke — a menu item, a push button, a window or dock title —
+is Title Case, which is what the HIG asks for. Anything inside a form — a
+field label, a group heading, a checkbox, the line of help under a control —
+is lowercase: `fill colour`, `pages are lettered in`, `a new plan starts as`,
+`overwrite pages already in that directory`. So are the status bar's
+messages and the hint line under the canvas.
+
+That second half is not the HIG, which wants sentence case there, and it is
+kept deliberately. The inspector is a dense column of field names read at a
+glance rather than sentences read in order, and a capital on each would give
+twelve of them the weight the section headings are carrying. The rule is
+positional so it can be applied without judgement: the two checkboxes that
+had drifted into sentence case were the only places it was ambiguous, and
+they are lowercase now.
+
+**British in the window, American in the plan.** `colour`, `licence`,
+`recogniser`, `minimise`, `cancelling` — and `fill_color`, `text_color`,
+`ocr_engine`. One is prose and the other is a data format: a key cannot be
+respelled without a `PLAN_VERSION` bump and a reader that accepts both
+spellings forever, which is a real cost for no gain. `Preferences` survives
+in the code as the dataclass and as the `preferences/` settings prefix for
+the same reason — renaming the key would lose everyone's stored settings —
+while the window that edits it is called Settings.
+
+**An alert has two strings, because macOS shows two.** There is no title bar
+on one, and `QMessageBox` knows it: Qt overrides `setWindowTitle` on that
+class for the single purpose of making it do nothing on macOS. Every static
+helper takes a title as its second argument, so an alert written the obvious
+way arrives on the target platform as the bare detail — an exception's own
+words with nothing saying which action produced them. `gui/alerts.py` is the
+one way this window opens one, and it puts the sentence in the message and
+the detail under it.
+
+The unsaved-changes alert offers Save, Don't Save and Cancel rather than the
+Discard and Cancel it started with. Two buttons made Cancel the only way to
+keep the work, which put the answer people want most often behind backing
+out, saving, and asking for the same thing again. The buttons are Qt's
+standard ones so that the row is laid out in the platform's order and
+`Discard` is titled "Don't Save" on macOS — measured in Qt's own translation
+catalogue, where that string carries the context `QCocoaTheme`.
+
+**The three items macOS moves carry their roles explicitly.** About,
+Settings and Quit are merged into the application menu by `QAction.MenuRole`,
+and Qt will guess the role from the label if none is set — `detectMenuRole`
+looks for "about", "quit", "exit", "preference" and friends in the item's own
+text. That guess stops working the first time one of those labels is
+translated, and what it costs is the item disappearing from the menu it
+belongs in. A test asserts that the set of actions carrying a merge role is
+exactly those three.
+
+What the merged items are *titled* is Qt's business, not ours: the About item
+reads "About ⟨application name⟩" whatever the action says, which is why
+`gui.app` passes the name as `argv[0]`. Settings is renamed here on the same
+terms — macOS has called it Settings since 13, and if Qt supplies its own
+title anyway the worst that happens is the item stays exactly as it was.
+
+**Cmd+M belongs to the window, and the Window menu was missing.** Qt adds no
+Minimise or Zoom of its own, so a window that does not define them has no
+Cmd+M at all — which is how Merge Region came to hold the shortcut every Mac
+window uses to minimise. The menu now opens with Minimise and Zoom, then a
+separator, then this window's own panels, which is the order every other one
+has. There is no Bring All to Front because there is nothing to bring: one
+window, and no way to open a second. Merge Region moved to Cmd+Shift+M, which
+pairs it with Add Region's Cmd+Shift+A.
+
+**An ellipsis means the command stops to ask; a tick means you are in a
+mode.** Merge Region wore one because a second click follows it — which is
+equally true of Edit Region Shape and Add Region, and neither of those wore
+one. All three are checkable, so all three are modes, and a test holds the
+line that nothing checkable ends in an ellipsis.
+
+**Reload is called Revert to Saved**, which is what macOS calls re-reading
+the file and throwing away what is unsaved, and what it does. Reload is
+browser and editor vocabulary.
+
+Four things were looked at and deliberately left alone. Delete Region keeps
+Ctrl+Backspace rather than a bare Delete, for the reason the region
+navigation keys are modified too: the inspector's text fields hold the focus
+for most of a session and would swallow an unmodified key. Walking to the
+previous, next and next flagged region stays in View rather than earning a Go
+menu of its own for three items. The dock toggles keep Qt's
+`toggleViewAction`, a ticked item named for the panel, rather than a
+hand-wired "Show Pages"/"Hide Pages" pair that would have to be kept in step
+with the dock's actual state. And Save As still asks before replacing a file
+even though the Save panel has already asked: the cost of the extra
+confirmation is one click in a rare case, and the cost of being wrong about
+what every file panel on every platform does is somebody's plan file.
+
 **Testing.** `gui.document` and `gui.preview` are tested like any other
 module, no different setup. The widget tests build a real `QApplication`
 under `QT_QPA_PLATFORM=offscreen` and skip — rather than fail — on a machine
 with no PySide6 installed or no windowing libraries available to construct
 one; see the `qapp` fixture and the third bullet under Development in the
 README. One thing they found worth recording here: closing (or reloading, or
-opening a different plan over) a *dirty* `MainWindow` without first
-stubbing `QMessageBox.question` hangs the test suite rather than failing
-it — a real `QMessageBox` opens a native modal event loop even under
-`offscreen`, and nothing will ever click its button. Every test that leaves
-a document dirty either saves or discards it, or patches the dialog, before
-the test ends.
+opening a different plan over) a *dirty* `MainWindow` without first stubbing
+the alert hangs the test suite rather than failing it — a real `QMessageBox`
+opens a native modal event loop even under `offscreen`, and nothing will
+ever click its button. Every test that leaves a document dirty either saves
+or discards it, or patches the alert, before the test ends.
+
+The stub patches `QMessageBox.exec`, not the static helpers, because
+`gui.alerts` builds the box itself and execs it from Python. That is worth
+more than the seam it replaced: the box is really constructed, so a test
+reads back both strings it carries rather than the arguments it was called
+with. It also means reintroducing `QMessageBox.critical` anywhere would hang
+the suite rather than fail it, since the C++ static execs its own box out of
+Python's reach.
 
 A run is waited for rather than polled: the test starts it, calls
 `QThread.wait`, and then turns the event loop over, because the report is a

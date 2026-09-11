@@ -33,7 +33,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.24 | Interface review: conventions and wording | M |
 | 4.7 | Help instructions | S–M |
 | 4.10 | Package as an application | M |
 | **11** | **First release (1.0.0)** | **S–M** |
@@ -67,12 +66,12 @@ review, and waiting on nothing, as was moving a region after them.
 string, so it goes after the milestones that add strings. Packaging bundles
 whatever the application is by then. Both are why the rename went first
 rather than being filed with the other small things: renaming after either
-one would have meant doing that work a second time, and 4.24 is filed just
-ahead of them for exactly that reason — it decides what the labels say, and
-deciding that after they have been translated is the same mistake twice.
-Help text describes the UI, so it goes after the UI stops moving — which
-for a first release means after 4.24 has settled the wording and before the
-release freezes it.
+one would have meant doing that work a second time, and the interface
+review was filed just ahead of them for exactly that reason — it decided
+what the labels say, and deciding that after they have been translated is
+the same mistake twice. Help text describes the UI, so it goes after the
+UI stops moving — which for a first release means after that review, now
+settled, and before the release freezes it.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -110,44 +109,16 @@ plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
 
-## 4.24 Interface review: conventions and wording
-
-Two passes over one surface, together because they touch the same strings.
-They are listed as one milestone for that reason; split them if the
-conventions half turns out to be large.
-
-**Against Apple's Human Interface Guidelines.** Menu structure and where
-commands belong, standard shortcuts, dialog button order and roles, what
-belongs in a preferences window versus a document window — the macOS
-conventions Qt does not decide on our behalf.
-
-**Wording and casing, where the finding is a decision rather than a bug.**
-Sampled: buttons and menu items are title case — "Cancel", "Choose…",
-"Open Plan…", "Clear Menu" — which is what the HIG asks for. Form labels
-and section headings are deliberately all-lowercase — "fill colour",
-"source language", "a new plan starts as" — which is internally consistent
-and is not what the HIG asks for; Apple wants sentence case there. So the
-question is whether that lowercase style is kept on purpose or brought into
-line, and it should be answered once and written down rather than drifting.
-
-The same pass settles spelling. User-facing text is British — "colour",
-"licence" — while the plan format is American, `fill_color`. That split is
-defensible, since one is prose and the other is a data format that cannot
-change without a version bump, but it should be deliberate.
-
-**Before 4.7 and 4.9, and after the milestones that add strings.** Help
-describes this text and localisation freezes it; renaming a label after
-either means doing that work twice, which is the same trap 4.18 was moved
-up to avoid.
-
 ## 4.7 Help instructions
 
 A short in-application guide to reviewing a plan: what the badge colours
 mean, what each flag means, what preview does and does not tell you.
 
 After the milestones that change the UI, because it documents them, and
-after 4.24 in particular — that one decides what the labels say, and help
-quoting a label that is about to be reworded is help wrong on arrival.
+after the interface review in particular — that settled what the labels
+say, and help quoting a label about to be reworded is help wrong on
+arrival. The conventions it decided are in `docs/ARCHITECTURE.md` under
+Interface conventions, and help text follows them.
 
 A dialog with a `QTextBrowser` over a bundled document, rather than strings
 in the source, keeps 4.9 to one file per language.
@@ -374,7 +345,8 @@ live on one machine and be lost on the next.
 **It is not `skip`, and the two will be confused unless the labels are
 careful.** `skip` means do not render this region; `locked` means do not
 edit it, and a locked region still renders. Saying which is which without
-the manual is as much 4.24's job as this one's.
+the manual is this milestone's job, under the casing and wording rules the
+interface review settled.
 
 **What it has to reach**: every edit path. The inspector's fields,
 reshaping, the arrow keys, merge, delete — and re-extraction, where locked

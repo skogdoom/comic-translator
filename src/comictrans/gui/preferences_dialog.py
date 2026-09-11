@@ -81,7 +81,10 @@ class PreferencesDialog(QDialog):
 
     def __init__(self, preferences: Preferences, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Preferences")
+        # "Settings", the name macOS has used since 13, and the name the
+        # menu item that opens this carries. A window whose title does not
+        # match the command that opened it is one more thing to work out.
+        self.setWindowTitle("Settings")
         self._preferences = preferences
 
         self._source_language = QLineEdit(preferences.source_language)

@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -47,7 +46,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
-from . import about, icons, recent
+from . import about, alerts, icons, recent
 from .about_dialog import AboutDialog
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -260,7 +259,10 @@ class MainWindow(QMainWindow):
         self._recent_menu.setToolTipsVisible(True)
         self._rebuild_recent_menu()
 
-        self._reload_action = QAction("&Reload", self)
+        # "Revert to Saved" rather than "Reload": the macOS name for
+        # re-reading the file and throwing away what is unsaved, and what
+        # this does. Reload is browser and editor vocabulary.
+        self._reload_action = QAction("Re&vert to Saved", self)
         self._reload_action.triggered.connect(self._on_reload)
         file_menu.addAction(self._reload_action)
 
@@ -293,6 +295,11 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
+        # Spelled out rather than left to Qt's text heuristic, which reads
+        # the label for "quit" or "exit" and would stop recognising this
+        # one the moment the label is translated. About and Preferences
+        # already carry their roles for the same reason.
+        quit_action.setMenuRole(QAction.MenuRole.QuitRole)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
@@ -329,9 +336,14 @@ class MainWindow(QMainWindow):
         self._add_region_action.toggled.connect(self._on_add_region_toggled)
         edit_menu.addAction(self._add_region_action)
 
-        self._merge_action = QAction("&Merge Region…", self)
+        # No ellipsis, and not Ctrl+M. The ellipsis is for a command that
+        # stops to ask something; this one is a mode you are in, with a
+        # tick beside it, exactly like the two above. And Cmd+M is
+        # Minimise on macOS — a shortcut every window has — so this takes
+        # Cmd+Shift+M and pairs with Add Region's Cmd+Shift+A.
+        self._merge_action = QAction("&Merge Region", self)
         self._merge_action.setCheckable(True)
-        self._merge_action.setShortcut(QKeySequence("Ctrl+M"))
+        self._merge_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self._merge_action.toggled.connect(self._on_merge_toggled)
         edit_menu.addAction(self._merge_action)
 
@@ -360,7 +372,13 @@ class MainWindow(QMainWindow):
         # macOS, where it belongs and where Cmd+, opens it. Qt's standard key
         # is Cmd+, there and Ctrl+, everywhere else, so the shortcut is not
         # spelled out either.
-        self._preferences_action = QAction("&Preferences…", self)
+        #
+        # "Settings…", which is what macOS has called it since 13. Whether
+        # the merged item on a Mac shows this text or Qt's own is not
+        # something this machine can answer — the About item does not — but
+        # the two answers are the old name and the new one, so the worst
+        # this can do is leave that item exactly as it is today.
+        self._preferences_action = QAction("&Settings…", self)
         self._preferences_action.setMenuRole(QAction.MenuRole.PreferencesRole)
         self._preferences_action.setShortcut(QKeySequence.StandardKey.Preferences)
         self._preferences_action.triggered.connect(self._on_preferences)
@@ -420,6 +438,22 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self._next_flagged_action)
 
         window_menu = self.menuBar().addMenu("&Window")
+        # Minimise and Zoom first, then this window's own panels: the order
+        # every Mac Window menu has. Qt adds neither, so a window without
+        # them has no Cmd+M at all — which is the other half of why Merge
+        # Region gave that shortcut up. There is no Bring All to Front
+        # because there is nothing to bring: one window, and no second one
+        # to open.
+        self._minimise_action = QAction("&Minimise", self)
+        self._minimise_action.setShortcut(QKeySequence("Ctrl+M"))
+        self._minimise_action.triggered.connect(self.showMinimized)
+        window_menu.addAction(self._minimise_action)
+
+        self._zoom_window_action = QAction("&Zoom", self)
+        self._zoom_window_action.triggered.connect(self._on_zoom_window)
+        window_menu.addAction(self._zoom_window_action)
+
+        window_menu.addSeparator()
         window_menu.addAction(self._pages_dock.toggleViewAction())
         window_menu.addAction(self._inspector_dock.toggleViewAction())
         window_menu.addAction(self._run_dock.toggleViewAction())
@@ -561,6 +595,17 @@ class MainWindow(QMainWindow):
         self._settings.setValue(_GEOMETRY_KEY, self.saveGeometry())
         self._settings.setValue(_STATE_KEY, self.saveState())
 
+    def _on_zoom_window(self) -> None:
+        """The Window menu's Zoom: out to fill the screen, or back again.
+
+        A toggle, because that is what the green button beside it does and
+        what the menu item next to it on every other Mac does.
+        """
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
     def _on_reset_layout(self) -> None:
         """Put every dock and the toolbar back where they started.
 
@@ -665,17 +710,29 @@ class MainWindow(QMainWindow):
     # -- opening, saving -----------------------------------------------
 
     def _confirm_discard_if_dirty(self) -> bool:
-        """True if it is safe to proceed: nothing unsaved, or the user said so."""
+        """True if it is safe to proceed: nothing unsaved, saved, or discarded.
+
+        Three buttons rather than two. Discard and Cancel alone make Cancel
+        the only way to keep the work, and keeping it then costs backing
+        out, saving, and asking for the same thing again — which is the
+        answer people want most often offered as the one that is most
+        trouble. Qt lays the row out in the platform's order and titles
+        Discard "Don't Save" on macOS; see ``alerts``.
+        """
         if self.document is None or not self.document.dirty:
             return True
-        choice = QMessageBox.question(
+        choice = alerts.ask(
             self,
-            "Unsaved changes",
-            f"{self.document.path.name} has unsaved changes. Discard them?",
-            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+            f"Save the changes to {self.document.path.name}?",
+            "Your changes will be lost if you do not save them.",
+            alerts.Button.Save | alerts.Button.Discard | alerts.Button.Cancel,
+            alerts.Button.Save,
         )
-        return choice == QMessageBox.StandardButton.Discard
+        if choice == alerts.Button.Save:
+            # Saving can still fail — a plan whose directory has gone, say —
+            # and a failed save must not read as permission to close over it.
+            return self._save_document()
+        return choice == alerts.Button.Discard
 
     def open_plan(self, path: Path) -> None:
         if not self._confirm_discard_if_dirty():
@@ -683,7 +740,7 @@ class MainWindow(QMainWindow):
         try:
             document = PlanDocument.open(path)
         except ComictransError as exc:
-            QMessageBox.critical(self, "Could not open plan", str(exc))
+            alerts.report(self, "The plan could not be opened.", str(exc))
             return
 
         self.document = document
@@ -722,15 +779,24 @@ class MainWindow(QMainWindow):
             self.open_plan(self.document.path)
 
     def _on_save(self) -> None:
+        self._save_document()
+
+    def _save_document(self) -> bool:
+        """Write the plan where it already lives. False if it could not be.
+
+        Returns rather than raises because the unsaved-changes alert has to
+        know: a save that failed is not a document it is safe to close.
+        """
         if self.document is None:
-            return
+            return False
         try:
             self.document.save()
         except ComictransError as exc:
-            QMessageBox.critical(self, "Could not save", str(exc))
-            return
+            alerts.report(self, "The plan could not be saved.", str(exc))
+            return False
         self._update_title()
         self.statusBar().showMessage(f"saved {self.document.path}", 5000)
+        return True
 
     def _on_save_as(self) -> None:
         if self.document is None:
@@ -744,19 +810,19 @@ class MainWindow(QMainWindow):
         try:
             self.document.save_as(target)
         except ComictransError:
-            overwrite = QMessageBox.question(
+            overwrite = alerts.ask(
                 self,
-                "File exists",
-                f"{target.name} already exists. Overwrite it?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
+                f"Replace {target.name}?",
+                "The plan already there will be overwritten.",
+                alerts.Button.Save | alerts.Button.Cancel,
+                alerts.Button.Cancel,
             )
-            if overwrite != QMessageBox.StandardButton.Yes:
+            if overwrite != alerts.Button.Save:
                 return
             try:
                 self.document.save_as(target, force=True)
             except ComictransError as exc:
-                QMessageBox.critical(self, "Could not save", str(exc))
+                alerts.report(self, "The plan could not be saved.", str(exc))
                 return
         self._pages.set_document(self.document)
         if self._current_image is not None:
@@ -782,7 +848,7 @@ class MainWindow(QMainWindow):
             page = load_page(self.document.source_path(image))
         except ComictransError as exc:
             self._page = None
-            QMessageBox.critical(self, "Could not read image", str(exc))
+            alerts.report(self, "The page image could not be read.", str(exc))
             return
         self._page = page
 
@@ -1191,7 +1257,7 @@ class MainWindow(QMainWindow):
             # The working message would otherwise sit there claiming a render
             # is still going, behind the box saying it is not.
             self.statusBar().clearMessage()
-            QMessageBox.critical(self, "Could not render preview", str(exc))
+            alerts.report(self, "The preview could not be rendered.", str(exc))
             return
         # The same page, rendered: hold the reader's place across the swap,
         # which is what makes the overlay and the output comparable.
@@ -1449,10 +1515,11 @@ class MainWindow(QMainWindow):
         """
         if not path.exists():
             self._forget_recent(path)
-            QMessageBox.warning(
+            alerts.report(
                 self,
-                "Plan not found",
-                f"{path} is not there any more, so it has been taken off the recent list.",
+                f"{path.name} is not there any more.",
+                f"It has been taken off the recent list. It was at {path.parent}.",
+                alerts.Icon.Warning,
             )
             return
         self.open_plan(path)
