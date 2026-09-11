@@ -12,10 +12,10 @@ Nothing here is a commitment, and nothing here is a work item an agent
 should pick up on its own — the same rule `known-bugs.md` carries. Work a
 milestone when the request names it.
 
-**A milestone includes its own documentation.** Once 4.7 has shipped, a
-milestone that changes what the window does updates the help in the same
-change; once 4.9 has shipped, it updates the strings that need
-re-extracting too. Where that turns out to be a body of work rather than a
+**A milestone includes its own documentation.** A milestone that changes
+what the window does updates the in-application guide in the same change —
+that is live now, since the guide has shipped — and once 4.9 has shipped, it
+updates the strings that need re-extracting too. Where that turns out to be a body of work rather than a
 paragraph it becomes its own milestone — but it is never simply left for
 later, because help describing the previous version is worse than no help
 at all.
@@ -33,7 +33,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.7 | Help instructions | S–M |
 | 4.10 | Package as an application | M |
 | **11** | **First release (1.0.0)** | **S–M** |
 | 4.22 | Preview off the main thread | M |
@@ -69,9 +68,9 @@ rather than being filed with the other small things: renaming after either
 one would have meant doing that work a second time, and the interface
 review was filed just ahead of them for exactly that reason — it decided
 what the labels say, and deciding that after they have been translated is
-the same mistake twice. Help text describes the UI, so it goes after the
-UI stops moving — which for a first release means after that review, now
-settled, and before the release freezes it.
+the same mistake twice. Help text describes the UI, so it went after the
+UI stopped moving — after that review and before the release freezes it,
+which is where it landed.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -108,22 +107,6 @@ safe to call off the main thread — and the more valuable, because reviewing a
 plan and then leaving for a terminal to render it was the obvious hole in the
 window. The threading was built on the easy case, and extract reused it: by
 the time it landed, the harness was a base class and one `work()` method.
-
-## 4.7 Help instructions
-
-A short in-application guide to reviewing a plan: what the badge colours
-mean, what each flag means, what preview does and does not tell you.
-
-After the milestones that change the UI, because it documents them, and
-after the interface review in particular — that settled what the labels
-say, and help quoting a label about to be reworded is help wrong on
-arrival. The conventions it decided are in `docs/ARCHITECTURE.md` under
-Interface conventions, and help text follows them.
-
-A dialog with a `QTextBrowser` over a bundled document, rather than strings
-in the source, keeps 4.9 to one file per language.
-
-`README.md` is not a substitute; it is written for the command line.
 
 ## 4.10 Package as an application
 
@@ -269,11 +252,19 @@ Last of the GUI work because every milestone above adds or changes strings,
 and each one would otherwise mean another `lupdate` pass.
 
 Two mechanics worth knowing before starting: `self.tr()` needs a `QObject`
-subclass, so module-level constants — the label table in
-`inspector._flags_text`, for one — need `QCoreApplication.translate`
-instead. And there are no translator files yet, so this brings `lupdate`
-and `lrelease` into the workflow and `.qm` files into the wheel. Add a
-check that the compiled files are current.
+subclass, so module-level constants — `inspector._FLAG_LABELS`, for one —
+need `QCoreApplication.translate` instead. And there are no translator files
+yet, so this brings `lupdate` and `lrelease` into the workflow and `.qm`
+files into the wheel. Add a check that the compiled files are current.
+
+The guide is not part of that. It already ships as one HTML file per
+language under `gui/resources/help/`, picked by name with English as the
+fallback, so translating it is translating a file rather than running it
+through `lupdate`. What this milestone adds there is asking Qt which
+language to open it in. The tests that hold the guide to the code it
+describes — the outline colours, the flag names, every link against every
+anchor — run over every file in that directory, so a translation is held to
+the same rules the moment it is dropped in.
 
 ## 5 Validate a plan file
 

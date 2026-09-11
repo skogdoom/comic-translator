@@ -46,7 +46,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
-from . import about, alerts, icons, recent
+from . import about, alerts, help_dialog, icons, recent
 from .about_dialog import AboutDialog
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -61,6 +61,7 @@ from .canvas import (
 from .document import PlanDocument
 from .extract_dialog import ExtractDialog
 from .header_dialog import HeaderDialog
+from .help_dialog import HelpDialog
 from .hint_line import HintLine
 from .inspector import RegionInspector
 from .logfile import log_directory, set_notifier
@@ -140,6 +141,10 @@ class MainWindow(QMainWindow):
 
         self._sampling: str | None = None
         """Which colour field asked for a pixel, while the canvas takes one."""
+
+        self._help: HelpDialog | None = None
+        """The guide, once it has been asked for. Kept so that asking again
+        raises the window rather than building a second one."""
 
         self._job: RunJob | None = None
         """The pass in flight, or None. At most one, of either kind: both
@@ -463,6 +468,13 @@ class MainWindow(QMainWindow):
         window_menu.addAction(self._reset_layout_action)
 
         help_menu = self.menuBar().addMenu("&Help")
+        # First, and named for the application: what macOS puts at the top
+        # of every Help menu. HelpContents is Cmd+? there and F1 elsewhere.
+        self._help_action = QAction(help_dialog.TITLE, self)
+        self._help_action.setShortcut(QKeySequence.StandardKey.HelpContents)
+        self._help_action.triggered.connect(self._on_help)
+        help_menu.addAction(self._help_action)
+
         # Above About, because it is the one someone reaches for with a
         # problem in hand rather than curiosity.
         self._open_logs_action = QAction("Open &Log Folder", self)
@@ -1586,6 +1598,19 @@ class MainWindow(QMainWindow):
             return
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory))):
             self.statusBar().showMessage(f"logs are in {directory}", 10000)
+
+    def _on_help(self) -> None:
+        """Open the guide, or raise the one already open.
+
+        Not modal, and kept rather than rebuilt: help is read beside the
+        thing it describes, and asking for it twice should not leave two
+        windows to close or lose the place you had scrolled to.
+        """
+        if self._help is None:
+            self._help = HelpDialog(self)
+        self._help.show()
+        self._help.raise_()
+        self._help.activateWindow()
 
     def _on_about(self) -> None:
         AboutDialog(self).exec()

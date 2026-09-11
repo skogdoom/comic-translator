@@ -11,6 +11,7 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import textwrap
@@ -405,6 +406,105 @@ def test_every_menu_role_macos_moves_is_spelled_out(qapp: object) -> None:
         "&Settings…": QAction.MenuRole.PreferencesRole,
         "&Quit": QAction.MenuRole.QuitRole,
     }
+
+
+def test_the_help_menu_opens_with_the_guide_named_for_the_application(qapp: object) -> None:
+    """What macOS puts at the top of every Help menu."""
+    from comictrans.gui import help_dialog
+
+    window = MainWindow()
+    items = _menu_items(window, "&Help")
+
+    assert items[0].text() == help_dialog.TITLE == f"{about.NAME} Help"
+    assert items[0].shortcut() == QKeySequence(QKeySequence.StandardKey.HelpContents)
+
+
+def test_asking_for_the_guide_twice_raises_the_one_already_open(qapp: object) -> None:
+    """Help is read beside the thing it describes, so it is not modal.
+
+    Two windows would be two to close, and the second would have lost
+    whatever place the first was scrolled to.
+    """
+    window = MainWindow()
+    window._on_help()
+    first = window._help
+    assert first is not None
+    assert first.isVisible()
+    assert not first.isModal(), "a modal guide could not be read beside the page"
+
+    window._on_help()
+    assert window._help is first
+
+
+def test_closing_the_guide_and_asking_again_opens_the_same_window(qapp: object) -> None:
+    """Closed, not destroyed — which is what makes the handle safe to keep.
+
+    A ``WA_DeleteOnClose`` on this dialog would take the C++ object with the
+    Close button and leave ``_help`` pointing at nothing, so the second
+    ``show()`` would raise rather than reopen.
+    """
+    window = MainWindow()
+    window._on_help()
+    first = window._help
+    assert first is not None
+
+    first.reject()
+    QApplication.processEvents()
+    assert not first.isVisible()
+
+    window._on_help()
+    assert window._help is first
+    assert first.isVisible(), "and it comes back rather than raising"
+
+
+def test_every_contents_link_in_the_guide_goes_somewhere_further_down(qapp: object) -> None:
+    """Each one lands somewhere new, which is what proves it resolved.
+
+    Checking that the anchors exist at all is a string comparison and lives
+    in ``test_gui_help.py``; this is the other half — that the wiring from a
+    clicked link to a scrolled document is connected.
+
+    The window is made short on purpose. At its own size the last two
+    sections both land against the bottom of the scroll range, and two
+    equal answers cannot tell a resolved anchor from an unresolved one.
+    """
+    from PySide6.QtCore import QUrl
+
+    from comictrans.gui.help_dialog import HelpDialog, document
+
+    dialog = HelpDialog()
+    dialog.resize(420, 200)
+    dialog.show()
+    QApplication.processEvents()
+
+    scrollbar = dialog._browser.verticalScrollBar()
+    landed = []
+    for name in re.findall(r'href="#([^"]+)"', document()):
+        dialog._on_anchor(QUrl(f"#{name}"))
+        QApplication.processEvents()
+        landed.append(scrollbar.value())
+
+    assert len(landed) >= 5, "the guide has sections to link to"
+    assert landed == sorted(set(landed)), f"each link lands further down: {landed}"
+    assert landed[0] > 0, "and the first one moves at all"
+
+
+def test_the_guide_follows_links_into_itself_and_no_others(qapp: object) -> None:
+    """A ``QTextBrowser`` will fetch a URL, and nothing here may reach one."""
+    from PySide6.QtCore import QUrl
+
+    from comictrans.gui.help_dialog import HelpDialog
+
+    dialog = HelpDialog()
+    dialog.show()
+    QApplication.processEvents()
+    dialog._browser.verticalScrollBar().setValue(40)
+
+    dialog._on_anchor(QUrl("https://example.invalid/guide#flags"))
+    QApplication.processEvents()
+
+    assert dialog._browser.source().isEmpty(), "nothing was loaded"
+    assert dialog._browser.verticalScrollBar().value() == 40, "and nothing moved"
 
 
 def test_the_name_macos_reads_is_the_one_handed_to_qt(tmp_path: Path) -> None:

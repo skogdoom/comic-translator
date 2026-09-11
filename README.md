@@ -485,6 +485,13 @@ for OCR, the source image's own format, whatever font `extract` finds for
 itself. The window also remembers which directory you last opened a plan or
 read pages from, and starts the file dialogs there.
 
+**Help > Comic Translator Help** (`Cmd+?` on macOS, `F1` elsewhere) opens a
+short guide to this window: what the outline colours mean, what each flag
+means, what the preview does and does not tell you, and how the two passes
+fit together. It is a window rather than a dialog, so it stays open beside
+the page while you work. This README covers the command line; that guide
+covers the window.
+
 **When something goes wrong**, **Help > Open Log Folder** shows you where it
 was written down. Two files live there —
 `~/Library/Logs/comictrans/` on macOS, `~/.local/state/comictrans/`

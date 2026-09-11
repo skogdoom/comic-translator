@@ -1,0 +1,154 @@
+<h1>Reviewing a plan</h1>
+
+<p>This window edits one plan file. It does not translate anything and it
+does not change your pages &mdash; the only file it ever writes is the plan,
+and only when you save it.</p>
+
+<p><b>Contents</b><br>
+<a href="#work">How the work goes</a><br>
+<a href="#colours">The outline colours</a><br>
+<a href="#flags">The flags</a><br>
+<a href="#preview">What the preview tells you</a><br>
+<a href="#around">Getting around</a><br>
+<a href="#running">Saving, reverting and running</a></p>
+
+<h2><a name="work"></a>How the work goes</h2>
+
+<p><b>Extract</b> read your pages, found the lettering, and wrote a plan: one
+entry per region, with an outline, the colours read off the page, and the
+text it recognised. Nothing has been drawn yet.</p>
+
+<p><b>You</b> work through the plan here. Fix an outline extract got wrong,
+write the translation, and mark what should be left alone.</p>
+
+<p><b>Render</b> draws the plan onto copies of your pages, into a directory
+you choose. Every decision it makes comes from the plan, which is what lets
+you change one translation, run it again, and have only that text change.</p>
+
+<h2><a name="colours"></a>The outline colours</h2>
+
+<p>Every region on the page carries an outline, and its colour says where
+that outline came from.</p>
+
+<table cellpadding="4" cellspacing="0">
+<tr>
+  <td><span style="background-color:#28aa46">&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
+  <td><b>Green</b> &mdash; traced from a balloon extract found. The outline
+  follows a real edge on the page.</td>
+</tr>
+<tr>
+  <td><span style="background-color:#e68c1e">&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
+  <td><b>Orange</b> &mdash; no balloon was found, so this is a padded box
+  around the text extract read. It is a guess, and it is the one to check
+  first.</td>
+</tr>
+<tr>
+  <td><span style="background-color:#785ac8">&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
+  <td><b>Violet</b> &mdash; drawn or reshaped by hand, here. Neither traced
+  nor guessed: somebody decided this shape.</td>
+</tr>
+<tr>
+  <td><span style="background-color:#1e78e6">&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
+  <td><b>Blue</b> &mdash; selected. Whichever of the three it would
+  otherwise be.</td>
+</tr>
+<tr>
+  <td><span style="background-color:#d72828">&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
+  <td><b>Dashed red</b> &mdash; flagged: something about this region is worth
+  a second look. What, exactly, is in the region panel; the list is below.</td>
+</tr>
+</table>
+
+<p>Green and orange are the same two colours <code>extract --debug-dir</code>
+draws, so an overlay written during detection and this window agree about
+which regions were traced.</p>
+
+<h2><a name="flags"></a>The flags</h2>
+
+<p>A flag is a reason to look, not an error. A page can be finished with
+flags still on it, and rendering never refuses one because of a flag.</p>
+
+<p><b>approximate geometry</b><br>
+No clean balloon outline was found and the region is a padded box around the
+text. It may cover artwork it should not, or miss lettering it should.
+Reshape it, or draw a new one.</p>
+
+<p><b>low confidence</b><br>
+The recogniser was unsure of what it read. The source text may be wrong,
+which matters because it is what you are translating from.</p>
+
+<p><b>held back (no translation)</b><br>
+The translation is empty and the region is not skipped. Rendering leaves this
+region completely alone &mdash; not erased, not half-drawn &mdash; and names
+it in the report.</p>
+
+<p><b>same as source</b><br>
+The translation is still the text extract seeded it with. Not an error: a
+name or an exclamation can be a correct translation of itself. Worth knowing
+before you call a page done.</p>
+
+<p><b>overlaps another region</b><br>
+Two outlines share enough area that one will draw over the other. Either
+reshape one, or merge them if they are two tracings of the same balloon.</p>
+
+<p><b>skipped</b><br>
+You have said to leave this region alone. It is shown separately from the
+others because it is a decision rather than a defect.</p>
+
+<p>The page list counts flagged regions per page, and <b>Next Flagged
+Region</b> walks them in order, so a chapter can be worked through without
+opening every page to look.</p>
+
+<h2><a name="preview"></a>What the preview tells you</h2>
+
+<p><b>Render Preview</b> swaps the page for the same page rendered. It calls
+the same code the render pass calls, on the plan as it stands in this window
+&mdash; including edits you have not saved &mdash; so what you see is what
+you would get.</p>
+
+<p><b>It answers:</b> does the translation fit the balloon, does the erase
+strategy actually remove the old lettering, are the fill and text colours
+right against this artwork, and does the font resolve. The status line says
+how many regions had a problem and names them.</p>
+
+<p><b>It does not:</b> write anything to disk, look at any page but this one,
+or tell you whether the translation is any good. It also costs a real render,
+which is why it is a key you press rather than something that happens as you
+type.</p>
+
+<p>Press it again to go back to the outlines. The zoom and the scroll
+position are held across the swap, so a balloon you were looking at closely
+is still there when you come back.</p>
+
+<h2><a name="around"></a>Getting around</h2>
+
+<p>The <b>Pages</b> panel lists the plan's pages with a region count and a
+flag count each. Drag a row to put the pages in the order you read them.</p>
+
+<p><b>Next Region</b> and <b>Previous Region</b> step through the regions in
+reading order, and walk onto the next page at the end of this one. <b>Next
+Flagged Region</b> skips to the next one worth a look.</p>
+
+<p>The page starts fitted to the window. Zoom in and out, fit again, or go to
+actual size from the View menu; the zoom is remembered per page, because a
+dense page of captions and the splash opposite it want different ones.</p>
+
+<p>The line under the page says what a click does right now &mdash; it
+changes when you enter a mode, and it names the modifier the way your
+keyboard does.</p>
+
+<h2><a name="running"></a>Saving, reverting and running</h2>
+
+<p><b>Save</b> writes the plan back where it came from. The title bar's
+modified marker tracks what is on disk, so undoing back to your last save
+clears it. <b>Revert to Saved</b> re-reads the file and throws away what is
+unsaved.</p>
+
+<p><b>Extract Pages</b> runs detection and recognition over a folder of pages
+and writes a new plan. <b>Render Pages</b> draws the open plan into a
+directory you choose. Both run in the background: the window stays usable,
+and a panel along the bottom reports what happened.</p>
+
+<p>Rendering will not write inside the folder your pages are in, and there is
+no way to make it. That is the one refusal in this tool with no override, and
+it is what keeps your scans as they were.</p>
