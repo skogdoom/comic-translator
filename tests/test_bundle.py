@@ -259,7 +259,8 @@ def test_a_localization_directory_is_written_for_every_language(tmp_path: Path) 
         assert path.name == "InfoPlist.strings"
         # Not an empty directory: it carries the one localized resource this
         # application has, and PyInstaller collects files rather than folders.
-        assert "Comic Translator" in path.read_text(encoding="utf-8")
+        assert "Comic Translator" in path.read_text(encoding="utf-16")
+        assert path.read_bytes()[:2] == b"\xff\xfe", "a .strings file is UTF-16, with the mark"
 
 
 def test_the_localizations_are_collected_rather_than_added_afterwards(
@@ -299,6 +300,66 @@ def test_the_built_bundle_is_read_back_for_both_declarations(tmp_path: Path) -> 
     for code in ("sv", "en"):
         (resources / f"{code}.lproj").mkdir()
     assert build_app.bundled_localizations(bundle) == ("en", "sv")
+
+
+def test_the_inspector_reads_a_bundle_four_ways(tmp_path: Path) -> None:
+    """The tool that turns "it still says no" into which half is wrong.
+
+    Its own facts are checkable anywhere; the one that settles the question —
+    what ``NSBundle`` answers — needs a Mac, and it says so rather than
+    concluding anything without it.
+    """
+    import plistlib
+
+    import inspect_bundle
+
+    bundle = tmp_path / "Comic Translator.app"
+    resources = bundle / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+
+    assert "unreadable" in str(inspect_bundle.plist_facts(bundle)["Info.plist"])
+    assert inspect_bundle.lproj_facts(bundle) == {"Contents/Resources/*.lproj": "— none —"}
+
+    (bundle / "Contents" / "Info.plist").write_bytes(
+        plistlib.dumps({"CFBundleName": "Comic Translator", "CFBundleLocalizations": ["en", "sv"]})
+    )
+    facts = inspect_bundle.plist_facts(bundle)
+    assert facts["CFBundleLocalizations"] == ["en", "sv"]
+    assert facts["CFBundleIdentifier"] == "— not set —", "a key that is missing says so"
+
+    build_app.write_localizations(resources, ("en", "sv"))
+    (resources / "empty.lproj").mkdir()
+    assert inspect_bundle.lproj_facts(bundle) == {
+        "empty.lproj": "— empty —",
+        "en.lproj": ["InfoPlist.strings"],
+        "sv.lproj": ["InfoPlist.strings"],
+    }
+
+
+def test_the_inspector_draws_no_conclusion_without_the_one_that_matters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two right-looking answers have already turned out not to settle this."""
+    import inspect_bundle
+
+    bundle = tmp_path / "Comic Translator.app"
+    (bundle / "Contents" / "Resources").mkdir(parents=True)
+    (bundle / "Contents" / "Info.plist").write_bytes(b"\x00 not a plist")
+
+    assert inspect_bundle.report(bundle) == 1, "an unreadable Info.plist is the answer"
+
+    import plistlib
+
+    (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleName": "x"}))
+    monkeypatch.setattr(inspect_bundle, "cocoa_localizations", lambda _bundle: None)
+    assert inspect_bundle.report(bundle) == 2
+    assert "cannot be asked" in capsys.readouterr().out
+
+    monkeypatch.setattr(inspect_bundle, "cocoa_localizations", lambda _bundle: ("en",))
+    assert inspect_bundle.report(bundle) == 1
+
+    monkeypatch.setattr(inspect_bundle, "cocoa_localizations", lambda _bundle: ("en", "sv"))
+    assert inspect_bundle.report(bundle) == 0
 
 
 def test_launch_services_is_asked_to_look_again(

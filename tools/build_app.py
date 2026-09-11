@@ -288,7 +288,11 @@ def write_localizations(directory: Path, codes: tuple[str, ...]) -> tuple[Path, 
         folder.mkdir(parents=True, exist_ok=True)
         strings = folder / "InfoPlist.strings"
         lines = [f'"{key}" = "{APPLICATION_NAME}";' for key in LOCALIZED_NAME_KEYS]
-        strings.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # UTF-16, which is what Apple documents a .strings file as and what
+        # Xcode writes. UTF-8 is read correctly by everything current, and
+        # this is one variable fewer in a question that has already had two
+        # answers that looked right and were not.
+        strings.write_text("\n".join(lines) + "\n", encoding="utf-16")
         written.append(strings)
     return tuple(written)
 

@@ -98,6 +98,20 @@ quarantine attribute and everything unpacked from it inherits the mark,
 including whatever you then build. A `git clone` carries no such attribute.
 Build from a zip and the application will refuse to open and look broken.
 
+**If System Settings will not give the application its own language**, ask
+the bundle what it thinks it has:
+
+```
+uv run --extra gui tools/inspect_bundle.py "dist/Comic Translator.app"
+```
+
+That prints the Info.plist key, the `.lproj` directories, whether the
+signature still matches — and what `NSBundle` answers, which is macOS reading
+the bundle with its own eyes. If that last one lists both languages and the
+Language & Region panel still does not, the panel is answering from its own
+database rather than from the application: check that the copy you added
+there is the copy you rebuilt.
+
 The build only works on macOS: PyInstaller bundles the interpreter and
 libraries of the machine it runs on and does not cross-compile. Anywhere else
 the script says so and stops.

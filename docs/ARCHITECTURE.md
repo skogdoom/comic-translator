@@ -1644,6 +1644,15 @@ answering with what the previous build said. That is the other half of why
 the panel can be wrong, and the half no amount of getting the bundle right
 would fix.
 
+`tools/inspect_bundle.py` exists because that panel has now disagreed with a
+bundle that looked right twice, and from inside the application there is no
+telling which half is at fault. It reads a built bundle four ways — the
+Info.plist key, the directories on disk, the signature, and what `NSBundle`
+answers, the last being macOS reading the bundle with its own eyes. It draws
+no conclusion without that one: measured facts that looked sufficient have
+already been insufficient here twice, and the tool says so rather than
+adding a third.
+
 **The language preference takes effect at the next start, and the window says
 so twice: under the field before the choice, and in an alert after it.** Retranslating a running window means re-setting every
 string on `LanguageChange`, and the module-level constants above cannot be
