@@ -299,6 +299,12 @@ YCbCr — are refused rather than quietly downconverted.
 
 ## Languages
 
+Two different things share the word, and they meet nowhere. This section is
+about the comic's languages: what the lettering is in, and what it is being
+translated into. The language the *window* speaks is a separate decision with
+a separate mechanism — "Localisation" under "The review GUI" — and a Swedish
+window translating an Italian comic into English is an ordinary case.
+
 The language pair lives in the plan file header as `source_language` and
 `target_language`, set by `--source-lang` and `--target-lang` on `extract` and
 defaulting to `it` and `en`. Nothing downstream hardcodes a language:
@@ -552,7 +558,7 @@ about_dialog.py  what about.py found, plus the Python and Qt versions
 help_dialog.py   the bundled guide, in a window you can leave open
 header_dialog.py the settings every region is drawn under
 font_box.py     a font field offering only what fonts.py can resolve
-run_report.py   what a finished run is worth showing — no Qt
+run_report.py   what a finished run is worth showing — no widget
 run_job.py      a pipeline pass on a worker thread, reporting by signal
 render_dialog.py where to write, in what format, erasing how
 extract_dialog.py what to read, where the plan goes, in what languages
@@ -562,15 +568,18 @@ recent.py       the plans opened lately, and their order — no Qt
 preferences_dialog.py  those defaults, and a reminder of what they are not
 logfile.py      the application log, and the hooks that fill it — no Qt
 crash.py        fatal-signal traces to a second file — no Qt
+translations.py which language the window speaks, and where its words are
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
 app.py         available() / run() — the CLI's entry point
 ```
 
-`document.py`, `preview.py`, `sampling.py`, `about.py`, `run_report.py`,
-`preferences.py`, `recent.py`, `logfile.py` and `crash.py` need no display
-and import no Qt;
-they are tested directly, the same as any other module. The widget modules do
+`document.py`, `preview.py`, `sampling.py`, `about.py`, `preferences.py`,
+`recent.py`, `logfile.py` and `crash.py` need no display and import no Qt;
+they are tested directly, the same as any other module. `run_report.py` is
+the one module in between: it owns no widget and needs no display, but every
+word it produces is read off a panel, so it is translated like the rest of
+the window and imports `QtCore` for that alone. The widget modules do
 — `main_window.py` is the only one that knows about more than one other
 widget, which is what keeps an edit's ripple effects (the window title's
 dirty marker, another region's overlap flag, the page list's flag count) in
@@ -1498,7 +1507,8 @@ respelled without a `PLAN_VERSION` bump and a reader that accepts both
 spellings forever, which is a real cost for no gain. `Preferences` survives
 in the code as the dataclass and as the `preferences/` settings prefix for
 the same reason — renaming the key would lose everyone's stored settings —
-while the window that edits it is called Settings.
+and so is the window that edits it, for the reason measured below: on macOS
+the name of that menu item is not ours to set.
 
 **An alert has two strings, because macOS shows two.** There is no title bar
 on one, and `QMessageBox` knows it: Qt overrides `setWindowTitle` on that
@@ -1568,6 +1578,168 @@ with the dock's actual state. And Save As still asks before replacing a file
 even though the Save panel has already asked: the cost of the extra
 confirmation is one click in a rare case, and the cost of being wrong about
 what every file panel on every platform does is somebody's plan file.
+
+### Localisation
+
+The window only. Not the command line, which is a large surface for a
+different audience; not plan file content, which is the comic rather than the
+interface; and not what the pipeline says when something goes wrong — an
+unresolvable font or an output directory inside the source tree produces the
+same sentence in a window and on a terminal, and translating one of them
+would leave two sentences to keep in step for nobody's benefit. `gui.document`
+draws the same line: the ValueErrors it raises when a shape crosses itself or
+two regions will not merge are the plan's own refusals, and the window
+translates the frame it puts around them rather than the refusal.
+
+`gui/translations.py` picks the language and installs two catalogues: ours,
+and Qt's own `qtbase_<lang>.qm` from `QLibraryInfo`, so a translated window
+does not answer in half English through its file panels and alert buttons.
+Qt's is best-effort: missing costs only Qt's own furniture. Nothing here
+overrides an entry *in* Qt's catalogue, which is the one way the macOS
+Preferences item could be re-titled Settings; the action, the window and the
+settings key all say Preferences, and the item follows Qt.
+
+**Three places say which language, asked in this order:**
+`COMICTRANS_LANGUAGE`, the `language` preference, then the machine's own
+answer; English behind all three. A language named in either of the first two
+and not translated falls back to English rather than to the next place down —
+naming one is an answer, and answering a different question would be worse
+than answering in English. The machine's answer is a *list* rather than one
+locale, which is both more accurate — a preference list is what a person
+actually has — and what a macOS per-application language would arrive as:
+choosing one in System Settings writes an `AppleLanguages` list scoped to
+that application, which `QLocale.uiLanguages()` reports in order while
+`QLocale.system().name()` goes on describing the system locale. That half is
+ready; the half where macOS lets the choice be made is not, and is below.
+
+That setting also has to be offered before it can be chosen, and macOS
+decides what to offer from the bundle: an application declaring no
+localizations is one System Settings says "doesn't support additional
+languages" about, whatever is inside it. It is declared twice, and the second
+one is not redundancy for its own sake. `CFBundleLocalizations` in the
+Info.plist is Apple's documented key for an application that loads its own
+strings — which is exactly this one — and with it set, and both catalogues
+inside the bundle, that panel went on saying the application supports no
+additional languages. Observed on macOS and not reproducible from here, so
+there is a `<language>.lproj` directory per language too, each holding an
+`InfoPlist.strings` naming the application, which is what every application
+that does offer the choice actually ships.
+
+**They are collected into the bundle rather than added to it.**
+`build_app.py` writes them under `build/`, the spec picks them up as data
+with `sv.lproj` as their destination, and PyInstaller puts them where macOS
+looks. Writing them into `Contents/Resources` after the build would have been
+shorter and wrong: PyInstaller signs the bundle and then verifies its own
+signature, so anything added afterwards breaks the seal it just made — a
+worse problem than the one being fixed, and a silent one until something
+checks.
+
+Both lists come from `translations.available()` rather than being written
+out, so a catalogue added and the build forgotten cannot happen, and the
+build reads the finished bundle back for both — nothing else would notice
+either being absent. It also asks Launch Services to look again
+(`lsregister -f`, which lives at a fixed path inside a framework and has
+never been on `PATH`): macOS answers that panel from its own database rather
+than from the bundle in front of it, so a bundle rebuilt in place can go on
+answering with what the previous build said. That is the other half of why
+the panel can be wrong, and the half no amount of getting the bundle right
+would fix.
+
+`tools/inspect_bundle.py` exists because that panel has disagreed with a
+bundle that looked right at every attempt, and from inside the application
+there is no telling which half is at fault. It reads a built bundle four
+ways — the Info.plist key, the directories on disk, the signature, and what
+`NSBundle` answers, the last being macOS reading the bundle with its own
+eyes. It draws no conclusion without that one.
+
+**None of it worked, and that is recorded rather than left implied.** The
+panel still refuses. What the bundle declares, what was tried, where the
+`.lproj` directories provably land, and the one measurement still to take are
+entry 5 in `known-bugs.md`. The declarations stay: they are correct, they are
+what Apple documents, and a later fix will want them there. What does not
+stay is any claim that they work — the window's own Preferences is the route
+that does.
+
+**The language preference takes effect at the next start, and the window says
+so twice: under the field before the choice, and in an alert after it.** Retranslating a running window means re-setting every
+string on `LanguageChange`, and the module-level constants above cannot be
+re-read at all — they are evaluated once at import, which is the same
+property that makes them translatable in the first place. A note standing in
+the form says that before the choice is made; the alert is there because a
+setting that visibly does nothing is a setting somebody presses twice. It is
+raised only when the choice would actually change the language — picking
+Swedish on a Mac already running in Swedish changes nothing, and
+`translations.resolved()` answers that question without installing anything.
+`gui.app`
+therefore reads the stored preferences before it builds anything, hands the
+language to `install`, and passes the same `QSettings` on to the window, so
+there is one settings object rather than two.
+
+**Installing before the widget modules are imported is load-bearing.** Some
+of what the window says lives in module-level constants — `inspector`'s flag
+names, `main_window`'s two preview labels, the guide's title — evaluated once
+at import, and a translator installed after that leaves them in English for
+the life of the process. `gui.app.run` imports the widget modules inside the
+function rather than at the top of the file, which it already did for its own
+reasons; the translator goes in above them. A test pins that ordering,
+because nothing about the import would look wrong if it moved.
+
+**`lupdate` reads the source rather than running it, and that decides how
+every call is written.** Measured, all of it, because each failure is silent:
+
+- A string reached through a helper — `_say(text)`, or a short alias for
+  `translate` — is extracted **not at all**. So every call writes its own
+  English out in full, however repetitive that looks.
+- `QCoreApplication.translate` is **never** marked as carrying plural forms,
+  whatever its fourth argument, and the message is **dropped entirely** when
+  that argument is anything but a bare name: `report.pages_read` was enough
+  to lose a sentence. `tr` is understood in every form. So a counting
+  sentence is always `tr`, which needs a `QObject` — `self.tr` in a widget,
+  `HeaderDialog.tr` or `PageList.tr` from a module function beside one, and
+  `run_report.RunText`, a class whose whole purpose is to be the `QObject`
+  that module does not otherwise have.
+- A test holds every `%n` message to `numerus="yes"` and back, so a call
+  written the wrong way fails `pytest` rather than shipping "1 sidor".
+
+**A count is never glued to a noun, and a sentence is never assembled from
+translated halves.** `"Rendering"` plus `"%d page(s) — %s"` reads fine in
+English and cannot be made to work in a language that inflects the noun for
+the number or puts the count last. So the run panel has `start_render` and
+`start_extract` rather than a verb argument, `render_headline` writes its
+cancelled and uncancelled forms out separately, and where two counts meet in
+one sentence — the render dialog's "Renders 3 pages and 12 regions." — the
+second is its own complete `%n` phrase dropped into the first at a
+placeholder. Placeholders are `{0}`, filled with `str.format` after Qt has
+substituted `%n`.
+
+**English has a catalogue, and it holds nothing but plurals.** Qt substitutes
+`%n` with no translator loaded but cannot inflect the noun beside it, so
+`%n page(s)` reaches an English window as `1 page(s)` unless English is
+translated like any other language. `comictrans_en.ts` is extracted with
+`lupdate -pluralonly`, so it holds those messages and no others, and
+`lrelease` drops whatever is left unfinished — every string that is not a
+plural falls straight through to the English in the source. Measured: an
+unfinished entry returns the source text, a finished numerus entry returns
+the right form for 0, 1 and 3. The suite installs this catalogue too, so the
+English the tests assert is the English a window shows.
+
+`resources/translations/recompile.py` is the workflow: `--extract` folds the
+source's current strings into every `.ts`, a bare run compiles each into the
+`.qm` the application loads, and `--check` recompiles into a temporary
+directory and compares bytes — `lrelease` is reproducible, measured over
+three runs. The suite runs `--check`, so a `.ts` edited without recompiling
+fails `pytest` rather than shipping a window still speaking the last
+translation. It is the same bargain `recreate-icons.py` strikes with the
+application icon, and it exists for the same reason: nothing about a stale
+build product looks wrong.
+
+The guide is not part of any of this. It ships as one HTML file per language
+under `gui/resources/help/`, picked by name with English as the fallback, so
+translating it is translating a file rather than running it through
+`lupdate`. What localisation added there is the window asking
+`translations.current()` — the language it actually got, not the one the
+machine asked for — so a window that fell back to English does not open a
+Swedish guide.
 
 ### The application bundle
 

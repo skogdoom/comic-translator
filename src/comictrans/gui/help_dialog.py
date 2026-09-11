@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QCoreApplication, QUrl
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -40,9 +40,13 @@ HELP_DIR = Path(__file__).parent / "resources" / "help"
 LANGUAGE_DEFAULT = "en"
 SUFFIX = ".html"
 
-TITLE = f"{about.NAME} Help"
+TITLE = QCoreApplication.translate("HelpDialog", "{0} Help").format(about.NAME)
 """What the menu item says, and what the window is called. macOS puts
-"⟨Application⟩ Help" at the top of the Help menu; this is that item."""
+"⟨Application⟩ Help" at the top of the Help menu; this is that item.
+
+Translated where it is built rather than by ``tr``, having no ``self`` to
+ask, and read at import — which is after the translator is installed, see
+``translations``."""
 
 SIZE = (620, 640)
 """Tall and narrow: a column of prose, at a width that does not ask the eye
@@ -78,13 +82,21 @@ def document(language: str = LANGUAGE_DEFAULT) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except OSError as exc:
-        return f"<p>The guide could not be read: {exc}</p>"
+        return QCoreApplication.translate(
+            "HelpDialog", "<p>The guide could not be read: {0}</p>"
+        ).format(exc)
 
 
 class HelpDialog(QDialog):
     """The guide, in a window you can leave open."""
 
     def __init__(self, parent: QWidget | None = None, language: str = LANGUAGE_DEFAULT) -> None:
+        """``language`` is whichever one the window is speaking.
+
+        The guide is a file per language rather than a catalogue of strings,
+        so this is a filename lookup with English behind it — a window in a
+        language the guide has not been written in yet still has help.
+        """
         super().__init__(parent)
         self.setWindowTitle(TITLE)
 

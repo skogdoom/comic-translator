@@ -19,11 +19,12 @@ scheduled.
 
 **A milestone includes its own documentation.** A milestone that changes
 what the window does updates the in-application guide in the same change —
-that is live now, since the guide has shipped — and once 4.9 has shipped, it
-updates the strings that need re-extracting too. Where that turns out to be a body of work rather than a
-paragraph it becomes its own milestone — but it is never simply left for
-later, because help describing the previous version is worse than no help
-at all.
+that is live now, since the guide has shipped — and runs
+`resources/translations/recompile.py --extract`, then translates what it
+added, which is live now too. Where that turns out to be a body of work
+rather than a paragraph it becomes its own milestone — but it is never
+simply left for later, because help describing the previous version is worse
+than no help at all.
 
 Sizes are relative effort, not estimates. When a milestone ships, delete
 its section and its row from the table, and say so in the Status section of
@@ -43,7 +44,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.9 | Localisation | M |
 | 12 | What one page costs to render | M |
 | 5 | Validate a plan file | S |
 | 4.26 | Extract text for one region | M |
@@ -70,16 +70,17 @@ visible the moment the window opened, which is why they went first, and
 4.11, 4.12 and 4.15 were the same shape: felt on every page of every
 review, and waiting on nothing, as was moving a region after them.
 
-**Cross-cutting comes last.** Localisation touches every user-visible
-string, so it goes after the milestones that add strings. Packaging bundles
-whatever the application is by then. Both are why the rename went first
-rather than being filed with the other small things: renaming after either
-one would have meant doing that work a second time, and the interface
+**Cross-cutting comes last.** Localisation touched every user-visible
+string, so it went after the milestones that added strings; packaging
+bundled whatever the application was by then. Both are why the rename went
+first rather than being filed with the other small things: renaming after
+either one would have meant doing that work a second time, and the interface
 review was filed just ahead of them for exactly that reason — it decided
 what the labels say, and deciding that after they have been translated is
-the same mistake twice. Help text describes the UI, so it went after the
-UI stopped moving — after that review and before the release freezes it,
-which is where it landed.
+the same mistake twice. That paid out as expected: the catalogues were
+extracted once, from labels nobody had to argue about again. Help text
+describes the UI, so it went after the UI stopped moving — after that review
+and before the release froze it, which is where it landed.
 
 **Foundations come before what stands on them.** 4.4 and zoom went early for
 that reason, and region editing — the largest of the minor milestones, now
@@ -129,35 +130,9 @@ It has since shipped, and found milestone 12 on the way. And 4.9 would have
 shipped translation machinery for a single language while freezing every
 string just as the milestones below started adding more, which under the
 documentation rule above makes every one of them run a translation pass too.
-Both are improvements. Neither was what made 1.0 releasable, and both are now
-simply next.
-
-## 4.9 Localisation
-
-GUI chrome only.
-
-Not the CLI, which is a large surface for a different audience, and
-emphatically not plan file content: `source_text` and `translation` are the
-comic, not the interface. `source_language` and `target_language` in the
-plan header describe the comic too, and have nothing to do with this.
-
-Last of the GUI work because every milestone above adds or changes strings,
-and each one would otherwise mean another `lupdate` pass.
-
-Two mechanics worth knowing before starting: `self.tr()` needs a `QObject`
-subclass, so module-level constants — `inspector._FLAG_LABELS`, for one —
-need `QCoreApplication.translate` instead. And there are no translator files
-yet, so this brings `lupdate` and `lrelease` into the workflow and `.qm`
-files into the wheel. Add a check that the compiled files are current.
-
-The guide is not part of that. It already ships as one HTML file per
-language under `gui/resources/help/`, picked by name with English as the
-fallback, so translating it is translating a file rather than running it
-through `lupdate`. What this milestone adds there is asking Qt which
-language to open it in. The tests that hold the guide to the code it
-describes — the outline colours, the flag names, every link against every
-anchor — run over every file in that directory, so a translation is held to
-the same rules the moment it is dropped in.
+It has since shipped as well — so that rule is live, and every milestone
+below now ends with an extraction pass and whatever it added translated.
+Neither was what made 1.0 releasable; both were simply next.
 
 ## 12 What one page costs to render
 

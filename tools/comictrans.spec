@@ -27,12 +27,24 @@ not in the tree.
 """
 
 import os
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 from comictrans import __version__ as VERSION
+from comictrans.gui.translations import SOURCE_LANGUAGE, available
 
 NAME = "Comic Translator"
+
+LANGUAGES = sorted({SOURCE_LANGUAGE, *available()})
+"""Every language the window has a catalogue for, read rather than listed.
+
+macOS decides what the per-application Language list offers from the
+bundle — an application that declares nothing is one System Settings says
+"doesn\'t support additional languages" about, however many catalogues are
+inside it. Read from ``gui.translations`` so that a catalogue added and this
+file forgotten cannot happen.
+"""
 
 IDENTIFIER = "io.github.skogdoom.comictrans"
 """Reverse DNS from the owner and the distribution, and not to be tidied.
@@ -69,6 +81,30 @@ than a path written here, because this spec must not be runnable without the
 step that makes the thing it names: a missing icon is not an error PyInstaller
 reports, it is Python's default icon on somebody's Dock."""
 
+LPROJ = os.environ["COMICTRANS_LPROJ"]
+"""Where build_app.py left the ``.lproj`` directories, for the same reason.
+
+They go in as data rather than being written into the bundle afterwards
+because PyInstaller signs the bundle and then verifies it: anything added to
+``Contents/Resources`` after that breaks the seal it just made. Collected
+here, they are sealed with everything else.
+"""
+
+
+def localizations():
+    """``(source, destination)`` for each ``.lproj``, as PyInstaller takes it.
+
+    A destination of ``sv.lproj`` lands in ``Contents/Resources/sv.lproj``,
+    which is where macOS looks to decide whether this application can be
+    given a language of its own. ``CFBundleLocalizations`` below says the
+    same thing in the Info.plist and did not, on its own, move System
+    Settings — so both are here.
+    """
+    return [
+        (str(strings), strings.parent.name)
+        for strings in sorted(Path(LPROJ).glob("*.lproj/InfoPlist.strings"))
+    ]
+
 analysis = Analysis(  # noqa: F821 - PyInstaller injects this
     ["app_entry.py"],
     pathex=[],
@@ -77,6 +113,7 @@ analysis = Analysis(  # noqa: F821 - PyInstaller injects this
         collect_data_files("comictrans")
         + copy_metadata("comictrans", recursive=True)
         + extra_metadata()
+        + localizations()
     ),
     hiddenimports=[],
     hookspath=[],
@@ -140,6 +177,19 @@ app = BUNDLE(  # noqa: F821
         "CFBundleName": NAME,
         "CFBundleDisplayName": NAME,
         "CFBundleVersion": VERSION,
+        # What System Settings > General > Language & Region reads to decide
+        # whether this application can be given a language of its own. The
+        # usual way to say it is an .lproj directory per language, which is
+        # for applications whose strings macOS loads; ours are Qt catalogues
+        # loaded by Qt, and this key is Apple's answer for exactly that case
+        # — "the localizations handled manually by your app".
+        #
+        # Choosing one there writes an AppleLanguages list scoped to this
+        # application, which is what gui.translations.offered() reads back
+        # through QLocale.uiLanguages. The window's own Preferences overrule
+        # it, and COMICTRANS_LANGUAGE overrules both.
+        "CFBundleLocalizations": LANGUAGES,
+        "CFBundleDevelopmentRegion": SOURCE_LANGUAGE,
         "NSHighResolutionCapable": True,
         # Pinned rather than left to the console flag above, because getting
         # it wrong is an application that launches with no Dock icon and no

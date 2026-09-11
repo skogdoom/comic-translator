@@ -43,6 +43,9 @@ pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
 reason is in the first paragraph.
 
+The window is translated: it follows the system's language, English
+otherwise, and Swedish is the translation that ships.
+
 Not in it: archive formats. A chapter is a folder of images going in and a
 folder of images coming out; CBZ, CBR and PDF are neither read nor written.
 `docs/ROADMAP.md` covers that and everything else planned, in the order it is
@@ -94,6 +97,20 @@ the disclaimer above already strikes rather than a weaker one dressed up.
 quarantine attribute and everything unpacked from it inherits the mark,
 including whatever you then build. A `git clone` carries no such attribute.
 Build from a zip and the application will refuse to open and look broken.
+
+**If System Settings will not give the application its own language**, ask
+the bundle what it thinks it has:
+
+```
+uv run --extra gui tools/inspect_bundle.py "dist/Comic Translator.app"
+```
+
+That prints the Info.plist key, the `.lproj` directories, whether the
+signature still matches — and what `NSBundle` answers, which is macOS reading
+the bundle with its own eyes. If that last one lists both languages and the
+Language & Region panel still does not, the panel is answering from its own
+database rather than from the application: check that the copy you added
+there is the copy you rebuilt.
 
 The build only works on macOS: PyInstaller bundles the interpreter and
 libraries of the machine it runs on and does not cross-compile. Anywhere else
@@ -561,6 +578,38 @@ fit together. It is a window rather than a dialog, so it stays open beside
 the page while you work. This README covers the command line; that guide
 covers the window.
 
+**The window speaks your language if it has been translated into it**, and
+English otherwise. Swedish ships. Three places say which, and they are asked
+in this order:
+
+- `COMICTRANS_LANGUAGE`, which forces one whatever anything else says
+  (`COMICTRANS_LANGUAGE=sv comictrans review`) — how to look at a
+  translation on a machine that is not set to it.
+- **Preferences > this window > language**, which is the one to use: it is
+  remembered, and it takes effect the next time the application starts — the
+  window says so when you choose one, and again under the field.
+- The machine's own language settings — a Mac set to Swedish throughout
+  gets a Swedish window.
+
+**macOS's per-application language does not work yet.** System Settings >
+General > Language & Region says the application supports no additional
+languages, for a bundle that declares them every way Apple documents. It is
+recorded, with everything tried and measured, as entry 5 in `known-bugs.md`.
+Use Preferences instead; nothing about the translation itself is affected.
+
+A language named in the first two and not translated falls back to English
+rather than to the next place down: naming one is an answer, and answering a
+different question would be worse than answering in English.
+
+The guide the Help menu opens is picked by the language the window actually
+got, with English behind it, so a window in a language the guide has not been
+written in yet still has help.
+
+This is the window only. The command line is not translated, neither is a
+plan file's content — `source_text` and `translation` are the comic, not the
+interface — and neither is what the pipeline says when something goes wrong,
+since those sentences are the same ones the command line prints.
+
 **When something goes wrong**, **Help > Open Log Folder** shows you where it
 was written down. Two files live there —
 `~/Library/Logs/comictrans/` on macOS, `~/.local/state/comictrans/`
@@ -787,8 +836,10 @@ Three groups of tests skip rather than fail when the host cannot run them:
 - `test_gui_widgets.py` skips when PySide6 is not installed (`uv sync
   --extra gui`), or when it is but no display could actually be opened.
   `test_gui_document.py` and `test_gui_preview.py` need neither and never
-  skip — nothing under `comictrans.gui` besides the widgets themselves
-  touches Qt.
+  skip — the plan a window edits, and the render it previews, are decided
+  without Qt. `test_gui_run.py` and `test_gui_translations.py` sit in
+  between: they build no widget and need no display, but the words they
+  check are translated ones, so they need PySide6.
 
 `-rs` tells you which. On macOS with `uv sync --group dev --extra gui` you
 should see none of these skip except the empty fixtures directory.
@@ -807,6 +858,27 @@ src/comictrans/gui/resources/appicon/recreate-icons.py
 
 The suite runs that script's `--check` mode, so a master edited without
 regenerating fails `pytest` rather than shipping a stale icon.
+
+**The window's words are translated from catalogues, not from the source.**
+`src/comictrans/gui/resources/translations/` holds one `.ts` per language,
+the `.qm` each compiles to, and the script that does both. After adding or
+rewording anything the window says:
+
+```
+src/comictrans/gui/resources/translations/recompile.py --extract   # into every .ts
+src/comictrans/gui/resources/translations/recompile.py             # .ts -> .qm
+```
+
+Translate the new entries in the `.ts` — by hand or in Qt Linguist — and
+recompile. The suite runs the script's `--check` mode, so a `.ts` edited
+without recompiling fails `pytest` rather than shipping a window still
+speaking the last translation, exactly as with the icon above.
+
+English has a catalogue too, and it holds nothing but plurals: Qt counts for
+you but cannot inflect the noun beside the number, so `%n page(s)` would
+otherwise reach an English window as `1 page(s)`. It is extracted with
+`-pluralonly` and everything left unfinished in it falls through to the
+English in the source.
 
 Both drawings go into the `.icns` the application bundle carries, at
 different sizes: the simplified one in the 16- and 32-point slots, where the

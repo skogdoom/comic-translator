@@ -38,22 +38,13 @@ _RATIO_DECIMALS = 4
 _CONDENSE_DECIMALS = 2
 
 
-def font_reach(document: PlanDocument) -> str:
-    """How much of the plan the header font actually decides."""
-    following = document.regions_using_header_font()
-    total = len(document.plan.regions)
-    if total and following == total:
-        return f"used by all {total} regions"
-    return f"used by {following} of {total} regions; the rest override it"
-
-
 class HeaderDialog(QDialog):
     edited = Signal()
 
     def __init__(self, document: PlanDocument, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._document = document
-        self.setWindowTitle("Plan Header")
+        self.setWindowTitle(self.tr("Plan Header"))
 
         header = document.plan.header
 
@@ -61,7 +52,7 @@ class HeaderDialog(QDialog):
         # to the header font, so it has nothing to fall back to itself.
         self._font = FontBox(allow_default=False)
         self._font.set_value(header.font)
-        self._font_reach = QLabel(font_reach(document))
+        self._font_reach = QLabel(self.font_reach())
 
         self._case = QComboBox()
         for case in TextCase:
@@ -84,19 +75,19 @@ class HeaderDialog(QDialog):
         self._target_language = QLineEdit(header.target_language)
 
         form = QFormLayout()
-        form.addRow("font", self._font)
+        form.addRow(self.tr("font"), self._font)
         form.addRow("", self._font_reach)
-        form.addRow("case", self._case)
-        form.addRow("smallest text", self._min_ratio)
-        form.addRow("condensing floor", self._condense)
-        form.addRow("source language", self._source_language)
-        form.addRow("target language", self._target_language)
+        form.addRow(self.tr("case"), self._case)
+        form.addRow(self.tr("smallest text"), self._min_ratio)
+        form.addRow(self.tr("condensing floor"), self._condense)
+        form.addRow(self.tr("source language"), self._source_language)
+        form.addRow(self.tr("target language"), self._target_language)
 
         recorded = QFormLayout()
-        recorded.addRow("written by", QLabel(header.generator))
-        recorded.addRow("created", QLabel(header.created))
-        recorded.addRow("OCR engine", QLabel(header.ocr_engine))
-        recorded.addRow("plan version", QLabel(str(header.version)))
+        recorded.addRow(self.tr("written by"), QLabel(header.generator))
+        recorded.addRow(self.tr("created"), QLabel(header.created))
+        recorded.addRow(self.tr("OCR engine"), QLabel(header.ocr_engine))
+        recorded.addRow(self.tr("plan version"), QLabel(str(header.version)))
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -105,7 +96,7 @@ class HeaderDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addSpacing(8)
-        layout.addWidget(QLabel("recorded when this plan was written"))
+        layout.addWidget(QLabel(self.tr("recorded when this plan was written")))
         layout.addLayout(recorded)
         layout.addWidget(buttons)
         self.setMinimumWidth(420)
@@ -117,8 +108,24 @@ class HeaderDialog(QDialog):
         self._source_language.textChanged.connect(self._on_source_language_changed)
         self._target_language.textChanged.connect(self._on_target_language_changed)
 
+    def font_reach(self) -> str:
+        """How much of the plan the header font actually decides.
+
+        A method rather than the plain function it was: the count inflects
+        the noun beside it, and only ``tr`` inflects a noun for a count —
+        which needs a ``QObject`` to be called on. Measured; see
+        ``resources/translations/recompile.py``.
+        """
+        following = self._document.regions_using_header_font()
+        total = len(self._document.plan.regions)
+        if total and following == total:
+            return self.tr("used by all %n region(s)", None, total)
+        return self.tr("used by {0} of %n region(s); the rest override it", None, total).format(
+            following
+        )
+
     def _commit(self) -> None:
-        self._font_reach.setText(font_reach(self._document))
+        self._font_reach.setText(self.font_reach())
         self.edited.emit()
 
     def _on_font_changed(self, text: str) -> None:
@@ -180,7 +187,7 @@ class HeaderDialog(QDialog):
             self._condense.setValue(header.condense_min)
             self._source_language.setText(header.source_language)
             self._target_language.setText(header.target_language)
-        self._font_reach.setText(font_reach(self._document))
+        self._font_reach.setText(self.font_reach())
 
 
-__all__ = ["HeaderDialog", "font_reach"]
+__all__ = ["HeaderDialog"]

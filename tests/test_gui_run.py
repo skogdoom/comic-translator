@@ -4,15 +4,27 @@ The panel that shows this is a widget and is tested with the other widgets.
 What is worth testing here is the judgement underneath it: which of a run's
 outcomes are worth a second look, in what order, and what the line at the
 top of the panel says. Both passes end in the same panel, so both are here.
+
+Still no widget, but no longer no Qt: the words are translated like the rest
+of the window, and the English the assertions below are written in is the
+English of a catalogue — ``1 page`` rather than the source's ``1 page(s)``.
+That is what ``qapp`` is for here. Without it these pass or fail depending
+on whether some earlier test in the session happened to install one.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from comictrans.apply import ApplyReport
-from comictrans.extract import ExtractReport
-from comictrans.gui.run_report import (
+import pytest
+
+pytest.importorskip("PySide6")
+
+pytestmark = pytest.mark.usefixtures("qapp")
+
+from comictrans.apply import ApplyReport  # noqa: E402
+from comictrans.extract import ExtractReport  # noqa: E402
+from comictrans.gui.run_report import (  # noqa: E402
     BELOW_MINIMUM,
     CONDENSED,
     COULD_NOT_READ,
@@ -29,7 +41,7 @@ from comictrans.gui.run_report import (
     render_headline,
     render_rows,
 )
-from comictrans.render import RegionOutcome
+from comictrans.render import RegionOutcome  # noqa: E402
 
 OUT = Path("/tmp/rendered")
 
@@ -213,5 +225,5 @@ def test_a_cancelled_extract_says_the_plan_was_not_written() -> None:
     report = _extract_report(pages_read=1, cancelled=True)
 
     assert extract_headline(report, PLAN) == (
-        f"cancelled after 1 page(s) — {PLAN.name} was not written"
+        f"cancelled after 1 page — {PLAN.name} was not written"
     )

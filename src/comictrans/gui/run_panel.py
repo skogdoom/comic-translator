@@ -9,15 +9,15 @@ thing to dismiss — so its rows select what they name, and the window follows.
 One dock for both passes, because the two are never both current: an extract
 ends by opening the plan it wrote, at which point the last render's report
 describes a plan that is no longer open. What counts as worth a second look
-is decided in ``run_report``, which needs no Qt and is tested on its own.
-This module only draws it.
+is decided in ``run_report``, which owns no widgets and is tested on its
+own. This module only draws it.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -46,8 +46,8 @@ from .run_report import (
 
 _IMAGE, _REGION, _PROBLEM, _DETAIL = range(4)
 
-NOTHING_TO_CHECK = "Nothing needs a second look."
-IDLE = "Nothing has been run yet."
+NOTHING_TO_CHECK = QCoreApplication.translate("RunPanel", "Nothing needs a second look.")
+IDLE = QCoreApplication.translate("RunPanel", "Nothing has been run yet.")
 
 
 class RunPanel(QWidget):
@@ -75,7 +75,7 @@ class RunPanel(QWidget):
 
         self._progress = QProgressBar()
         self._progress.setTextVisible(True)
-        self._cancel = QPushButton("Cancel")
+        self._cancel = QPushButton(self.tr("Cancel"))
         self._cancel.clicked.connect(self._on_cancel)
         running = QHBoxLayout()
         running.setContentsMargins(0, 0, 0, 0)
@@ -87,7 +87,9 @@ class RunPanel(QWidget):
 
         self._rows = QTreeWidget()
         self._rows.setColumnCount(4)
-        self._rows.setHeaderLabels(["page", "region", "problem", "detail"])
+        self._rows.setHeaderLabels(
+            [self.tr("page"), self.tr("region"), self.tr("problem"), self.tr("detail")]
+        )
         self._rows.setRootIsDecorated(False)
         self._rows.setUniformRowHeights(True)
         self._rows.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -105,30 +107,50 @@ class RunPanel(QWidget):
 
     # -- while it runs ---------------------------------------------------
 
-    def start(self, what: str, total: int, where: Path) -> None:
-        """``what`` is the verb for this pass: "Rendering", "Reading"."""
+    def start_render(self, total: int, where: Path) -> None:
+        """A render is starting, writing its pages to ``where``."""
+        self._start(
+            self.tr("Rendering %n page(s) — {0}", None, total).format(where),
+            total,
+        )
+
+    def start_extract(self, total: int, where: Path) -> None:
+        """An extract is starting, writing its plan to ``where``."""
+        self._start(
+            self.tr("Reading %n page(s) — {0}", None, total).format(where),
+            total,
+        )
+
+    def _start(self, headline: str, total: int) -> None:
+        """One whole sentence, not a verb and a tail.
+
+        The two passes read the same in English but for one word, which is
+        exactly the shape that does not survive translation: a language that
+        inflects the noun for the verb, or puts the count last, cannot be
+        served by a sentence assembled here out of pieces chosen elsewhere.
+        """
         self._rows.clear()
-        self._headline.setText(f"{what} {total} page{'' if total == 1 else 's'} — {where}")
+        self._headline.setText(headline)
         self._counts.setText("")
         self._progress.setRange(0, total)
         self._progress.setValue(0)
-        self._progress.setFormat("starting…")
+        self._progress.setFormat(self.tr("starting…"))
         self._cancel.setEnabled(True)
-        self._cancel.setText("Cancel")
+        self._cancel.setText(self.tr("Cancel"))
         self._running.show()
 
     def advance(self, index: int, total: int, image: str) -> None:
         """One page is starting. ``index`` counts from zero."""
         self._progress.setRange(0, total)
         self._progress.setValue(index)
-        self._progress.setFormat(f"{image}  ({index + 1} of {total})")
+        self._progress.setFormat(self.tr("{0}  ({1} of {2})").format(image, index + 1, total))
 
     def _on_cancel(self) -> None:
         # Disabled rather than left live: cancelling takes effect after the
         # page in flight, and a button that still looks pressable invites
         # the assumption that the first press did not land.
         self._cancel.setEnabled(False)
-        self._cancel.setText("Cancelling…")
+        self._cancel.setText(self.tr("Cancelling…"))
         self.cancel_requested.emit()
 
     # -- once it is done -------------------------------------------------
@@ -145,7 +167,7 @@ class RunPanel(QWidget):
 
     def show_failure(self, message: str) -> None:
         self._running.hide()
-        self._headline.setText(f"Could not run: {message}")
+        self._headline.setText(self.tr("Could not run: {0}").format(message))
         self._counts.setText("")
         self._rows.clear()
 

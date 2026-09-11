@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -60,14 +60,17 @@ from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
 ENGINE_CHOICES: tuple[tuple[str, str], ...] = (
-    ("automatic (Apple Vision, then Tesseract)", "auto"),
+    (
+        QCoreApplication.translate("ExtractDialog", "automatic (Apple Vision, then Tesseract)"),
+        "auto",
+    ),
     ("Apple Vision", "vision"),
     ("Tesseract", "tesseract"),
 )
 """The same three ``--ocr`` takes. Naming one makes its absence an error
 rather than a quiet downgrade, which is why ``auto`` is spelled out."""
 
-EXTRACT = "Extract"
+EXTRACT = QCoreApplication.translate("ExtractDialog", "Extract")
 
 
 class ExtractDialog(QDialog):
@@ -81,7 +84,7 @@ class ExtractDialog(QDialog):
         preferences: Preferences = DEFAULTS,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Extract Pages")
+        self.setWindowTitle(self.tr("Extract Pages"))
         self._preferences = preferences
         self._start_in = start_in or Path.cwd()
         self._plan_edited = False
@@ -114,13 +117,13 @@ class ExtractDialog(QDialog):
         self._quieten(self._count)
 
         self._source = QLineEdit()
-        self._folder_choice = QRadioButton("a folder of pages")
-        self._image_choice = QRadioButton("a single image")
+        self._folder_choice = QRadioButton(self.tr("a folder of pages"))
+        self._image_choice = QRadioButton(self.tr("a single image"))
         self._folder_choice.setChecked(True)  # the usual case, by a long way
         self._source_kind = QButtonGroup(self)
         self._source_kind.addButton(self._folder_choice)
         self._source_kind.addButton(self._image_choice)
-        choose_source = QPushButton("Open…")
+        choose_source = QPushButton(self.tr("Open…"))
         choose_source.setAutoDefault(False)
         choose_source.clicked.connect(self._on_choose_source)
 
@@ -142,7 +145,7 @@ class ExtractDialog(QDialog):
         kind_widget.setLayout(kind_row)
 
         self._plan = QLineEdit()
-        plan_button = QPushButton("Choose…")
+        plan_button = QPushButton(self.tr("Choose…"))
         plan_button.setAutoDefault(False)
         plan_button.clicked.connect(self._on_choose_plan)
         plan_row = QHBoxLayout()
@@ -162,11 +165,13 @@ class ExtractDialog(QDialog):
         self._source_language = QLineEdit(preferences.source_language)
         self._target_language = QLineEdit(preferences.target_language)
         self._languages = QLineEdit(preferences.ocr_languages)
-        self._languages.setPlaceholderText("same as the source language")
+        self._languages.setPlaceholderText(self.tr("same as the source language"))
         self._languages.setToolTip(
-            "Languages to hand the recogniser, comma-separated. Left empty "
-            "this is the source language; give a region-qualified tag here "
-            "if the recogniser needs one, such as pt-BR."
+            self.tr(
+                "Languages to hand the recogniser, comma-separated. Left empty "
+                "this is the source language; give a region-qualified tag here "
+                "if the recogniser needs one, such as pt-BR."
+            )
         )
 
         self._engine = QComboBox()
@@ -174,7 +179,7 @@ class ExtractDialog(QDialog):
             self._engine.addItem(label, value)
         self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
 
-        self._force = QCheckBox("overwrite it, discarding everything in it")
+        self._force = QCheckBox(self.tr("overwrite it, discarding everything in it"))
         self._force.hide()  # shown only when there is something to overwrite
         self._force.toggled.connect(self._validate)
 
@@ -185,14 +190,14 @@ class ExtractDialog(QDialog):
         self._problem.setPalette(palette)
 
         form = QFormLayout()
-        form.addRow("read pages from", source_widget)
+        form.addRow(self.tr("read pages from"), source_widget)
         form.addRow("", kind_widget)
-        form.addRow("write the plan to", plan_widget)
+        form.addRow(self.tr("write the plan to"), plan_widget)
         form.addRow("", self._force)
-        form.addRow("pages are lettered in", self._source_language)
-        form.addRow("translating into", self._target_language)
-        form.addRow("OCR languages", self._languages)
-        form.addRow("recogniser", self._engine)
+        form.addRow(self.tr("pages are lettered in"), self._source_language)
+        form.addRow(self.tr("translating into"), self._target_language)
+        form.addRow(self.tr("OCR languages"), self._languages)
+        form.addRow(self.tr("recogniser"), self._engine)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -294,7 +299,7 @@ class ExtractDialog(QDialog):
         run will read cannot disagree.
         """
         if not self._source.text().strip():
-            return "Choose a folder of pages, or one image."
+            return self.tr("Choose a folder of pages, or one image.")
         source = self.source()
         try:
             # Raises on a path that does not exist, one that is neither file
@@ -305,21 +310,21 @@ class ExtractDialog(QDialog):
         except ComictransError as exc:
             return f"{exc}"
         except OSError as exc:
-            return f"{source} cannot be read: {exc}"
+            return self.tr("{0} cannot be read: {1}").format(source, exc)
 
         plan = self._plan.text().strip()
         if not plan:
-            return "Choose where to write the plan file."
+            return self.tr("Choose where to write the plan file.")
         target = self.plan_path()
         if target.is_dir():
-            return f"{target} is a directory, not a plan file."
+            return self.tr("{0} is a directory, not a plan file.").format(target)
         if target.exists() and not self._force.isChecked():
-            return f"{target.name} already exists."
+            return self.tr("{0} already exists.").format(target.name)
         return ""
 
     def _validate(self) -> None:
         pages = self.pages()
-        self._count.setText(f"{len(pages)} page{'' if len(pages) == 1 else 's'}" if pages else "")
+        self._count.setText(self.tr("%n page(s)", None, len(pages)) if pages else "")
         plan = self._plan.text().strip()
         # The overwrite box appears only when there is a file under the
         # cursor to overwrite, so it cannot be ticked in advance and then

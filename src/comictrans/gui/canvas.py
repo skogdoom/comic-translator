@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
@@ -174,26 +174,37 @@ class CanvasMode(StrEnum):
 
 
 MODE_HINTS: dict[CanvasMode, str] = {
-    CanvasMode.SELECT: (
+    CanvasMode.SELECT: QCoreApplication.translate(
+        "Canvas",
         "click a region to select it · {move}-drag or the arrow keys move it · "
-        "drag to pan · {move} and the wheel zooms"
+        "drag to pan · {move} and the wheel zooms",
     ),
-    CanvasMode.RESHAPE: (
+    CanvasMode.RESHAPE: QCoreApplication.translate(
+        "Canvas",
         "drag a corner to reshape · drag inside or use the arrow keys to move · "
-        "double-click an edge to add a corner or a corner to remove it · Esc cancels"
+        "double-click an edge to add a corner or a corner to remove it · Esc cancels",
     ),
-    CanvasMode.DRAW: (
+    CanvasMode.DRAW: QCoreApplication.translate(
+        "Canvas",
         "click to place each corner · click the first again, double-click or Enter to "
-        "close it · Backspace takes one back · Esc cancels"
+        "close it · Backspace takes one back · Esc cancels",
     ),
-    CanvasMode.MERGE: "click the region to merge the selected one with · Esc cancels",
-    CanvasMode.PICK: "click a colour on the page · Esc cancels",
+    CanvasMode.MERGE: QCoreApplication.translate(
+        "Canvas", "click the region to merge the selected one with · Esc cancels"
+    ),
+    CanvasMode.PICK: QCoreApplication.translate(
+        "Canvas", "click a colour on the page · Esc cancels"
+    ),
 }
 """What each mode does to a click, in one line, for the window to show.
 
 ``{move}`` is filled in with what this platform calls the move modifier, by
 :func:`mode_hint`, which is what the window asks for rather than reaching in
 here directly.
+
+``QCoreApplication.translate`` rather than ``tr``: a module-level table has
+no ``self`` to ask, and the call is written out in full because ``lupdate``
+reads the source rather than running it — see ``translations``.
 
 Beside the modes rather than in the window, because the gestures are this
 widget's own behaviour: a mode that gains a gesture should gain its line in

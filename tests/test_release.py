@@ -8,7 +8,7 @@ moment either changed, and the whole value of that file is that it is the
 record.
 
 The prose is not tested and should not be. What is tested is that the two
-lists name the same four things.
+lists name the same things.
 """
 
 from __future__ import annotations
@@ -42,10 +42,20 @@ def _version_under_development() -> str:
 
 
 def _limitations() -> set[str]:
+    """Every Known limitations bullet, from every release that lists any.
+
+    One list per release rather than one list: a limitation found while
+    working towards 1.1.0 was not a limitation of 1.0.0, which had none of
+    the code it is about. What has to hold is that the bullets and
+    ``known-bugs.md`` name the same things between them.
+    """
     text = CHANGELOG.read_text(encoding="utf-8")
-    start = text.index("### Known limitations")
-    end = text.index("### Not in this release", start)
-    return set(LIMITATION.findall(text[start:end]))
+    found: set[str] = set()
+    for heading in re.finditer(r"^### Known limitations$", text, re.MULTILINE):
+        rest = text[heading.end() :]
+        next_heading = re.search(r"^#{2,3} ", rest, re.MULTILINE)
+        found |= set(LIMITATION.findall(rest[: next_heading.start()] if next_heading else rest))
+    return found
 
 
 def test_the_release_notes_exist_and_have_somewhere_to_put_this_version() -> None:

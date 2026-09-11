@@ -18,6 +18,7 @@ to build.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -158,8 +159,13 @@ class _Recorder:
         return _Recorder(f"{self._name}.{attribute}", self._seen)
 
 
-def _run_spec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """Execute the spec with the bundler stubbed, and return its arguments."""
+def _run_spec(monkeypatch: pytest.MonkeyPatch, lproj: Path | None = None) -> dict[str, Any]:
+    """Execute the spec with the bundler stubbed, and return its arguments.
+
+    Both paths the spec reads from the environment are set here: a fake one
+    for the icon, and a directory with nothing in it for the localizations,
+    which the one test that cares about them overrides.
+    """
     hooks = types.ModuleType("PyInstaller.utils.hooks")
 
     def collect_data_files(package: str) -> list[tuple[str, str]]:
@@ -180,6 +186,7 @@ def _run_spec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setitem(sys.modules, "PyInstaller.utils", utils)
     monkeypatch.setitem(sys.modules, "PyInstaller.utils.hooks", hooks)
     monkeypatch.setenv("COMICTRANS_ICNS", "/somewhere/Comic Translator.icns")
+    monkeypatch.setenv("COMICTRANS_LPROJ", str(lproj or "/somewhere/lproj"))
 
     seen: dict[str, Any] = {}
     namespace: dict[str, Any] = {
@@ -204,6 +211,214 @@ def test_the_bundle_is_named_so_that_the_application_menu_is(
     plist = _run_spec(monkeypatch)["BUNDLE"]["info_plist"]
     assert plist["CFBundleName"] == about.NAME
     assert plist["CFBundleDisplayName"] == about.NAME
+
+
+def test_the_bundle_declares_every_language_it_is_translated_into(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without this key, macOS says the application has only one language.
+
+    System Settings > General > Language & Region decides what to offer for
+    an application from its bundle, not from what is inside it: the catalogues
+    can all be there and the picker still reads "doesn't support additional
+    languages" — which is what it did. ``.lproj`` directories are the usual
+    way to say it and are for strings macOS itself loads; these are Qt
+    catalogues loaded by Qt, which is the case ``CFBundleLocalizations`` is
+    for.
+
+    Built from what ships rather than written out, so adding a catalogue and
+    forgetting the spec cannot happen.
+    """
+    from comictrans.gui import translations
+
+    plist = _run_spec(monkeypatch)["BUNDLE"]["info_plist"]
+
+    assert plist["CFBundleDevelopmentRegion"] == translations.SOURCE_LANGUAGE
+    assert set(plist["CFBundleLocalizations"]) == {
+        translations.SOURCE_LANGUAGE,
+        *translations.available(),
+    }
+
+
+def test_a_localization_directory_is_written_for_every_language(tmp_path: Path) -> None:
+    """What the Info.plist key alone did not buy.
+
+    ``CFBundleLocalizations`` is Apple's documented key for an application
+    that loads its own strings, and it is set — and the Language & Region
+    panel went on saying the application supports no additional languages
+    with it there. So the directories are written too. Both are declarations
+    of the same fact and neither is a workaround for the other; this one is
+    what every application offering the choice actually ships.
+    """
+    codes = build_app.languages()
+
+    written = build_app.write_localizations(tmp_path, codes)
+
+    assert [path.parent.name for path in written] == [f"{code}.lproj" for code in codes]
+    for path in written:
+        assert path.name == "InfoPlist.strings"
+        # Not an empty directory: it carries the one localized resource this
+        # application has, and PyInstaller collects files rather than folders.
+        assert "Comic Translator" in path.read_text(encoding="utf-16")
+        assert path.read_bytes()[:2] == b"\xff\xfe", "a .strings file is UTF-16, with the mark"
+
+
+def test_the_localizations_are_collected_rather_than_added_afterwards(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Into the bundle before it is signed, not into it after.
+
+    PyInstaller signs the bundle and then verifies its own signature, so a
+    directory dropped into ``Contents/Resources`` afterwards breaks the seal
+    it just made — a worse problem than the one being fixed, and a silent one
+    until something checks.
+
+    A destination of ``sv.lproj`` is what puts the directory at
+    ``Contents/Resources/sv.lproj``, which is where macOS looks.
+    """
+    build_app.write_localizations(tmp_path, ("en", "sv"))
+
+    datas = _run_spec(monkeypatch, tmp_path)["Analysis"]["datas"]
+
+    carried = {destination: source for source, destination in datas}
+    assert set(carried) >= {"en.lproj", "sv.lproj"}
+    for destination, source in carried.items():
+        if destination.endswith(".lproj"):
+            assert Path(source).name == "InfoPlist.strings"
+
+
+def test_the_built_bundle_is_read_back_for_both_declarations(tmp_path: Path) -> None:
+    """Neither one is visible from inside the application when it is missing."""
+    bundle = tmp_path / "Comic Translator.app"
+    resources = bundle / "Contents" / "Resources"
+
+    assert build_app.bundled_localizations(bundle) == (), "not built at all"
+
+    resources.mkdir(parents=True)
+    assert build_app.bundled_localizations(bundle) == (), "built without them"
+
+    for code in ("sv", "en"):
+        (resources / f"{code}.lproj").mkdir()
+    assert build_app.bundled_localizations(bundle) == ("en", "sv")
+
+
+def test_the_inspector_reads_a_bundle_four_ways(tmp_path: Path) -> None:
+    """The tool that turns "it still says no" into which half is wrong.
+
+    Its own facts are checkable anywhere; the one that settles the question —
+    what ``NSBundle`` answers — needs a Mac, and it says so rather than
+    concluding anything without it.
+    """
+    import plistlib
+
+    import inspect_bundle
+
+    bundle = tmp_path / "Comic Translator.app"
+    resources = bundle / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+
+    assert "unreadable" in str(inspect_bundle.plist_facts(bundle)["Info.plist"])
+    assert inspect_bundle.lproj_facts(bundle) == {"Contents/Resources/*.lproj": "— none —"}
+
+    (bundle / "Contents" / "Info.plist").write_bytes(
+        plistlib.dumps({"CFBundleName": "Comic Translator", "CFBundleLocalizations": ["en", "sv"]})
+    )
+    facts = inspect_bundle.plist_facts(bundle)
+    assert facts["CFBundleLocalizations"] == ["en", "sv"]
+    assert facts["CFBundleIdentifier"] == "— not set —", "a key that is missing says so"
+
+    build_app.write_localizations(resources, ("en", "sv"))
+    (resources / "empty.lproj").mkdir()
+    assert inspect_bundle.lproj_facts(bundle) == {
+        "empty.lproj": "— empty —",
+        "en.lproj": ["InfoPlist.strings"],
+        "sv.lproj": ["InfoPlist.strings"],
+    }
+
+
+def test_the_inspector_draws_no_conclusion_without_the_one_that_matters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two right-looking answers have already turned out not to settle this."""
+    import inspect_bundle
+
+    bundle = tmp_path / "Comic Translator.app"
+    (bundle / "Contents" / "Resources").mkdir(parents=True)
+    (bundle / "Contents" / "Info.plist").write_bytes(b"\x00 not a plist")
+
+    assert inspect_bundle.report(bundle) == 1, "an unreadable Info.plist is the answer"
+
+    import plistlib
+
+    (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleName": "x"}))
+    monkeypatch.setattr(inspect_bundle, "cocoa_localizations", lambda _bundle: None)
+    assert inspect_bundle.report(bundle) == 2
+    assert "cannot be asked" in capsys.readouterr().out
+
+    monkeypatch.setattr(inspect_bundle, "cocoa_localizations", lambda _bundle: ("en",))
+    assert inspect_bundle.report(bundle) == 1
+
+    monkeypatch.setattr(inspect_bundle, "cocoa_localizations", lambda _bundle: ("en", "sv"))
+    assert inspect_bundle.report(bundle) == 0
+
+
+def test_launch_services_is_asked_to_look_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """macOS answers that panel from its own database, not from the bundle.
+
+    So a bundle rebuilt in place can keep answering with what the last build
+    said. Best effort — ``lsregister`` lives at a fixed path inside a
+    framework and has never been on ``PATH``, so a macOS that moves it costs
+    a refresh rather than a build.
+    """
+    bundle = tmp_path / "Comic Translator.app"
+    monkeypatch.setattr(build_app, "LSREGISTER", tmp_path / "not-here")
+    assert build_app.register(bundle) is False, "nothing to run, and not a failure"
+
+    tool = tmp_path / "lsregister"
+    tool.touch()
+    monkeypatch.setattr(build_app, "LSREGISTER", tool)
+    ran: list[list[str]] = []
+
+    def record(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        ran.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(build_app.subprocess, "run", record)
+
+    assert build_app.register(bundle) is True
+    assert ran == [[str(tool), "-f", str(bundle)]]
+
+
+def test_the_languages_written_are_the_catalogues_that_ship() -> None:
+    from comictrans.gui import translations
+
+    assert set(build_app.languages()) == {
+        translations.SOURCE_LANGUAGE,
+        *translations.available(),
+    }
+
+
+def test_a_bundle_that_declares_no_languages_is_noticed(tmp_path: Path) -> None:
+    """The build reads its own Info.plist back, because nothing else would.
+
+    A bundle missing the key builds, runs and translates itself perfectly;
+    only System Settings is any the wiser, and only for somebody looking.
+    """
+    import plistlib
+
+    bundle = tmp_path / "Comic Translator.app"
+    plist = bundle / "Contents" / "Info.plist"
+    plist.parent.mkdir(parents=True)
+
+    assert build_app.declared_languages(bundle) == (), "no Info.plist at all"
+
+    plist.write_bytes(plistlib.dumps({"CFBundleName": "Comic Translator"}))
+    assert build_app.declared_languages(bundle) == (), "an Info.plist without the key"
+
+    plist.write_bytes(plistlib.dumps({"CFBundleLocalizations": ["en", "sv"]}))
+    assert build_app.declared_languages(bundle) == ("en", "sv")
 
 
 def test_the_bundle_is_not_built_as_a_background_application(

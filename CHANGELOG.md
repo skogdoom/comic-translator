@@ -21,6 +21,23 @@ for themselves. See **Build the application** in `README.md`.
   is kept and reused while nothing it was rendered from has changed — three
   toggles of an eleven-megapixel page went from three renders and 34 seconds
   to one and 13.
+- **The window speaks Swedish.** Every word of the interface is translated
+  from a catalogue now. Pick a language in Preferences — it applies the next
+  time the application starts, and it says so when you choose one — or leave
+  it to the machine, which is what a Mac set to Swedish throughout gets.
+  `COMICTRANS_LANGUAGE` overrules both. The guide the Help menu opens follows the same language. The command
+  line, the plan file's content, and what the pipeline says when something
+  goes wrong are deliberately not translated. Swedish is the one translation
+  that ships; the English one holds nothing but plural forms, so a window
+  says "1 page" rather than "1 page(s)".
+
+### Known limitations
+
+- **macOS will not give the application its own language** — System Settings
+  > General > Language & Region says the application supports no additional
+  languages, for a bundle that declares two every way macOS documents.
+  Choose the language in the window's own Preferences instead; nothing about
+  the translation itself is affected.
 
 ## 1.0.0 — 2026-09-11
 

@@ -16,13 +16,13 @@ render rather than after.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
 from .. import fonts
 
-PLAN_DEFAULT = "(plan default)"
+PLAN_DEFAULT = QCoreApplication.translate("FontBox", "(plan default)")
 """The entry meaning "no override", which the plan file records as absent.
 
 The wording is the region inspector's, where the fallback really is the
@@ -203,8 +203,10 @@ class FontBox(QComboBox):
         else:
             palette.setColor(_TEXT_ROLE, _unresolvable_color(palette))
             self.setToolTip(
-                f"{self.value()!r} is not installed here, or has no bold face. "
-                "apply will refuse it rather than substitute another font."
+                self.tr(
+                    "{0} is not installed here, or has no bold face. "
+                    "apply will refuse it rather than substitute another font."
+                ).format(repr(self.value()))
             )
         line_edit.setPalette(palette)
 

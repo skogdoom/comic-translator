@@ -27,9 +27,11 @@ the tests and the bundle are the same one. A crash on quit was seen once on a
 3.14 build and never on 3.12, which is a reason to notice rather than a
 finding — but shipping what is tested needs no finding.
 
-This script does the two things the spec cannot: it renders the icon, because
-``.icns`` holds one image per size rather than one drawing, and it refuses
-early and in plain words on a machine that cannot produce a bundle at all.
+This script does the three things the spec cannot: it renders the icon,
+because ``.icns`` holds one image per size rather than one drawing; it writes
+the ``.lproj`` directories that decide whether macOS will offer this
+application a language of its own; and it refuses early and in plain words on
+a machine that cannot produce a bundle at all.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ SPEC = Path(__file__).resolve().parent / "comictrans.spec"
 WORK = ROOT / "build" / "pyinstaller"
 DIST = ROOT / "dist"
 ICNS = ROOT / "build" / "Comic Translator.icns"
+LPROJ = ROOT / "build" / "lproj"
 
 APPICON = ROOT / "src" / "comictrans" / "gui" / "resources" / "appicon"
 MASTER = APPICON / "dog-book-master-1024.svg"
@@ -83,6 +86,27 @@ next to it.
 master's fur lines and page edges are the mud ``recreate-icons.py`` exists to
 avoid. From 128 points up — the Dock and Finder's icon view — that detail is
 the drawing, so the master goes there.
+"""
+
+
+APPLICATION_NAME = "Comic Translator"
+"""What the bundle is called, which is what its localized name is too."""
+
+LSREGISTER = Path(
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks"
+    "/LaunchServices.framework/Support/lsregister"
+)
+"""Launch Services' own registration tool. Not on ``PATH``, by Apple's
+choice: there is no ``lsregister`` to find, only this path."""
+
+LOCALIZED_NAME_KEYS = ("CFBundleName", "CFBundleDisplayName")
+"""What each ``InfoPlist.strings`` carries: the application's name.
+
+The same name in every language — it is a made-up compound, not a phrase to
+translate — so these files exist for their directories rather than their
+contents. That is not a trick: a localization is where an application's
+localized resources go, and its name is a localized resource whether or not
+it happens to differ.
 """
 
 
@@ -214,6 +238,7 @@ def build_bundle() -> Path:
     import PyInstaller.__main__
 
     os.environ["COMICTRANS_ICNS"] = str(ICNS)
+    os.environ["COMICTRANS_LPROJ"] = str(LPROJ)
     PyInstaller.__main__.run(
         [
             str(SPEC),
@@ -227,6 +252,95 @@ def build_bundle() -> Path:
     return DIST / "Comic Translator.app"
 
 
+def languages() -> tuple[str, ...]:
+    """Every language the window has a catalogue for, English included."""
+    from comictrans.gui.translations import SOURCE_LANGUAGE, available
+
+    return tuple(sorted({SOURCE_LANGUAGE, *available()}))
+
+
+def write_localizations(directory: Path, codes: tuple[str, ...]) -> tuple[Path, ...]:
+    """Write one ``<language>.lproj`` for the spec to collect, and return them.
+
+    This is what makes System Settings > General > Language & Region offer
+    the application a language of its own. ``CFBundleLocalizations`` in the
+    Info.plist is Apple's documented key for an application that loads its
+    own strings, which is exactly this one — and it is set, and on its own it
+    was not enough: that panel went on reporting "doesn't support additional
+    languages" for a bundle that declared it. Observed on macOS rather than
+    reasoned about, and not reproducible from here, which is why both are
+    there now rather than one replacing the other. A directory per language
+    is what every application that offers the choice actually ships.
+
+    Written here and collected by the spec rather than added to the bundle
+    afterwards, because PyInstaller signs the bundle and then verifies it:
+    anything dropped into ``Contents/Resources`` after that breaks the seal
+    it just made, and a bundle whose resources no longer match its signature
+    is a different and worse problem than the one being fixed.
+
+    Each holds an ``InfoPlist.strings`` naming the application, so the
+    directory carries a localized resource rather than being an empty folder
+    — which PyInstaller would have nothing to collect from anyway.
+    """
+    written = []
+    for code in codes:
+        folder = directory / f"{code}.lproj"
+        folder.mkdir(parents=True, exist_ok=True)
+        strings = folder / "InfoPlist.strings"
+        lines = [f'"{key}" = "{APPLICATION_NAME}";' for key in LOCALIZED_NAME_KEYS]
+        # UTF-16, which is what Apple documents a .strings file as and what
+        # Xcode writes. UTF-8 is read correctly by everything current, and
+        # this is one variable fewer in a question that has already had two
+        # answers that looked right and were not.
+        strings.write_text("\n".join(lines) + "\n", encoding="utf-16")
+        written.append(strings)
+    return tuple(written)
+
+
+def bundled_localizations(bundle: Path) -> tuple[str, ...]:
+    """Which ``.lproj`` directories the built bundle actually carries."""
+    resources = bundle / "Contents" / "Resources"
+    if not resources.is_dir():
+        return ()
+    return tuple(sorted(path.stem for path in resources.glob("*.lproj")))
+
+
+def register(bundle: Path) -> bool:
+    """Tell Launch Services the bundle changed, and say whether it could.
+
+    macOS keeps what it knows about an application in a database, and the
+    Language & Region panel reads that rather than the bundle in front of it.
+    A bundle rebuilt in place can therefore keep answering with what the
+    previous build said — which is the other half of why that panel might
+    still be wrong, and the half no amount of getting the bundle right can
+    fix.
+
+    Best effort: ``lsregister`` is not on ``PATH`` and never has been, so a
+    macOS that has moved it costs a refresh rather than a build.
+    """
+    if not LSREGISTER.is_file():
+        return False
+    finished = subprocess.run([str(LSREGISTER), "-f", str(bundle)], capture_output=True, text=True)
+    return finished.returncode == 0
+
+
+def declared_languages(bundle: Path) -> tuple[str, ...]:
+    """What the built Info.plist actually says, read back off the disk.
+
+    The one key here whose absence is invisible: a bundle missing it builds,
+    runs, and translates itself perfectly, and only the Language & Region
+    panel is any the wiser.
+    """
+    import plistlib
+
+    plist = bundle / "Contents" / "Info.plist"
+    try:
+        with plist.open("rb") as handle:
+            return tuple(plistlib.load(handle).get("CFBundleLocalizations", ()))
+    except (OSError, plistlib.InvalidFileException):
+        return ()
+
+
 def main() -> int:
     check_platform()
     check_interpreter()
@@ -234,9 +348,33 @@ def main() -> int:
     print("rendering the icon…")
     build_icns(build_iconset(ROOT / "build"), ICNS)
     print(f"icon: {ICNS}")
+    codes = languages()
+    write_localizations(LPROJ, codes)
     bundle = build_bundle()
+
+    # Both of these are invisible when they go wrong: a bundle missing them
+    # builds, runs, and translates itself perfectly, and only the Language &
+    # Region panel is any the wiser.
+    for what, found in (
+        ("declares", declared_languages(bundle)),
+        ("carries", bundled_localizations(bundle)),
+    ):
+        if set(found) != set(codes):
+            print(
+                f"warning: the bundle {what} {found or 'no languages'} where the "
+                f"catalogues are {codes} — System Settings reads the bundle",
+                file=sys.stderr,
+            )
+
     print()
     print(f"built: {bundle}")
+    print(f"languages: {', '.join(codes)}")
+    if not register(bundle):
+        print(
+            "Launch Services was not told about it. If System Settings > General > "
+            f"Language & Region does not offer this application a language, run:\n"
+            f"  {LSREGISTER} -f '{bundle}'"
+        )
     print()
     print(
         "It is unsigned, so it will open on this machine and be refused by "

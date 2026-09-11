@@ -60,7 +60,7 @@ def _read_only_text(lines: tuple[str, ...]) -> QPlainTextEdit:
 class AboutDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"About {about.NAME}")
+        self.setWindowTitle(self.tr("About {0}").format(about.NAME))
 
         heading = QLabel(f"{about.NAME} {about.package_version()}")
         font = heading.font()
@@ -81,9 +81,12 @@ class AboutDialog(QDialog):
             stamp.setPixmap(picture)
 
         facts = QFormLayout()
-        facts.addRow("author", QLabel(about.author()))
-        facts.addRow("licence", QLabel(f"{about.licence()} — full text in LICENSE"))
-        facts.addRow("python", QLabel(platform.python_version()))
+        facts.addRow(self.tr("author"), QLabel(about.author()))
+        facts.addRow(
+            self.tr("licence"),
+            QLabel(self.tr("{0} — full text in LICENSE").format(about.licence())),
+        )
+        facts.addRow(self.tr("python"), QLabel(platform.python_version()))
         # The binding and the Qt library it wraps are versioned separately and
         # do drift apart, so neither one stands in for the other.
         facts.addRow("Qt", QLabel(f"{qVersion()} (PySide6 {PySide6.__version__})"))
@@ -100,7 +103,7 @@ class AboutDialog(QDialog):
         layout.addWidget(heading)
         layout.addWidget(blurb)
         layout.addLayout(facts)
-        layout.addWidget(QLabel("libraries"))
+        layout.addWidget(QLabel(self.tr("libraries")))
         layout.addWidget(self._libraries)
         layout.addWidget(buttons)
         self.setMinimumWidth(460)

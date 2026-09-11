@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -44,12 +44,49 @@ from .color_box import ColorBox
 from .document import PlanDocument, RegionFlags
 from .font_box import FontBox
 
+# The words in this table and in _FLAG_LABELS go through
+# ``QCoreApplication.translate`` rather than ``tr``: both are module-level and
+# have no ``self`` to ask. They are evaluated when this module is imported,
+# which is after ``gui.app`` installs the translator — see ``translations``.
+# Every call spells the whole thing out rather than going through a helper or
+# a short alias, because ``lupdate`` reads the source rather than running it:
+# behind either, it extracts nothing at all. Measured, not assumed.
 ERASE_CHOICES: tuple[tuple[str, Erase | None, str], ...] = (
-    ("(plan default)", None, "whatever the run is set to erase: --erase, or the render dialog"),
-    ("the lettering", Erase.FLAT, "repaint the original lettering in the fill colour"),
-    ("the whole region", Erase.POLYGON, "flood the whole outline with the fill colour"),
-    ("reconstruct", Erase.INPAINT, "rebuild the lettering's pixels from the ones around them"),
-    ("nothing", Erase.NONE, "paint nothing; letter straight onto the page as it is"),
+    (
+        QCoreApplication.translate("RegionInspector", "(plan default)"),
+        None,
+        QCoreApplication.translate(
+            "RegionInspector", "whatever the run is set to erase: --erase, or the render dialog"
+        ),
+    ),
+    (
+        QCoreApplication.translate("RegionInspector", "the lettering"),
+        Erase.FLAT,
+        QCoreApplication.translate(
+            "RegionInspector", "repaint the original lettering in the fill colour"
+        ),
+    ),
+    (
+        QCoreApplication.translate("RegionInspector", "the whole region"),
+        Erase.POLYGON,
+        QCoreApplication.translate(
+            "RegionInspector", "flood the whole outline with the fill colour"
+        ),
+    ),
+    (
+        QCoreApplication.translate("RegionInspector", "reconstruct"),
+        Erase.INPAINT,
+        QCoreApplication.translate(
+            "RegionInspector", "rebuild the lettering's pixels from the ones around them"
+        ),
+    ),
+    (
+        QCoreApplication.translate("RegionInspector", "nothing"),
+        Erase.NONE,
+        QCoreApplication.translate(
+            "RegionInspector", "paint nothing; letter straight onto the page as it is"
+        ),
+    ),
 )
 """What apply paints over inside this region, in words rather than strategy
 names. Short ones: this box sits in a dock whose width every field's size hint
@@ -93,12 +130,12 @@ def _widen_for_special_value(box: QSpinBox) -> None:
 
 
 _FLAG_LABELS = {
-    "approximate": "approximate geometry",
-    "low_confidence": "low confidence",
-    "held_back": "held back (no translation)",
-    "unedited": "same as source",
-    "overlapping": "overlaps another region",
-    "skipped": "skipped",
+    "approximate": QCoreApplication.translate("RegionInspector", "approximate geometry"),
+    "low_confidence": QCoreApplication.translate("RegionInspector", "low confidence"),
+    "held_back": QCoreApplication.translate("RegionInspector", "held back (no translation)"),
+    "unedited": QCoreApplication.translate("RegionInspector", "same as source"),
+    "overlapping": QCoreApplication.translate("RegionInspector", "overlaps another region"),
+    "skipped": QCoreApplication.translate("RegionInspector", "skipped"),
 }
 
 
@@ -112,7 +149,7 @@ def flag_labels(flags: RegionFlags | None) -> tuple[str, ...]:
     if flags is None:
         return ("—",)
     active = tuple(text for field, text in _FLAG_LABELS.items() if getattr(flags, field))
-    return active or ("nothing flagged",)
+    return active or (QCoreApplication.translate("RegionInspector", "nothing flagged"),)
 
 
 class FlagList(QListWidget):
@@ -190,19 +227,19 @@ class RegionInspector(QWidget):
         self._source_text = QPlainTextEdit()
         self._source_text.setMaximumHeight(100)
         self._source_text.setUndoRedoEnabled(False)
-        self._source_text.setPlaceholderText("what the lettering on the page says")
+        self._source_text.setPlaceholderText(self.tr("what the lettering on the page says"))
         self._translation = QPlainTextEdit()
         self._translation.setMaximumHeight(100)
         self._notes = QPlainTextEdit()
         self._notes.setMaximumHeight(_NOTES_HEIGHT)
-        self._notes.setPlaceholderText("never rendered; kept when re-extracting")
+        self._notes.setPlaceholderText(self.tr("never rendered; kept when re-extracting"))
         # These fields keep no undo history of their own; the document keeps
         # one for everything. Two stacks would disagree the moment a
         # document-level undo put text back that the widget had never seen
         # leave, and only one of the two is what Ctrl+Z reaches anyway.
         for prose in (self._translation, self._notes):
             prose.setUndoRedoEnabled(False)
-        self._skip = QCheckBox("skip: leave this region untouched")
+        self._skip = QCheckBox(self.tr("skip: leave this region untouched"))
         self._erase = QComboBox()
         for label, mode, hint in ERASE_CHOICES:
             self._erase.addItem(label, None if mode is None else str(mode))
@@ -212,21 +249,21 @@ class RegionInspector(QWidget):
         self._font = FontBox(allow_default=True)
         self._font_size = QSpinBox()
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
-        self._font_size.setSpecialValueText("auto")
+        self._font_size.setSpecialValueText(self.tr("auto"))
         _widen_for_special_value(self._font_size)
 
         form = QFormLayout()
-        form.addRow("region", self._id_label)
-        form.addRow("flags", self._flags)
-        form.addRow("source text", self._source_text)
-        form.addRow("translation", self._translation)
-        form.addRow("notes", self._notes)
+        form.addRow(self.tr("region"), self._id_label)
+        form.addRow(self.tr("flags"), self._flags)
+        form.addRow(self.tr("source text"), self._source_text)
+        form.addRow(self.tr("translation"), self._translation)
+        form.addRow(self.tr("notes"), self._notes)
         form.addRow("", self._skip)
-        form.addRow("erase", self._erase)
-        form.addRow("fill colour", self._fill_color)
-        form.addRow("text colour", self._text_color)
-        form.addRow("font override", self._font)
-        form.addRow("font size", self._font_size)
+        form.addRow(self.tr("erase"), self._erase)
+        form.addRow(self.tr("fill colour"), self._fill_color)
+        form.addRow(self.tr("text colour"), self._text_color)
+        form.addRow(self.tr("font override"), self._font)
+        form.addRow(self.tr("font size"), self._font_size)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -273,7 +310,7 @@ class RegionInspector(QWidget):
         painting = region is not None and region.erase is not Erase.NONE
         self._fill_color.setEnabled(painting)
         self._fill_color.setToolTip(
-            "" if painting else "unused: nothing is painted over in this region"
+            "" if painting else self.tr("unused: nothing is painted over in this region")
         )
 
     def focus_source_text(self) -> None:
