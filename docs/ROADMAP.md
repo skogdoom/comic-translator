@@ -22,9 +22,12 @@ at all.
 
 Sizes are relative effort, not estimates. When a milestone ships, delete
 its section and its row from the table, and say so in the Status section of
-`README.md`. Now that 1.0.0 is out, it also earns a line in `CHANGELOG.md` —
-under the next version's heading, not its own: the changelog is a record of
-releases, and milestones accumulate into one.
+`README.md`. Now that 1.0.0 is out, it also earns a line in `CHANGELOG.md`,
+under the heading of the version being worked towards — `1.1.0 — unreleased`
+while this tree is `1.1.0.dev0`. The changelog is a record of releases, and
+milestones accumulate into one; a test holds that heading to the version, so
+there is always somewhere to write the line at the time rather than however
+many merges later.
 
 **The numbers are names, not positions.** They were allocated in the order
 the milestones were thought of, and the order worth building them in has
