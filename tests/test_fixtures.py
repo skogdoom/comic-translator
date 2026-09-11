@@ -23,13 +23,13 @@ from comictrans.ocr import get_recognizer
 FIXTURES = Path(__file__).parent / "fixtures"
 
 _RECOGNIZED: dict[Path, tuple[object, list[object]]] = {}
+_DETECTED: dict[Path, tuple[object, ...]] = {}
 
 
 def _page_and_lines(path: Path) -> tuple[object, list[object]]:
     """Decode and OCR a fixture once, then reuse it.
 
     Three tests run over every fixture, and OCR is the expensive half of each.
-    Detection still runs fresh per test, which is what they are checking.
     """
     cached = _RECOGNIZED.get(path)
     if cached is None:
@@ -43,6 +43,25 @@ def _page_and_lines(path: Path) -> tuple[object, list[object]]:
     return cached
 
 
+def _regions(path: Path) -> tuple[object, ...]:
+    """Detect once per fixture and reuse, the way OCR already is.
+
+    Detection used to run four times per image — once for geometry, once
+    for colours, and twice for the determinism check — and three of those
+    four asked the same question of the same pixels. Now it runs twice: this
+    one, and the fresh one the determinism test compares against.
+
+    A tuple rather than the list ``find_regions`` returns, so that a test
+    reading the shared result cannot quietly reorder it for the next one.
+    """
+    cached = _DETECTED.get(path)
+    if cached is None:
+        page, lines = _page_and_lines(path)
+        cached = tuple(find_regions(page, lines, DetectConfig()))
+        _DETECTED[path] = cached
+    return cached
+
+
 def _fixture_images() -> list[Path]:
     if not FIXTURES.is_dir():
         return []
@@ -51,9 +70,11 @@ def _fixture_images() -> list[Path]:
 
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
 def test_real_page_produces_sane_geometry(path: Path) -> None:
-    page, lines = _page_and_lines(path)
+    # The page for its dimensions and the config for its ratios; the regions
+    # themselves come from the shared detection.
+    page, _lines = _page_and_lines(path)
     cfg = DetectConfig()
-    regions = find_regions(page, lines, cfg)
+    regions = _regions(path)
 
     assert regions, f"no regions found on {path.name}"
     for region in regions:
@@ -86,8 +107,7 @@ def test_real_page_produces_sane_geometry(path: Path) -> None:
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
 def test_colors_are_sampled_from_the_page(path: Path) -> None:
     """Fill and text colour must differ, whichever way round the page is."""
-    page, lines = _page_and_lines(path)
-    regions = find_regions(page, lines, DetectConfig())
+    regions = _regions(path)
 
     for region in regions:
         fill, text = region.fill_color, region.text_color
@@ -107,10 +127,18 @@ def _luminance(color: Color) -> float:
 
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
 def test_detection_is_deterministic(path: Path) -> None:
+    """The same pixels twice, separated by whatever else the session did.
+
+    The shared result was produced earlier in the run — by whichever test
+    asked for it first — and this compares a fresh detection against it.
+    That is a slightly longer lever than two calls back to back in one
+    function: anything that made the detector depend on accumulated state
+    would have had the rest of the session to do it in.
+    """
     page, lines = _page_and_lines(path)
-    first = find_regions(page, lines, DetectConfig())
-    second = find_regions(page, lines, DetectConfig())
-    assert [r.polygon for r in first] == [r.polygon for r in second]
+    shared = _regions(path)
+    fresh = find_regions(page, lines, DetectConfig())
+    assert [r.polygon for r in shared] == [r.polygon for r in fresh]
 
 
 def test_no_two_fixtures_are_byte_identical() -> None:
