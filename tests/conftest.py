@@ -306,4 +306,15 @@ def qapp(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
         QSettings.Scope.UserScope,
         str(tmp_path_factory.mktemp("qsettings")),
     )
+
+    # The window the suite asserts against is the English one, whatever
+    # language the machine running it is set to — forced rather than
+    # defaulted for that reason. English still loads a catalogue: it is where
+    # the plural forms live, so "1 page" rather than "1 page(s)" is a thing
+    # the tests can only see with the translator in.
+    from comictrans.gui import translations
+
+    os.environ[translations.LANGUAGE_ENV] = translations.SOURCE_LANGUAGE
+    translations.install(app)
+
     yield app

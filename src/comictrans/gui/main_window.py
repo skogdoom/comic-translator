@@ -18,7 +18,15 @@ from pathlib import Path
 from typing import ClassVar
 
 from PIL import Image
-from PySide6.QtCore import QByteArray, QEvent, QSettings, QSignalBlocker, Qt, QUrl
+from PySide6.QtCore import (
+    QByteArray,
+    QCoreApplication,
+    QEvent,
+    QSettings,
+    QSignalBlocker,
+    Qt,
+    QUrl,
+)
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -42,7 +50,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
-from . import about, alerts, help_dialog, icons, recent
+from . import about, alerts, help_dialog, icons, recent, translations
 from .about_dialog import AboutDialog
 from .busy_bar import BusyBar
 from .canvas import (
@@ -82,11 +90,15 @@ from .sampling import color_at, sample_region_colors
 
 log = logging.getLogger(__name__)
 
-PREVIEW_WORKING = "rendering preview…"
+# These four are module-level, which rules ``tr()`` out: there is no ``self``
+# to ask. ``QCoreApplication.translate`` takes the context by name instead,
+# and is written out in full at each one because ``lupdate`` reads the source
+# rather than running it — see ``translations``.
+PREVIEW_WORKING = QCoreApplication.translate("MainWindow", "rendering preview…")
 """Shown while the render blocks the window, and replaced by its result."""
 
-PREVIEW_TEXT = "&Render Preview"
-OVERLAY_TEXT = "Back to &Overlay"
+PREVIEW_TEXT = QCoreApplication.translate("MainWindow", "&Render Preview")
+OVERLAY_TEXT = QCoreApplication.translate("MainWindow", "Back to &Overlay")
 """The two halves of one action: what it does depends on what is on screen,
 and the label says which."""
 
@@ -117,8 +129,8 @@ def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
     )
 
 
-RECENT_MENU_TITLE = "Open &Recent"
-CLEAR_RECENT_TEXT = "Clear Menu"
+RECENT_MENU_TITLE = QCoreApplication.translate("MainWindow", "Open &Recent")
+CLEAR_RECENT_TEXT = QCoreApplication.translate("MainWindow", "Clear Menu")
 """Named so the menu and its test cannot drift apart, as with the toolbar."""
 
 
@@ -209,11 +221,11 @@ class MainWindow(QMainWindow):
         stack.addWidget(self._canvas, 1)
         stack.addWidget(self._hint)
         self.setCentralWidget(centre)
-        self._pages_dock = QDockWidget("Pages", self)
+        self._pages_dock = QDockWidget(self.tr("Pages"), self)
         self._pages_dock.setObjectName("pages_dock")
         self._pages_dock.setWidget(self._pages)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._pages_dock)
-        self._inspector_dock = QDockWidget("Region", self)
+        self._inspector_dock = QDockWidget(self.tr("Region"), self)
         self._inspector_dock.setObjectName("inspector_dock")
         self._inspector_dock.setWidget(self._inspector)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
@@ -225,7 +237,7 @@ class MainWindow(QMainWindow):
         # last render's report describes a plan that is no longer open.
         # Reopened from the Window menu, like the other two.
         self._run_panel = RunPanel()
-        self._run_dock = QDockWidget("Run", self)
+        self._run_dock = QDockWidget(self.tr("Run"), self)
         self._run_dock.setObjectName("run_dock")
         self._run_dock.setWidget(self._run_panel)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._run_dock)
@@ -268,8 +280,10 @@ class MainWindow(QMainWindow):
         self._update_title()
         self.resize(1200, 800)
         self.statusBar().showMessage(
-            "Open a plan file to review (File > Open Plan…), "
-            "or read one off a folder of pages (File > Extract Pages…)"
+            self.tr(
+                "Open a plan file to review (File > Open Plan…), "
+                "or read one off a folder of pages (File > Extract Pages…)"
+            )
         )
 
         # Captured before anything saved is restored, so Reset Layout has
@@ -281,9 +295,9 @@ class MainWindow(QMainWindow):
             self.open_plan(initial_plan)
 
     def _build_menus(self) -> None:
-        file_menu = self.menuBar().addMenu("&File")
+        file_menu = self.menuBar().addMenu(self.tr("&File"))
 
-        self._open_action = QAction("&Open Plan…", self)
+        self._open_action = QAction(self.tr("&Open Plan…"), self)
         self._open_action.setShortcut(QKeySequence.StandardKey.Open)
         self._open_action.triggered.connect(self.open_plan_dialog)
         file_menu.addAction(self._open_action)
@@ -297,18 +311,18 @@ class MainWindow(QMainWindow):
         # "Revert to Saved" rather than "Reload": the macOS name for
         # re-reading the file and throwing away what is unsaved, and what
         # this does. Reload is browser and editor vocabulary.
-        self._reload_action = QAction("Re&vert to Saved", self)
+        self._reload_action = QAction(self.tr("Re&vert to Saved"), self)
         self._reload_action.triggered.connect(self._on_reload)
         file_menu.addAction(self._reload_action)
 
         file_menu.addSeparator()
 
-        self._save_action = QAction("&Save", self)
+        self._save_action = QAction(self.tr("&Save"), self)
         self._save_action.setShortcut(QKeySequence.StandardKey.Save)
         self._save_action.triggered.connect(self._on_save)
         file_menu.addAction(self._save_action)
 
-        self._save_as_action = QAction("Save &As…", self)
+        self._save_as_action = QAction(self.tr("Save &As…"), self)
         self._save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
         self._save_as_action.triggered.connect(self._on_save_as)
         file_menu.addAction(self._save_as_action)
@@ -318,18 +332,18 @@ class MainWindow(QMainWindow):
         # In File rather than View: these two are the window's other two
         # verbs, and neither of them writes the plan you are reviewing.
         # Extract first, because it is where a chapter starts.
-        self._extract_action = QAction("&Extract Pages…", self)
+        self._extract_action = QAction(self.tr("&Extract Pages…"), self)
         self._extract_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
         self._extract_action.triggered.connect(self._on_extract)
         file_menu.addAction(self._extract_action)
 
-        self._render_action = QAction("&Render Pages…", self)
+        self._render_action = QAction(self.tr("&Render Pages…"), self)
         self._render_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
         self._render_action.triggered.connect(self._on_render)
         file_menu.addAction(self._render_action)
 
         file_menu.addSeparator()
-        quit_action = QAction("&Quit", self)
+        quit_action = QAction(self.tr("&Quit"), self)
         # Spelled out rather than left to Qt's text heuristic, which reads
         # the label for "quit" or "exit" and would stop recognising this
         # one the moment the label is translated. About and Preferences
@@ -344,13 +358,13 @@ class MainWindow(QMainWindow):
         # compete: every keystroke is already a document edit, so a second
         # per-widget stack would be an invisible one that disagrees with the
         # visible one about what the last change was.
-        edit_menu = self.menuBar().addMenu("&Edit")
-        self._undo_action = QAction("&Undo", self)
+        edit_menu = self.menuBar().addMenu(self.tr("&Edit"))
+        self._undo_action = QAction(self.tr("&Undo"), self)
         self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self._undo_action.triggered.connect(self._on_undo)
         edit_menu.addAction(self._undo_action)
 
-        self._redo_action = QAction("&Redo", self)
+        self._redo_action = QAction(self.tr("&Redo"), self)
         self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._redo_action.triggered.connect(self._on_redo)
         edit_menu.addAction(self._redo_action)
@@ -359,13 +373,13 @@ class MainWindow(QMainWindow):
         # Checkable rather than always-on: dragging inside a region is also
         # how the page is panned, so without a mode to be in, reaching for
         # the page would sometimes move a balloon instead.
-        self._edit_shape_action = QAction("Edit Region &Shape", self)
+        self._edit_shape_action = QAction(self.tr("Edit Region &Shape"), self)
         self._edit_shape_action.setCheckable(True)
         self._edit_shape_action.setShortcut(QKeySequence("Ctrl+E"))
         self._edit_shape_action.toggled.connect(self._on_edit_shape_toggled)
         edit_menu.addAction(self._edit_shape_action)
 
-        self._add_region_action = QAction("&Add Region", self)
+        self._add_region_action = QAction(self.tr("&Add Region"), self)
         self._add_region_action.setCheckable(True)
         self._add_region_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self._add_region_action.toggled.connect(self._on_add_region_toggled)
@@ -376,7 +390,7 @@ class MainWindow(QMainWindow):
         # tick beside it, exactly like the two above. And Cmd+M is
         # Minimise on macOS — a shortcut every window has — so this takes
         # Cmd+Shift+M and pairs with Add Region's Cmd+Shift+A.
-        self._merge_action = QAction("&Merge Region", self)
+        self._merge_action = QAction(self.tr("&Merge Region"), self)
         self._merge_action.setCheckable(True)
         self._merge_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self._merge_action.toggled.connect(self._on_merge_toggled)
@@ -385,20 +399,20 @@ class MainWindow(QMainWindow):
         # No confirmation: undo is the safety net every other edit here gets,
         # and a dialog on every delete would be one to click through rather
         # than read. The status bar says what went and how to get it back.
-        self._delete_region_action = QAction("&Delete Region", self)
+        self._delete_region_action = QAction(self.tr("&Delete Region"), self)
         self._delete_region_action.setShortcut(QKeySequence("Ctrl+Backspace"))
         self._delete_region_action.triggered.connect(self._on_delete_region)
         edit_menu.addAction(self._delete_region_action)
 
         edit_menu.addSeparator()
-        self._header_action = QAction("Plan &Header…", self)
+        self._header_action = QAction(self.tr("Plan &Header…"), self)
         self._header_action.triggered.connect(self._on_edit_header)
         edit_menu.addAction(self._header_action)
 
         # The installed fonts are read once and cached, since reading them
         # means opening every font file on the system. This is how you tell
         # the window you have installed one since it looked.
-        self._rescan_fonts_action = QAction("Rescan &Fonts", self)
+        self._rescan_fonts_action = QAction(self.tr("Rescan &Fonts"), self)
         self._rescan_fonts_action.triggered.connect(self._on_rescan_fonts)
         edit_menu.addAction(self._rescan_fonts_action)
 
@@ -421,13 +435,13 @@ class MainWindow(QMainWindow):
         # window called Preferences is the thing 4.24 set out to stop, so
         # both say what the platform says. Reaching the HIG name needs a
         # translator over Qt's own catalogue, which belongs to 4.9.
-        self._preferences_action = QAction("&Preferences…", self)
+        self._preferences_action = QAction(self.tr("&Preferences…"), self)
         self._preferences_action.setMenuRole(QAction.MenuRole.PreferencesRole)
         self._preferences_action.setShortcut(QKeySequence.StandardKey.Preferences)
         self._preferences_action.triggered.connect(self._on_preferences)
         edit_menu.addAction(self._preferences_action)
 
-        view_menu = self.menuBar().addMenu("&View")
+        view_menu = self.menuBar().addMenu(self.tr("&View"))
         # One action rather than two, because they are two halves of one
         # thing: you are looking at either the overlay or the rendered page,
         # and this says which one the other is. Its text follows the state,
@@ -439,22 +453,22 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
 
-        self._zoom_in_action = QAction("Zoom &In", self)
+        self._zoom_in_action = QAction(self.tr("Zoom &In"), self)
         self._zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
         self._zoom_in_action.triggered.connect(self._canvas.zoom_in)
         view_menu.addAction(self._zoom_in_action)
 
-        self._zoom_out_action = QAction("Zoom &Out", self)
+        self._zoom_out_action = QAction(self.tr("Zoom &Out"), self)
         self._zoom_out_action.setShortcut(QKeySequence.StandardKey.ZoomOut)
         self._zoom_out_action.triggered.connect(self._canvas.zoom_out)
         view_menu.addAction(self._zoom_out_action)
 
-        self._zoom_fit_action = QAction("&Fit to Window", self)
+        self._zoom_fit_action = QAction(self.tr("&Fit to Window"), self)
         self._zoom_fit_action.setShortcut(QKeySequence("Ctrl+0"))
         self._zoom_fit_action.triggered.connect(self._canvas.fit)
         view_menu.addAction(self._zoom_fit_action)
 
-        self._zoom_actual_action = QAction("&Actual Size", self)
+        self._zoom_actual_action = QAction(self.tr("&Actual Size"), self)
         self._zoom_actual_action.setShortcut(QKeySequence("Ctrl+1"))
         self._zoom_actual_action.triggered.connect(self._canvas.zoom_actual)
         view_menu.addAction(self._zoom_actual_action)
@@ -465,34 +479,34 @@ class MainWindow(QMainWindow):
         # hold the focus for most of a review session and would swallow
         # anything unmodified. The cost is shadowing "jump to the start/end
         # of the field", which is a small loss in boxes this short.
-        self._previous_region_action = QAction("&Previous Region", self)
+        self._previous_region_action = QAction(self.tr("&Previous Region"), self)
         self._previous_region_action.setShortcut(QKeySequence("Ctrl+Up"))
         self._previous_region_action.triggered.connect(self._on_previous_region)
         view_menu.addAction(self._previous_region_action)
 
-        self._next_region_action = QAction("&Next Region", self)
+        self._next_region_action = QAction(self.tr("&Next Region"), self)
         self._next_region_action.setShortcut(QKeySequence("Ctrl+Down"))
         self._next_region_action.triggered.connect(self._on_next_region)
         view_menu.addAction(self._next_region_action)
 
-        self._next_flagged_action = QAction("Next &Flagged Region", self)
+        self._next_flagged_action = QAction(self.tr("Next &Flagged Region"), self)
         self._next_flagged_action.setShortcut(QKeySequence("Ctrl+Shift+Down"))
         self._next_flagged_action.triggered.connect(self._on_next_flagged_region)
         view_menu.addAction(self._next_flagged_action)
 
-        window_menu = self.menuBar().addMenu("&Window")
+        window_menu = self.menuBar().addMenu(self.tr("&Window"))
         # Minimise and Zoom first, then this window's own panels: the order
         # every Mac Window menu has. Qt adds neither, so a window without
         # them has no Cmd+M at all — which is the other half of why Merge
         # Region gave that shortcut up. There is no Bring All to Front
         # because there is nothing to bring: one window, and no second one
         # to open.
-        self._minimise_action = QAction("&Minimise", self)
+        self._minimise_action = QAction(self.tr("&Minimise"), self)
         self._minimise_action.setShortcut(QKeySequence("Ctrl+M"))
         self._minimise_action.triggered.connect(self.showMinimized)
         window_menu.addAction(self._minimise_action)
 
-        self._zoom_window_action = QAction("&Zoom", self)
+        self._zoom_window_action = QAction(self.tr("&Zoom"), self)
         self._zoom_window_action.triggered.connect(self._on_zoom_window)
         window_menu.addAction(self._zoom_window_action)
 
@@ -501,11 +515,11 @@ class MainWindow(QMainWindow):
         window_menu.addAction(self._inspector_dock.toggleViewAction())
         window_menu.addAction(self._run_dock.toggleViewAction())
         window_menu.addSeparator()
-        self._reset_layout_action = QAction("&Reset Layout", self)
+        self._reset_layout_action = QAction(self.tr("&Reset Layout"), self)
         self._reset_layout_action.triggered.connect(self._on_reset_layout)
         window_menu.addAction(self._reset_layout_action)
 
-        help_menu = self.menuBar().addMenu("&Help")
+        help_menu = self.menuBar().addMenu(self.tr("&Help"))
         # First, and named for the application: what macOS puts at the top
         # of every Help menu. HelpContents is Cmd+? there and F1 elsewhere.
         self._help_action = QAction(help_dialog.TITLE, self)
@@ -515,12 +529,12 @@ class MainWindow(QMainWindow):
 
         # Above About, because it is the one someone reaches for with a
         # problem in hand rather than curiosity.
-        self._open_logs_action = QAction("Open &Log Folder", self)
+        self._open_logs_action = QAction(self.tr("Open &Log Folder"), self)
         self._open_logs_action.triggered.connect(self._on_open_logs)
         help_menu.addAction(self._open_logs_action)
         help_menu.addSeparator()
 
-        self._about_action = QAction(f"&About {about.NAME}", self)
+        self._about_action = QAction(self.tr("&About {0}").format(about.NAME), self)
         # macOS keeps About in the application menu, not in Help. The role is
         # what moves it; Preferences already carries its own. Both have been
         # seen doing it, on a built application — which is also where the
@@ -560,7 +574,7 @@ class MainWindow(QMainWindow):
         A word is still one hover away. Every action here has a tooltip from
         its own text, and the menus keep the words permanently.
         """
-        self._toolbar = QToolBar("Main", self)
+        self._toolbar = QToolBar(self.tr("Main"), self)
         self._toolbar.setObjectName("main_toolbar")
         self._toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         # The toolbar drawn into the title bar, which is what a Mac window
@@ -756,7 +770,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(about.NAME)
             self.setWindowModified(False)
             return
-        self.setWindowTitle(f"{self.document.path.name}[*] — {about.NAME}")
+        self.setWindowTitle(self.tr("{0}[*] — {1}").format(self.document.path.name, about.NAME))
         self.setWindowModified(self.document.dirty)
 
     # -- opening, saving -----------------------------------------------
@@ -775,8 +789,8 @@ class MainWindow(QMainWindow):
             return True
         choice = alerts.ask(
             self,
-            f"Save the changes to {self.document.path.name}?",
-            "Your changes will be lost if you do not save them.",
+            self.tr("Save the changes to {0}?").format(self.document.path.name),
+            self.tr("Your changes will be lost if you do not save them."),
             alerts.Button.Save | alerts.Button.Discard | alerts.Button.Cancel,
             alerts.Button.Save,
         )
@@ -792,7 +806,7 @@ class MainWindow(QMainWindow):
         try:
             document = PlanDocument.open(path)
         except ComictransError as exc:
-            alerts.report(self, "The plan could not be opened.", str(exc))
+            alerts.report(self, self.tr("The plan could not be opened."), str(exc))
             return
 
         self.document = document
@@ -814,15 +828,15 @@ class MainWindow(QMainWindow):
         if images:
             self._pages.select_image(images[0])
         else:
-            self.statusBar().showMessage(f"{path.name}: no regions in this plan")
+            self.statusBar().showMessage(self.tr("{0}: no regions in this plan").format(path.name))
 
     def open_plan_dialog(self) -> None:
         """Ask for a plan file and open it. Does nothing if the user cancels."""
         name, _filter = QFileDialog.getOpenFileName(
             self,
-            "Open Plan",
+            self.tr("Open Plan"),
             str(self._start_directory()),
-            "Plan files (*.yaml *.yml);;All files (*)",
+            self.tr("Plan files (*.yaml *.yml);;All files (*)"),
         )
         if name:
             self.open_plan(Path(name))
@@ -845,17 +859,20 @@ class MainWindow(QMainWindow):
         try:
             self.document.save()
         except ComictransError as exc:
-            alerts.report(self, "The plan could not be saved.", str(exc))
+            alerts.report(self, self.tr("The plan could not be saved."), str(exc))
             return False
         self._update_title()
-        self.statusBar().showMessage(f"saved {self.document.path}", 5000)
+        self.statusBar().showMessage(self.tr("saved {0}").format(self.document.path), 5000)
         return True
 
     def _on_save_as(self) -> None:
         if self.document is None:
             return
         name, _filter = QFileDialog.getSaveFileName(
-            self, "Save Plan As", str(self.document.path), "Plan files (*.yaml *.yml)"
+            self,
+            self.tr("Save Plan As"),
+            str(self.document.path),
+            self.tr("Plan files (*.yaml *.yml)"),
         )
         if not name:
             return
@@ -865,8 +882,8 @@ class MainWindow(QMainWindow):
         except ComictransError:
             overwrite = alerts.ask(
                 self,
-                f"Replace {target.name}?",
-                "The plan already there will be overwritten.",
+                self.tr("Replace {0}?").format(target.name),
+                self.tr("The plan already there will be overwritten."),
                 alerts.Button.Save | alerts.Button.Cancel,
                 alerts.Button.Cancel,
             )
@@ -875,13 +892,13 @@ class MainWindow(QMainWindow):
             try:
                 self.document.save_as(target, force=True)
             except ComictransError as exc:
-                alerts.report(self, "The plan could not be saved.", str(exc))
+                alerts.report(self, self.tr("The plan could not be saved."), str(exc))
                 return
         self._pages.set_document(self.document)
         if self._current_image is not None:
             self._pages.select_image(self._current_image)
         self._update_title()
-        self.statusBar().showMessage(f"saved {target}", 5000)
+        self.statusBar().showMessage(self.tr("saved {0}").format(target), 5000)
 
     # -- viewing ---------------------------------------------------------
 
@@ -901,7 +918,7 @@ class MainWindow(QMainWindow):
             page = load_page(self.document.source_path(image))
         except ComictransError as exc:
             self._page = None
-            alerts.report(self, "The page image could not be read.", str(exc))
+            alerts.report(self, self.tr("The page image could not be read."), str(exc))
             return
         self._page = page
 
@@ -913,7 +930,9 @@ class MainWindow(QMainWindow):
         self._update_actions_enabled()
         summary = self.document.summary(image)
         self.statusBar().showMessage(
-            f"{image}: {summary.region_count} region(s), {summary.flagged_count} flagged"
+            self.tr("{0}: %n region(s), {1} flagged", None, summary.region_count).format(
+                image, summary.flagged_count
+            )
         )
         if regions:
             self._on_region_selected(regions[0].id)
@@ -950,7 +969,7 @@ class MainWindow(QMainWindow):
             self._current_region, forward=forward, flagged_only=flagged_only
         )
         if target is None:
-            self.statusBar().showMessage("no more regions in that direction", 3000)
+            self.statusBar().showMessage(self.tr("no more regions in that direction"), 3000)
             return
         self._go_to_region(target)
 
@@ -1038,20 +1057,21 @@ class MainWindow(QMainWindow):
                 self._current_image, polygon, fill_color=fill, text_color=text
             )
         except (ValueError, ComictransError) as exc:
-            self.statusBar().showMessage(f"region not added: {exc}", 5000)
+            self.statusBar().showMessage(self.tr("region not added: {0}").format(exc), 5000)
             return
         self._refresh_page_visuals()  # the new outline, the row's counts, the title
         self._go_to_region(region.id)
         self._inspector.focus_source_text()
         self.statusBar().showMessage(
-            f"added {region.id} — type the text on the page, then its translation"
+            self.tr("added {0} — type the text on the page, then its translation").format(region.id)
         )
 
     def _on_selection_refused(self, region_id: str) -> None:
         """Say why a click on another region did nothing, rather than nothing."""
         self.statusBar().showMessage(
-            f"still reshaping {self._current_region} — "
-            f"turn Edit Region Shape off to select {region_id}",
+            self.tr("still reshaping {0} — turn Edit Region Shape off to select {1}").format(
+                self._current_region, region_id
+            ),
             5000,
         )
 
@@ -1067,13 +1087,15 @@ class MainWindow(QMainWindow):
             colors = self._merged_colors(first, region_id)
             merged = self.document.merge_regions(first, region_id, **colors)
         except (ValueError, KeyError, ComictransError) as exc:
-            self.statusBar().showMessage(f"not merged: {exc}", 5000)
+            self.statusBar().showMessage(self.tr("not merged: {0}").format(exc), 5000)
             return
         self._current_region = None  # one of the two is gone
         self._refresh_page_visuals()
         self._go_to_region(merged.id)
         self._update_actions_enabled()
-        self.statusBar().showMessage(f"merged {first} and {region_id} into {merged.id}", 5000)
+        self.statusBar().showMessage(
+            self.tr("merged {0} and {1} into {2}").format(first, region_id, merged.id), 5000
+        )
 
     def _merged_colors(self, first_id: str, second_id: str) -> dict[str, Color]:
         """Colours read off the page inside what the merged outline will be.
@@ -1099,7 +1121,7 @@ class MainWindow(QMainWindow):
         try:
             self.document.delete_region(going)
         except (KeyError, ComictransError) as exc:  # gone underneath us
-            self._report_failure(f"deleting {going}", exc)
+            self._report_failure(self.tr("deleting {0}").format(going), exc)
             return
         self._current_region = None
         self._refresh_page_visuals()
@@ -1108,7 +1130,9 @@ class MainWindow(QMainWindow):
         else:
             self._inspector.set_region(self.document, None)
         self._update_actions_enabled()
-        self.statusBar().showMessage(f"deleted {going} — Ctrl+Z puts it back", 5000)
+        self.statusBar().showMessage(
+            self.tr("deleted {0} — Ctrl+Z puts it back").format(going), 5000
+        )
 
     def _neighbour_of(self, region_id: str) -> str | None:
         """Somewhere to stand once this region is gone, chosen before it goes.
@@ -1137,14 +1161,22 @@ class MainWindow(QMainWindow):
             return
         if self._showing_preview:
             self.statusBar().showMessage(
-                "colours come from the page, not the preview — Back to Overlay first", 5000
+                self.tr("colours come from the page, not the preview — Back to Overlay first"),
+                5000,
             )
             return
         self._sampling = field
         self._canvas.set_mode(CanvasMode.PICK)
         # Which colour is being taken is not visible anywhere else, so the
-        # line says it in place of the mode's own general one.
-        self._hint.set_hint(f"click the page to take the {field} colour · Esc cancels")
+        # line says it in place of the mode's own general one. Two whole
+        # sentences rather than one with the field's name dropped into it:
+        # "fill" and "text" are adjectives here, and a language that inflects
+        # one for the noun it qualifies cannot be handed it separately.
+        self._hint.set_hint(
+            self.tr("click the page to take the fill colour · Esc cancels")
+            if field == "fill"
+            else self.tr("click the page to take the text colour · Esc cancels")
+        )
 
     def _on_point_picked(self, point: Point) -> None:
         field, self._sampling = self._sampling, None
@@ -1161,7 +1193,12 @@ class MainWindow(QMainWindow):
         self._refresh_page_visuals()
         self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
-        self.statusBar().showMessage(f"{field} colour taken from the page: {color.to_hex()}", 5000)
+        taken = (
+            self.tr("fill colour taken from the page: {0}")
+            if field == "fill"
+            else self.tr("text colour taken from the page: {0}")
+        )
+        self.statusBar().showMessage(taken.format(color.to_hex()), 5000)
 
     def _on_polygon_edited(self, region_id: str, polygon: Polygon) -> None:
         """A finished gesture: a drag, or a corner added or removed."""
@@ -1197,7 +1234,7 @@ class MainWindow(QMainWindow):
         try:
             self.document.set_polygon(region_id, polygon)
         except ValueError as exc:
-            self.statusBar().showMessage(f"shape unchanged: {exc}", 5000)
+            self.statusBar().showMessage(self.tr("shape unchanged: {0}").format(exc), 5000)
             self._canvas.set_appearance(
                 _appearance_for(self.document.region(region_id), self.document)
             )
@@ -1377,7 +1414,7 @@ class MainWindow(QMainWindow):
         # otherwise take the bar down only once the box was dismissed.
         self.statusBar().clearMessage()
         self._busy.set_busy(False)
-        alerts.report(self, "The preview could not be rendered.", message)
+        alerts.report(self, self.tr("The preview could not be rendered."), message)
 
     def _on_preview_ready(self, preview: object) -> None:
         """Put a finished render on the canvas — if it is still the one wanted.
@@ -1422,9 +1459,11 @@ class MainWindow(QMainWindow):
         self._update_actions_enabled()
         if preview.problems:
             names = ", ".join(o.region_id for o in preview.problems)
-            self.statusBar().showMessage(f"preview: {len(preview.problems)} problem(s) — {names}")
+            self.statusBar().showMessage(
+                self.tr("preview: %n problem(s) — {0}", None, len(preview.problems)).format(names)
+            )
         else:
-            self.statusBar().showMessage("preview: everything fits")
+            self.statusBar().showMessage(self.tr("preview: everything fits"))
 
     # -- running a pass --------------------------------------------------
 
@@ -1450,7 +1489,11 @@ class MainWindow(QMainWindow):
     def _start_render(self, request: RenderRequest) -> None:
         job = RenderJob(request, self)
         job.completed.connect(self._on_render_finished)
-        self._start(job, "Rendering", request.total, request.output)
+        self._run_panel.start_render(request.total, request.output)
+        self._start(
+            job,
+            self.tr("rendering %n page(s) — {0}", None, request.total).format(request.output),
+        )
 
     def _on_extract(self) -> None:
         """Ask what to read and where the plan goes, then start the run.
@@ -1467,23 +1510,33 @@ class MainWindow(QMainWindow):
         self._remember_directory(request.plan_path)
         job = ExtractJob(request, self)
         job.completed.connect(self._on_extract_finished)
-        self._start(job, "Reading", request.total, request.plan_path)
+        self._run_panel.start_extract(request.total, request.plan_path)
+        self._start(
+            job,
+            self.tr("reading %n page(s) — {0}", None, request.total).format(request.plan_path),
+        )
 
-    def _start(self, job: RunJob, verb: str, total: int, where: Path) -> None:
-        """Wire up a pass, show the panel, and set it going."""
+    def _start(self, job: RunJob, said: str) -> None:
+        """Wire up a pass, show the panel, and set it going.
+
+        The panel has already been told what is starting, by whichever of the
+        two callers above got here: the sentence in the status bar and the
+        one at the top of the panel are the same sentence in two registers,
+        and neither can be made out of the other by lowercasing a verb once
+        the window is speaking something other than English.
+        """
         job.progressed.connect(self._run_panel.advance)
         job.failed.connect(self._on_run_failed)
         self._job = job
-        self._run_panel.start(verb, total, where)
         self._run_dock.show()
         self._update_actions_enabled()
-        self.statusBar().showMessage(f"{verb.lower()} {total} page(s) — {where}")
+        self.statusBar().showMessage(said)
         job.start()
 
     def _on_run_cancel(self) -> None:
         if self._job is not None:
             self._job.cancel()
-            self.statusBar().showMessage("stopping after the page being worked on…")
+            self.statusBar().showMessage(self.tr("stopping after the page being worked on…"))
 
     def _finish_run(self) -> RunJob | None:
         """Let the worker thread end, and give the two actions back."""
@@ -1507,9 +1560,16 @@ class MainWindow(QMainWindow):
         self._run_dock.show()
         pages = len(report.pages_written)
         checks = self._run_panel.row_count()
-        what = "cancelled after" if report.cancelled else "rendered"
-        tail = f" — {checks} to check" if checks else ""
-        self.statusBar().showMessage(f"{what} {pages} page(s) to {output}{tail}")
+        said = (
+            self.tr("cancelled after %n page(s) to {0}", None, pages)
+            if report.cancelled
+            else self.tr("rendered %n page(s) to {0}", None, pages)
+        ).format(output)
+        if checks:
+            # The sentence so far is the placeholder, so the clause can go
+            # in front of it in a language that wants it there.
+            said = self.tr("{0} — %n to check", None, checks).format(said)
+        self.statusBar().showMessage(said)
 
     def _on_extract_finished(self, report: ExtractReport) -> None:
         """Show what was read, and open the plan it wrote.
@@ -1527,7 +1587,9 @@ class MainWindow(QMainWindow):
         self._run_panel.show_extract(report, plan_path)
         self._run_dock.show()
         if report.cancelled:
-            self.statusBar().showMessage(f"cancelled after {report.pages_read} page(s)")
+            self.statusBar().showMessage(
+                self.tr("cancelled after %n page(s)", None, report.pages_read)
+            )
             return
         self.open_plan(plan_path)
 
@@ -1541,7 +1603,7 @@ class MainWindow(QMainWindow):
         self._finish_run()
         self._run_panel.show_failure(message)
         self._run_dock.show()
-        self.statusBar().showMessage(f"failed: {message}")
+        self.statusBar().showMessage(self.tr("failed: {0}").format(message))
 
     def _on_run_row_activated(self, image: str, region_id: str) -> None:
         """A row in the report names a page, or a region on one. Go there.
@@ -1561,7 +1623,7 @@ class MainWindow(QMainWindow):
             self._go_to_region(region_id)
             return
         if image not in self.document.images():
-            self.statusBar().showMessage(f"{image} is not in this plan", 3000)
+            self.statusBar().showMessage(self.tr("{0} is not in this plan").format(image), 3000)
             return
         self._pages.select_image(image)
 
@@ -1576,14 +1638,16 @@ class MainWindow(QMainWindow):
             self._inspector._font.rescan()
             count = len(fonts.available_families())
         except (OSError, ComictransError) as exc:
-            self._report_failure("rescanning fonts", exc)
+            self._report_failure(self.tr("rescanning fonts"), exc)
             return
         # The one input a cached preview's key cannot see. resolve_styles goes
         # to the filesystem for a face, so installing a font changes what a
         # plan renders as without changing the plan — a region that would not
         # resolve before now draws. Nothing to compare, so nothing is kept.
         self._preview_cache.clear()
-        self.statusBar().showMessage(f"{count} font families available", 5000)
+        self.statusBar().showMessage(
+            self.tr("%n font family/families available", None, count), 5000
+        )
 
     def _on_edit_header(self) -> None:
         """Edit the settings every region is drawn under.
@@ -1599,7 +1663,7 @@ class MainWindow(QMainWindow):
         try:
             dialog = HeaderDialog(self.document, self)
         except (OSError, ComictransError) as exc:  # its font box reads the disk
-            self._report_failure("opening the plan header", exc)
+            self._report_failure(self.tr("opening the plan header"), exc)
             return
         dialog.edited.connect(self._on_header_edited)
         dialog.exec()
@@ -1622,7 +1686,7 @@ class MainWindow(QMainWindow):
         try:
             dialog = PreferencesDialog(self._preferences, self)
         except (OSError, ComictransError) as exc:  # its font box reads the disk
-            self._report_failure("opening preferences", exc)
+            self._report_failure(self.tr("opening preferences"), exc)
             return
         dialog.changed.connect(lambda: self._on_preferences_changed(dialog.preferences()))
         dialog.exec()
@@ -1711,8 +1775,10 @@ class MainWindow(QMainWindow):
             self._forget_recent(path)
             alerts.report(
                 self,
-                f"{path.name} is not there any more.",
-                f"It has been taken off the recent list. It was at {path.parent}.",
+                self.tr("{0} is not there any more.").format(path.name),
+                self.tr("It has been taken off the recent list. It was at {0}.").format(
+                    path.parent
+                ),
                 alerts.Icon.Warning,
             )
             return
@@ -1755,11 +1821,11 @@ class MainWindow(QMainWindow):
         """
         if isinstance(exc, ComictransError):
             log.warning("%s: %s", doing, exc)
-            self.statusBar().showMessage(f"{doing}: {exc}", 8000)
+            self.statusBar().showMessage(self.tr("{0}: {1}").format(doing, exc), 8000)
         else:
             log.exception("%s failed", doing, exc_info=exc)
             self.statusBar().showMessage(
-                f"{doing} failed: {type(exc).__name__} — see the log", 8000
+                self.tr("{0} failed: {1} — see the log").format(doing, type(exc).__name__), 8000
             )
 
     def _on_unhandled(self, message: str) -> None:
@@ -1776,10 +1842,10 @@ class MainWindow(QMainWindow):
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            self._report_failure("opening the log folder", exc)
+            self._report_failure(self.tr("opening the log folder"), exc)
             return
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory))):
-            self.statusBar().showMessage(f"logs are in {directory}", 10000)
+            self.statusBar().showMessage(self.tr("logs are in {0}").format(directory), 10000)
 
     def _on_help(self) -> None:
         """Open the guide, or raise the one already open.
@@ -1787,9 +1853,13 @@ class MainWindow(QMainWindow):
         Not modal, and kept rather than rebuilt: help is read beside the
         thing it describes, and asking for it twice should not leave two
         windows to close or lose the place you had scrolled to.
+
+        In whatever language the window ended up speaking, which is not
+        always the one the machine asked for: a guide written in a language
+        the interface is not in would be the worse half of both.
         """
         if self._help is None:
-            self._help = HelpDialog(self)
+            self._help = HelpDialog(self, translations.current())
         self._help.show()
         self._help.raise_()
         self._help.activateWindow()

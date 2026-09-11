@@ -2386,11 +2386,12 @@ def test_the_header_dialog_offers_only_the_range_the_reader_accepts(
 
 
 def test_the_header_dialog_says_how_far_the_font_reaches(qapp: object, two_page_plan: Path) -> None:
-    from comictrans.gui.header_dialog import HeaderDialog, font_reach
+    from comictrans.gui.header_dialog import HeaderDialog
 
     window = MainWindow()
     window.open_plan(two_page_plan)
-    assert font_reach(window.document) == "used by all 3 regions"  # type: ignore[arg-type]
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+    assert dialog.font_reach() == "used by all 3 regions"
 
     window.document.set_font("page-001-001", "Marker Felt")  # type: ignore[union-attr]
     dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
@@ -4085,7 +4086,8 @@ def test_the_ocr_languages_default_to_the_source_language(qapp: object, loose_pa
 def _extract(window: MainWindow, request: ExtractRequest) -> None:
     job = ExtractJob(request, window)
     job.completed.connect(window._on_extract_finished)
-    window._start(job, "Reading", request.total, request.plan_path)
+    window._run_panel.start_extract(request.total, request.plan_path)
+    window._start(job, f"reading {request.total} page(s)")
     _await_run(window)
 
 
@@ -4165,7 +4167,8 @@ def test_a_cancelled_extract_writes_no_plan_and_opens_nothing(
     job = ExtractJob(request, window)
     job.completed.connect(window._on_extract_finished)
     job.cancel()  # before it starts, so no page is read at all
-    window._start(job, "Reading", request.total, request.plan_path)
+    window._run_panel.start_extract(request.total, request.plan_path)
+    window._start(job, f"reading {request.total} page(s)")
     _await_run(window)
 
     assert not request.plan_path.exists()

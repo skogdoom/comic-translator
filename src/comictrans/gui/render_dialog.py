@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -47,8 +47,14 @@ from .preferences import DEFAULTS, Preferences
 from .preview import apply_config_for
 from .run_job import RenderRequest
 
+# ``QCoreApplication.translate`` rather than ``tr`` here and below: these
+# tables are module-level and have no ``self`` to ask. They are evaluated at
+# import, which is after the translator goes in — see ``translations``. Each
+# call is written out in full rather than wrapped in a helper: ``lupdate``
+# reads the source rather than running it, and extracts nothing from behind
+# one. Measured, not assumed.
 FORMAT_CHOICES: tuple[tuple[str, str | None], ...] = (
-    ("same as the source", None),
+    (QCoreApplication.translate("RenderDialog", "same as the source"), None),
     ("PNG", "png"),
     ("JPEG", "jpeg"),
     ("TIFF", "tiff"),
@@ -57,10 +63,32 @@ FORMAT_CHOICES: tuple[tuple[str, str | None], ...] = (
 except that JPEG becomes PNG rather than re-compressing lettering."""
 
 STRATEGY_CHOICES: tuple[tuple[str, str, str], ...] = (
-    ("the lettering", "flat", "repaint the original lettering in the fill colour"),
-    ("the whole region", "polygon", "flood the whole outline with the fill colour"),
-    ("reconstruct", "inpaint", "rebuild the lettering's pixels from the ones around them"),
-    ("nothing", "none", "paint nothing; letter straight onto the page as it is"),
+    (
+        QCoreApplication.translate("RenderDialog", "the lettering"),
+        "flat",
+        QCoreApplication.translate(
+            "RenderDialog", "repaint the original lettering in the fill colour"
+        ),
+    ),
+    (
+        QCoreApplication.translate("RenderDialog", "the whole region"),
+        "polygon",
+        QCoreApplication.translate("RenderDialog", "flood the whole outline with the fill colour"),
+    ),
+    (
+        QCoreApplication.translate("RenderDialog", "reconstruct"),
+        "inpaint",
+        QCoreApplication.translate(
+            "RenderDialog", "rebuild the lettering's pixels from the ones around them"
+        ),
+    ),
+    (
+        QCoreApplication.translate("RenderDialog", "nothing"),
+        "none",
+        QCoreApplication.translate(
+            "RenderDialog", "paint nothing; letter straight onto the page as it is"
+        ),
+    ),
 )
 """Label, strategy name, and what it does. The words are the inspector's own
 words for the same four things, so the box that decides it for one region and
@@ -70,8 +98,8 @@ A region's own ``erase`` still wins over whichever of these is chosen: this
 is the fallback for the regions that do not name one, exactly as ``--erase``
 is on the command line."""
 
-RENDER = "Render"
-SAVE_AND_RENDER = "Save and Render"
+RENDER = QCoreApplication.translate("RenderDialog", "Render")
+SAVE_AND_RENDER = QCoreApplication.translate("RenderDialog", "Save and Render")
 """The button names what pressing it will do, and an unsaved plan is saved
 first — see the class docstring."""
 
@@ -108,10 +136,10 @@ class RenderDialog(QDialog):
         super().__init__(parent)
         self._document = document
         self._sources = source_dirs(document.plan, document.path)
-        self.setWindowTitle("Render Pages")
+        self.setWindowTitle(self.tr("Render Pages"))
 
         self._output = QLineEdit(str(suggested_output(document.path, preferences)))
-        choose = QPushButton("Choose…")
+        choose = QPushButton(self.tr("Choose…"))
         choose.setAutoDefault(False)
         choose.clicked.connect(self._on_choose)
         where = QHBoxLayout()
@@ -136,7 +164,7 @@ class RenderDialog(QDialog):
         self._erase_help.setWordWrap(True)
         self._quieten(self._erase_help)
 
-        self._force = QCheckBox("overwrite pages already in that directory")
+        self._force = QCheckBox(self.tr("overwrite pages already in that directory"))
 
         # Red rather than the usual grey: this is the one message here that
         # is stopping something from happening.
@@ -147,9 +175,9 @@ class RenderDialog(QDialog):
         self._problem.setPalette(palette)
 
         form = QFormLayout()
-        form.addRow("write pages to", where_widget)
-        form.addRow("format", self._format)
-        form.addRow("erase", self._erase)
+        form.addRow(self.tr("write pages to"), where_widget)
+        form.addRow(self.tr("format"), self._format)
+        form.addRow(self.tr("erase"), self._erase)
         form.addRow("", self._erase_help)
         form.addRow("", self._force)
 
@@ -188,13 +216,21 @@ class RenderDialog(QDialog):
         label.setPalette(palette)
 
     def _what_it_will_do(self) -> str:
+        """What pressing the button will do, counted.
+
+        Two counts in one sentence, and Qt's ``%n`` inflects one message for
+        one of them — so the regions are their own complete phrase, dropped
+        into the sentence at a placeholder. Each half is then a thing a
+        translator can get right on its own, which gluing "3" to "region"
+        would not be.
+        """
         pages = len(self._document.plan.image_names())
-        regions = len(self._document.plan.regions)
-        saving = "Saves the plan, then renders" if self._document.dirty else "Renders"
-        return (
-            f"{saving} {pages} page{'' if pages == 1 else 's'} "
-            f"and {regions} region{'' if regions == 1 else 's'}."
-        )
+        regions = self.tr("%n region(s)", None, len(self._document.plan.regions))
+        if self._document.dirty:
+            return self.tr("Saves the plan, then renders %n page(s) and {0}.", None, pages).format(
+                regions
+            )
+        return self.tr("Renders %n page(s) and {0}.", None, pages).format(regions)
 
     def _describe_erase(self) -> None:
         chosen = self._erase.currentData()
@@ -224,16 +260,16 @@ class RenderDialog(QDialog):
         """
         text = self._output.text().strip()
         if not text:
-            return "Choose a directory to write the pages into."
+            return self.tr("Choose a directory to write the pages into.")
         path = Path(text).expanduser()
         try:
             if path.exists() and not path.is_dir():
-                return f"{path} is a file, not a directory."
+                return self.tr("{0} is a file, not a directory.").format(path)
             check_output_dir(path, self._sources)
         except ComictransError as exc:
             return f"{exc}"
         except OSError as exc:
-            return f"{path} cannot be used: {exc}"
+            return self.tr("{0} cannot be used: {1}").format(path, exc)
         return ""
 
     def _validate(self) -> None:

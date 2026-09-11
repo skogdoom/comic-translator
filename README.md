@@ -43,6 +43,9 @@ pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
 reason is in the first paragraph.
 
+The window is translated: it follows the system's language, English
+otherwise, and Swedish is the translation that ships.
+
 Not in it: archive formats. A chapter is a folder of images going in and a
 folder of images coming out; CBZ, CBR and PDF are neither read nor written.
 `docs/ROADMAP.md` covers that and everything else planned, in the order it is
@@ -561,6 +564,19 @@ fit together. It is a window rather than a dialog, so it stays open beside
 the page while you work. This README covers the command line; that guide
 covers the window.
 
+**The window speaks your language if it has been translated into it**, and
+English otherwise. It follows the system's language on its own; set
+`COMICTRANS_LANGUAGE` to force one (`COMICTRANS_LANGUAGE=sv comictrans
+review`), which is how to look at a translation on a machine that is not set
+to it. Swedish ships; the guide the Help menu opens is picked the same way,
+with English behind it, so a window in a language the guide has not been
+written in yet still has help.
+
+This is the window only. The command line is not translated, neither is a
+plan file's content — `source_text` and `translation` are the comic, not the
+interface — and neither is what the pipeline says when something goes wrong,
+since those sentences are the same ones the command line prints.
+
 **When something goes wrong**, **Help > Open Log Folder** shows you where it
 was written down. Two files live there —
 `~/Library/Logs/comictrans/` on macOS, `~/.local/state/comictrans/`
@@ -787,8 +803,10 @@ Three groups of tests skip rather than fail when the host cannot run them:
 - `test_gui_widgets.py` skips when PySide6 is not installed (`uv sync
   --extra gui`), or when it is but no display could actually be opened.
   `test_gui_document.py` and `test_gui_preview.py` need neither and never
-  skip — nothing under `comictrans.gui` besides the widgets themselves
-  touches Qt.
+  skip — the plan a window edits, and the render it previews, are decided
+  without Qt. `test_gui_run.py` and `test_gui_translations.py` sit in
+  between: they build no widget and need no display, but the words they
+  check are translated ones, so they need PySide6.
 
 `-rs` tells you which. On macOS with `uv sync --group dev --extra gui` you
 should see none of these skip except the empty fixtures directory.
@@ -807,6 +825,27 @@ src/comictrans/gui/resources/appicon/recreate-icons.py
 
 The suite runs that script's `--check` mode, so a master edited without
 regenerating fails `pytest` rather than shipping a stale icon.
+
+**The window's words are translated from catalogues, not from the source.**
+`src/comictrans/gui/resources/translations/` holds one `.ts` per language,
+the `.qm` each compiles to, and the script that does both. After adding or
+rewording anything the window says:
+
+```
+src/comictrans/gui/resources/translations/recompile.py --extract   # into every .ts
+src/comictrans/gui/resources/translations/recompile.py             # .ts -> .qm
+```
+
+Translate the new entries in the `.ts` — by hand or in Qt Linguist — and
+recompile. The suite runs the script's `--check` mode, so a `.ts` edited
+without recompiling fails `pytest` rather than shipping a window still
+speaking the last translation, exactly as with the icon above.
+
+English has a catalogue too, and it holds nothing but plurals: Qt counts for
+you but cannot inflect the noun beside the number, so `%n page(s)` would
+otherwise reach an English window as `1 page(s)`. It is extracted with
+`-pluralonly` and everything left unfinished in it falls through to the
+English in the source.
 
 Both drawings go into the `.icns` the application bundle carries, at
 different sizes: the simplified one in the 16- and 32-point slots, where the

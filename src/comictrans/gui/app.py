@@ -144,6 +144,15 @@ def run(plan_path: Path | None = None) -> int:
     # informative of the three hooks, and the only one that needs it running.
     logfile.install_qt_message_handler()
 
+    # Before the widget modules are imported, and that is the whole reason
+    # they are imported down here rather than at the top of this file. Some
+    # of what the window says lives in module-level constants, evaluated once
+    # at import; a translator installed after that leaves them in English for
+    # the life of the process. A test pins this ordering.
+    from . import translations
+
+    language = translations.install(app)
+
     # Set on the application rather than the window, so every window and
     # dialog this process opens inherits it. On macOS the Dock reads the
     # bundle instead, where the .icns tools/build_app.py renders answers for
@@ -162,4 +171,5 @@ def run(plan_path: Path | None = None) -> int:
 
     window = MainWindow(plan_path, settings=QSettings(_ORGANIZATION, _APPLICATION))
     window.show()
+    log.debug("window open in %s", language)
     return app.exec()

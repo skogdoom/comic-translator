@@ -20,7 +20,7 @@ from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Signal
+from PySide6.QtCore import QCoreApplication, QSignalBlocker, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -40,12 +40,13 @@ from .font_box import FontBox
 from .preferences import Preferences
 from .render_dialog import FORMAT_CHOICES, STRATEGY_CHOICES
 
-WHAT_IT_IS = (
+WHAT_IT_IS = QCoreApplication.translate(
+    "PreferencesDialog",
     "These fill in the Extract and Render dialogs when they open. "
-    "They never change a plan you already have."
+    "They never change a plan you already have.",
 )
 
-FONT_DEFAULT = "(let extract choose)"
+FONT_DEFAULT = QCoreApplication.translate("PreferencesDialog", "(let extract choose)")
 """What an unset font means here. Not "(plan default)": there is no plan in
 this dialog, and what happens instead is that ``extract`` walks its own
 fallback chain and records whichever family it found."""
@@ -65,7 +66,7 @@ def _spacer() -> QLabel:
     return QLabel()
 
 
-DONE_TEXT = "Done"
+DONE_TEXT = QCoreApplication.translate("PreferencesDialog", "Done")
 """What dismisses this dialog, said as what it does.
 
 There is no ``StandardButton.Done``, so this is written out rather than
@@ -85,13 +86,13 @@ class PreferencesDialog(QDialog):
         # "Preferences" whatever that action's text says — Qt titles the
         # merged item itself. A window whose title does not match the command
         # that opened it is one more thing to work out.
-        self.setWindowTitle("Preferences")
+        self.setWindowTitle(self.tr("Preferences"))
         self._preferences = preferences
 
         self._source_language = QLineEdit(preferences.source_language)
         self._target_language = QLineEdit(preferences.target_language)
         self._ocr_languages = QLineEdit(preferences.ocr_languages)
-        self._ocr_languages.setPlaceholderText("same as the source language")
+        self._ocr_languages.setPlaceholderText(self.tr("same as the source language"))
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:
             self._engine.addItem(label, value)
@@ -104,8 +105,8 @@ class PreferencesDialog(QDialog):
         self._font.set_value(preferences.font or None)
 
         self._output = QLineEdit(preferences.output_directory)
-        self._output.setPlaceholderText("beside the pages")
-        choose = QPushButton("Choose…")
+        self._output.setPlaceholderText(self.tr("beside the pages"))
+        choose = QPushButton(self.tr("Choose…"))
         choose.setAutoDefault(False)
         choose.clicked.connect(self._on_choose_output)
         output_row = QHBoxLayout()
@@ -136,17 +137,17 @@ class PreferencesDialog(QDialog):
         # lettered in" would put their fields at different places down the
         # same dialog. The group headings are spanning rows inside it.
         form = QFormLayout()
-        form.addRow(_section("a new plan starts as"))
-        form.addRow("pages are lettered in", self._source_language)
-        form.addRow("translating into", self._target_language)
-        form.addRow("OCR languages", self._ocr_languages)
-        form.addRow("recogniser", self._engine)
-        form.addRow("font", self._font)
+        form.addRow(_section(self.tr("a new plan starts as")))
+        form.addRow(self.tr("pages are lettered in"), self._source_language)
+        form.addRow(self.tr("translating into"), self._target_language)
+        form.addRow(self.tr("OCR languages"), self._ocr_languages)
+        form.addRow(self.tr("recogniser"), self._engine)
+        form.addRow(self.tr("font"), self._font)
         form.addRow(_spacer())
-        form.addRow(_section("rendering pages"))
-        form.addRow("write pages to", output_widget)
-        form.addRow("erase", self._erase)
-        form.addRow("format", self._format)
+        form.addRow(_section(self.tr("rendering pages")))
+        form.addRow(self.tr("write pages to"), output_widget)
+        form.addRow(self.tr("erase"), self._erase)
+        form.addRow(self.tr("format"), self._format)
 
         # "Done", not "Close". Every field here has written itself through
         # by the time this is pressed, so there is nothing being closed

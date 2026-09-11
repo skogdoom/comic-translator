@@ -21,6 +21,14 @@ for themselves. See **Build the application** in `README.md`.
   is kept and reused while nothing it was rendered from has changed — three
   toggles of an eleven-megapixel page went from three renders and 34 seconds
   to one and 13.
+- **The window speaks Swedish.** Every word of the interface is translated
+  from a catalogue now, and the window follows the system's language, with
+  English behind it and `COMICTRANS_LANGUAGE` to force one. The guide the
+  Help menu opens follows the same language. The command line, the plan
+  file's content, and what the pipeline says when something goes wrong are
+  deliberately not translated. Swedish is the one translation that ships; the
+  English one holds nothing but plural forms, so a window says "1 page"
+  rather than "1 page(s)".
 
 ## 1.0.0 — 2026-09-11
 

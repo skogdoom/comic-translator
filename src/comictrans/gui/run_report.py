@@ -1,13 +1,19 @@
 """A finished run turned into rows a panel can list.
 
-No Qt. Both passes end with a report, and both windows-full of it are the
-same shape: a headline, a line of tallies, and a list of things worth a
-second look. *Which* things those are is the same judgement each pass's
+Both passes end with a report, and both windows-full of it are the same
+shape: a headline, a line of tallies, and a list of things worth a second
+look. *Which* things those are is the same judgement each pass's
 command-line summary makes — so it is made once, here, and tested like any
 other module rather than through a widget.
 
 The order in both is by how much a row wants your attention: what did not
 happen at all first, then what happened but needs checking.
+
+No widgets, but not no Qt: every word here is read off a panel, so it is
+translated like the rest of the window. That is the whole of the dependency —
+``QtCore``, for one bare ``QObject`` subclass that exists to name a catalogue
+context — with no widget, no event loop and no ``QApplication`` in it, and
+the tests still call these six functions directly.
 """
 
 from __future__ import annotations
@@ -15,21 +21,65 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication, QObject
+
 from ..apply import ApplyReport
 from ..extract import ExtractReport
 
+
+class RunText(QObject):
+    """A name for the catalogue, and nothing else.
+
+    Every word below is ``RunText.tr(...)``. ``tr`` rather than
+    ``QCoreApplication.translate``, which would be the obvious choice in a
+    module with no widget in it, for a measured reason: ``lupdate`` marks no
+    ``translate`` call as carrying plural forms, whatever its fourth
+    argument, and drops the message outright when that argument is anything
+    but a bare name — ``report.pages_read`` is enough to lose a string
+    silently. Written as ``tr`` it is understood in every form. So the
+    counting sentences have to be ``tr``, and the rest are ``tr`` to keep one
+    mechanism in one file.
+
+    Each call writes its English out in full for the same reason: ``lupdate``
+    reads the source rather than running it, and sees nothing behind a helper.
+    """
+
+    @staticmethod
+    def tr(text: str, disambiguation: str | None = None, n: int = -1) -> str:
+        """What ``QObject.tr`` does, for a class nobody will ever instantiate.
+
+        ``QObject.tr`` is an instance method to Python, so calling it on the
+        class — which is what ``lupdate`` reads the context off — is a type
+        error even though Qt answers it correctly. This says the same thing
+        in a signature that is true, and keeps the context in one place
+        rather than repeated at thirteen call sites.
+        """
+        return QCoreApplication.translate("RunText", text, disambiguation, n)
+
+
 # What a render found.
-PAGE_FAILED = "page failed"
-DID_NOT_FIT = "did not fit"
-NO_TRANSLATION = "no translation"
-BELOW_MINIMUM = "below minimum size"
-CONDENSED = "condensed"
-NOT_TRANSLATED = "not translated"
+PAGE_FAILED = RunText.tr("page failed")
+DID_NOT_FIT = RunText.tr("did not fit")
+NO_TRANSLATION = RunText.tr("no translation")
+BELOW_MINIMUM = RunText.tr("below minimum size")
+CONDENSED = RunText.tr("condensed")
+NOT_TRANSLATED = RunText.tr("not translated")
 
 # What an extract found.
-COULD_NOT_READ = "could not read"
-NO_REGIONS = "no regions found"
-NOT_AN_IMAGE = "not read as a page"
+COULD_NOT_READ = RunText.tr("could not read")
+NO_REGIONS = RunText.tr("no regions found")
+NOT_AN_IMAGE = RunText.tr("not read as a page")
+
+_EMPTY_TRANSLATION = "no translation"
+"""What ``render`` writes as the detail for a region with nothing to letter.
+
+The same words as ``NO_TRANSLATION`` and deliberately not the same string.
+That one is this panel's, and is translated; this one comes off a
+``RegionOutcome`` the pipeline built, and the pipeline is not translated —
+see ``gui/translations``. Comparing the two would have matched in English
+and quietly stopped the first time the window ran in anything else, leaving
+the detail column repeating the problem column in two languages.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +132,7 @@ def render_rows(report: ApplyReport) -> tuple[RunRow, ...]:
             image=image,
             region_id=o.region_id,
             problem=NO_TRANSLATION,
-            detail="" if o.detail == NO_TRANSLATION else o.detail,
+            detail="" if o.detail == _EMPTY_TRANSLATION else o.detail,
         )
         for image, o in report.outcomes
         if o.status == "skipped_empty"
@@ -101,7 +151,7 @@ def render_rows(report: ApplyReport) -> tuple[RunRow, ...]:
             image=image,
             region_id=o.region_id,
             problem=CONDENSED,
-            detail=f"{o.condense:.0%} of normal width",
+            detail=RunText.tr("{0} of normal width").format(f"{o.condense:.0%}"),
         )
         for image, o in report.condensed
     )
@@ -113,22 +163,23 @@ def render_rows(report: ApplyReport) -> tuple[RunRow, ...]:
 
 
 def render_headline(report: ApplyReport, output: Path) -> str:
-    """One line saying how a render went, for the top of the panel."""
+    """One line saying how a render went, for the top of the panel.
+
+    Cancelled or not, the count is part of one sentence rather than a prefix
+    glued to a shared tail: a language that puts the number last, or inflects
+    the noun for it, cannot be assembled from two halves translated apart.
+    """
     pages = len(report.pages_written)
-    written = f"{pages} page{'' if pages == 1 else 's'} written to {output}"
     if report.cancelled:
-        return f"cancelled — {written}"
-    return written
+        return RunText.tr("cancelled — %n page(s) written to {0}", None, pages).format(output)
+    return RunText.tr("%n page(s) written to {0}", None, pages).format(output)
 
 
 def render_counts(report: ApplyReport) -> str:
     """The tallies under the headline, in the CLI summary's own order."""
-    return (
-        f"{report.rendered} rendered · "
-        f"{report.skipped_empty} without a translation · "
-        f"{report.skipped_flag} skipped · "
-        f"{report.failed} did not fit"
-    )
+    return RunText.tr(
+        "{0} rendered · {1} without a translation · {2} skipped · {3} did not fit"
+    ).format(report.rendered, report.skipped_empty, report.skipped_flag, report.failed)
 
 
 # -- extracting --------------------------------------------------------
@@ -149,7 +200,11 @@ def extract_rows(report: ExtractReport) -> tuple[RunRow, ...]:
         for path, reason in report.failures
     ]
     rows.extend(
-        RunRow(image=path.name, problem=NO_REGIONS, detail="nothing detected on this page")
+        RunRow(
+            image=path.name,
+            problem=NO_REGIONS,
+            detail=RunText.tr("nothing detected on this page"),
+        )
         for path in report.empty_pages
     )
     rows.extend(
@@ -162,19 +217,19 @@ def extract_rows(report: ExtractReport) -> tuple[RunRow, ...]:
 def extract_headline(report: ExtractReport, plan_path: Path) -> str:
     """One line saying how an extract went, for the top of the panel."""
     if report.cancelled:
-        return f"cancelled after {report.pages_read} page(s) — {plan_path.name} was not written"
-    pages = report.pages_read
-    return f"{pages} page{'' if pages == 1 else 's'} read into {plan_path}"
+        return RunText.tr(
+            "cancelled after %n page(s) — {0} was not written", None, report.pages_read
+        ).format(plan_path.name)
+    return RunText.tr("%n page(s) read into {0}", None, report.pages_read).format(plan_path)
 
 
 def extract_counts(report: ExtractReport) -> str:
     """The tallies under the headline, in the CLI summary's own order."""
-    return (
-        f"{report.regions} region{'' if report.regions == 1 else 's'} · "
-        f"{report.low_confidence} low confidence · "
-        f"{report.approximate} approximate · "
-        f"{report.artefacts + report.on_artwork} left unseeded"
-    )
+    return RunText.tr(
+        "%n region(s) · {0} low confidence · {1} approximate · {2} left unseeded",
+        None,
+        report.regions,
+    ).format(report.low_confidence, report.approximate, report.artefacts + report.on_artwork)
 
 
 __all__ = [
