@@ -183,16 +183,28 @@ in the source, keeps 4.9 to one file per language.
 
 ## 4.10 Package as an application
 
-A build script producing a runnable `.app`.
+`uv run <something>` produces a runnable `.app`. Unsigned, built by
+whoever is going to use it.
 
 py2app, PyInstaller and briefcase all work. PyInstaller is the least
 macOS-specific and the best documented.
 
-**Decide distribution first.** An unsigned bundle is quarantined by
-Gatekeeper on any machine but the one that built it, and signing means a
-paid Developer ID and notarisation. Given the disclaimer in `README.md`,
-the honest target is an unsigned local build, documented as such, not a
-release artifact.
+**Distribution is decided, and it decides the shape of everything else
+here.** No Developer ID, no notarisation, no stapling — which means the
+bundle is quarantined by Gatekeeper on any machine but the one that built
+it, so it is never a download. What ships is the repository and a
+documented command; what someone ends up with is an `.app` they built
+themselves. That matches the disclaimer in `README.md` rather than
+straining against it.
+
+Two consequences worth having in writing before the script exists. The
+bundler is a development dependency and must stay one: putting PyInstaller
+in the runtime dependencies would have everyone who installs `comictrans`
+for the command line pull a bundler they will never run. And a source tree
+downloaded as a zip carries macOS's quarantine attribute into whatever is
+built from it, while a `git clone` does not — so the build instructions
+should say clone, and say why, rather than leaving someone to meet
+Gatekeeper and conclude the build is broken.
 
 **`CFBundleName` has to be "Comic Translator", and it is not optional.**
 macOS titles its application menu — "About X", "Hide X", "Quit X" — from
@@ -233,14 +245,13 @@ section still lists which milestones are implemented, which is a sentence
 for a repository rather than for a release. And there is no changelog:
 release notes need somewhere to live that is not `git log`.
 
-**What a release forces a decision on, and 4.10 should not be written
-before it is made.** That milestone records the problem plainly: an
-unsigned bundle is quarantined by Gatekeeper on any machine but the one
-that built it, and signing means a paid Developer ID and notarisation.
-While the target is a build for oneself that is a footnote. The moment
-"releasable" means somebody else double-clicks it, it is the whole
-question, and it decides whether 1.0 is a `.app` at all or a documented
-`uv run` with a bundle to follow.
+**What "released" means here, now that it is settled.** Not a download:
+4.10 builds an unsigned bundle, and an unsigned bundle is quarantined by
+Gatekeeper anywhere but the machine that built it. So 1.0 is the
+repository, a documented build command, and an `.app` that each person
+makes for themselves. The release notes have to say that in the first
+paragraph rather than the last, because someone expecting a disk image will
+otherwise read everything else as a preamble to one.
 
 **What the release notes have to say that the code cannot.**
 `known-bugs.md` holds four entries and every one is a decision rather than
