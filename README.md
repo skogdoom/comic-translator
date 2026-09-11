@@ -1,3 +1,6 @@
+<img src="src/comictrans/gui/resources/appicon/dog-book-master-1024.svg"
+     alt="A dog in glasses, sitting on a book" width="140" align="right">
+
 # comictrans
 
 Translate scanned comic pages from a source language into a target language
