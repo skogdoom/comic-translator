@@ -875,89 +875,114 @@
 <context>
     <name>PreferencesDialog</name>
     <message>
-        <location filename="../../preferences_dialog.py" line="43"/>
+        <location filename="../../preferences_dialog.py" line="46"/>
         <source>These fill in the Extract and Render dialogs when they open. They never change a plan you already have.</source>
         <translation>De här fyller i dialogrutorna Extrahera och Rendera när de öppnas. De ändrar aldrig en plan du redan har.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="49"/>
+        <location filename="../../preferences_dialog.py" line="52"/>
+        <source>the same as this Mac</source>
+        <translation>samma som datorn</translation>
+    </message>
+    <message>
+        <location filename="../../preferences_dialog.py" line="61"/>
+        <source>takes effect the next time this application starts</source>
+        <translation>börjar gälla nästa gång programmet startar</translation>
+    </message>
+    <message>
+        <location filename="../../preferences_dialog.py" line="72"/>
         <source>(let extract choose)</source>
         <translation>(låt extract välja)</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="69"/>
+        <location filename="../../preferences_dialog.py" line="105"/>
         <source>Done</source>
         <translation>Klar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="89"/>
+        <location filename="../../preferences_dialog.py" line="141"/>
         <source>Preferences</source>
         <translation>Inställningar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="95"/>
+        <location filename="../../preferences_dialog.py" line="147"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="108"/>
+        <location filename="../../preferences_dialog.py" line="160"/>
         <source>beside the pages</source>
         <translation>bredvid sidorna</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="109"/>
+        <location filename="../../preferences_dialog.py" line="161"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="140"/>
+        <location filename="../../preferences_dialog.py" line="199"/>
         <source>a new plan starts as</source>
         <translation>en ny plan börjar som</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="141"/>
+        <location filename="../../preferences_dialog.py" line="200"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="142"/>
+        <location filename="../../preferences_dialog.py" line="201"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="143"/>
+        <location filename="../../preferences_dialog.py" line="202"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="144"/>
+        <location filename="../../preferences_dialog.py" line="203"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="145"/>
+        <location filename="../../preferences_dialog.py" line="204"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="147"/>
+        <location filename="../../preferences_dialog.py" line="206"/>
         <source>rendering pages</source>
         <translation>rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="148"/>
+        <location filename="../../preferences_dialog.py" line="207"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="149"/>
+        <location filename="../../preferences_dialog.py" line="208"/>
         <source>erase</source>
         <translation>radera</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="150"/>
+        <location filename="../../preferences_dialog.py" line="209"/>
         <source>format</source>
         <translation>format</translation>
+    </message>
+    <message>
+        <location filename="../../preferences_dialog.py" line="211"/>
+        <source>this window</source>
+        <translation>det här fönstret</translation>
+    </message>
+    <message>
+        <location filename="../../preferences_dialog.py" line="212"/>
+        <source>language</source>
+        <translation>språk</translation>
+    </message>
+    <message>
+        <location filename="../../preferences_dialog.py" line="289"/>
+        <source>Render Into</source>
+        <translation>Rendera till</translation>
     </message>
 </context>
 <context>

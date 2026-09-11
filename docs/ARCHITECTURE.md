@@ -1591,14 +1591,45 @@ draws the same line: the ValueErrors it raises when a shape crosses itself or
 two regions will not merge are the plan's own refusals, and the window
 translates the frame it puts around them rather than the refusal.
 
-`gui/translations.py` picks the language — `COMICTRANS_LANGUAGE` first, then
-`QLocale.system()`, then English — and installs two catalogues: ours, and
-Qt's own `qtbase_<lang>.qm` from `QLibraryInfo`, so a translated window does
-not answer in half English through its file panels and alert buttons. Qt's is
-best-effort: missing costs only Qt's own furniture. Nothing here overrides an
-entry *in* Qt's catalogue, which is the one way the macOS Preferences item
-could be re-titled Settings; the action, the window and the settings key all
-say Preferences, and the item follows Qt.
+`gui/translations.py` picks the language and installs two catalogues: ours,
+and Qt's own `qtbase_<lang>.qm` from `QLibraryInfo`, so a translated window
+does not answer in half English through its file panels and alert buttons.
+Qt's is best-effort: missing costs only Qt's own furniture. Nothing here
+overrides an entry *in* Qt's catalogue, which is the one way the macOS
+Preferences item could be re-titled Settings; the action, the window and the
+settings key all say Preferences, and the item follows Qt.
+
+**Three places say which language, asked in this order:**
+`COMICTRANS_LANGUAGE`, the `language` preference, then the machine's own
+answer; English behind all three. A language named in either of the first two
+and not translated falls back to English rather than to the next place down —
+naming one is an answer, and answering a different question would be worse
+than answering in English. The machine's answer is a *list*, and asking for
+the list is what makes the macOS per-application language work: choosing one
+in System Settings > General > Language & Region writes an `AppleLanguages`
+list scoped to the application, which `QLocale.uiLanguages()` reports in
+order, while `QLocale.system().name()` goes on describing the system locale.
+A window reading only the latter would have ignored the setting entirely.
+
+That setting also has to be offered before it can be chosen, and macOS
+decides what to offer from the bundle: an application declaring no
+localizations is one System Settings says "doesn't support additional
+languages" about, whatever is inside it. The usual way to declare them is an
+`.lproj` directory per language, which is for strings macOS itself loads;
+ours are Qt catalogues loaded by Qt, and `CFBundleLocalizations` is Apple's
+key for exactly that case. `tools/comictrans.spec` builds it from
+`translations.available()` rather than a list, so a catalogue added and the
+spec forgotten cannot happen.
+
+**The language preference takes effect at the next start, and the dialog says
+so under the field.** Retranslating a running window means re-setting every
+string on `LanguageChange`, and the module-level constants above cannot be
+re-read at all — they are evaluated once at import, which is the same
+property that makes them translatable in the first place. A note standing in
+the form says that before the choice is made rather than after. `gui.app`
+therefore reads the stored preferences before it builds anything, hands the
+language to `install`, and passes the same `QSettings` on to the window, so
+there is one settings object rather than two.
 
 **Installing before the widget modules are imported is load-bearing.** Some
 of what the window says lives in module-level constants — `inspector`'s flag

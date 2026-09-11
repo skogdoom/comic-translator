@@ -1,5 +1,12 @@
 """Which language the window speaks, and where its words come from.
 
+**Three places say which, and they are asked in this order:**
+``COMICTRANS_LANGUAGE``, the language picked in the window's own settings,
+then the machine's — which on macOS includes the per-application language in
+System Settings > General > Language & Region, because :func:`offered` asks
+Qt for the preference *list* rather than the system locale. Anything named
+and not translated falls back to English rather than to the next place down.
+
 **GUI chrome only.** The menus, the dialogs, the status bar, the hint line.
 Not the command line, which is a large surface for a different audience; not
 plan file content, which is the comic rather than the interface; and not what
@@ -45,6 +52,16 @@ _current = "en"
 """Set by :func:`install`, read by :func:`current`. The default is what an
 uninstalled process speaks, which is the source language by definition."""
 
+_installed: list[QTranslator] = []
+"""What :func:`install` put in Qt's chain last time, so it can take it out.
+
+Installing is a once-per-process thing in the application, and this makes no
+difference there. It is here because a second call otherwise *adds* a
+translator over the first — Qt consults them newest first — leaving a process
+speaking a language nothing asked for, which is a bug waiting for the first
+caller who installs twice and a real nuisance in a test suite.
+"""
+
 TRANSLATION_DIR = Path(__file__).parent / "resources" / "translations"
 """Compiled ``.qm`` catalogues, beside the ``.ts`` they are built from."""
 
@@ -52,11 +69,13 @@ PREFIX = "comictrans"
 """``comictrans_sv.qm``, and so on. The stem Qt matches a locale against."""
 
 LANGUAGE_ENV = "COMICTRANS_LANGUAGE"
-"""Force a language, whatever the system says.
+"""Force a language, whatever anything else says.
 
 For seeing a translation on a machine that is not set to that language,
 which is most of the machines anybody checks one on. Same shape as
-``COMICTRANS_FONT_PATH`` and ``COMICTRANS_LOG_DIR``.
+``COMICTRANS_FONT_PATH`` and ``COMICTRANS_LOG_DIR``, and first in the order
+below for the same reason: it is the hatch, and a hatch that something else
+could overrule would be no use for checking anything.
 """
 
 SOURCE_LANGUAGE = "en"
@@ -77,17 +96,68 @@ def available() -> tuple[str, ...]:
     )
 
 
-def wanted() -> str:
-    """The language to open in: the environment's, or the system's.
+def _bare(tag: str) -> str:
+    """``sv_SE``, ``sv-SE`` and ``sv`` all come back as ``sv``.
 
-    Returns a bare language code — ``sv``, not ``sv_SE``. The window is
-    translated per language, not per country: there is no answer this tool
-    gives that differs between Sweden and Finland.
+    The window is translated per language, not per country: there is no
+    answer this tool gives that differs between Sweden and Finland.
+    """
+    return tag.strip().replace("-", "_").split("_")[0].lower()
+
+
+def offered() -> tuple[str, ...]:
+    """What the machine's own language settings ask for, best first.
+
+    ``uiLanguages`` rather than ``name``, and that is the whole of what makes
+    the macOS per-application language work: setting one in System Settings >
+    General > Language & Region writes an ``AppleLanguages`` list scoped to
+    that application, which Qt reports here in order. The single ``name()``
+    only ever describes the *system* locale, so an application asked for
+    Swedish on an English Mac would have gone on speaking English.
+
+    It is a list because a preference list is what a person actually has:
+    Swedish, then English, then whatever else. The first one there is a
+    catalogue for wins.
+    """
+    return _codes(*QLocale.system().uiLanguages(), QLocale.system().name())
+
+
+def _codes(*tags: str) -> tuple[str, ...]:
+    """Language tags as bare codes, in order, without repeats or blanks.
+
+    Split out from :func:`offered` to be testable: a machine set to one
+    language — which is every machine this suite runs on — cannot tell a list
+    of preferences from a single locale by looking at the result.
+    """
+    codes: list[str] = []
+    for tag in tags:
+        code = _bare(tag)
+        if code and code not in codes:
+            codes.append(code)
+    return tuple(codes)
+
+
+def preferred(chosen: str = "") -> tuple[str, ...]:
+    """Every language to try, best first, from all three places one is said.
+
+    In order: ``COMICTRANS_LANGUAGE``, the language picked in the window's
+    own settings, then the machine's. Each of the first two is one answer
+    rather than a list — somebody who names a language has named it, and
+    falling through to the system's when there is no catalogue for it would
+    be answering a different question. English is behind all of them.
     """
     forced = os.environ.get(LANGUAGE_ENV, "").strip()
     if forced:
-        return forced.replace("-", "_").split("_")[0].lower()
-    return QLocale.system().name().split("_")[0].lower()
+        return (_bare(forced),)
+    if chosen.strip():
+        return (_bare(chosen),)
+    return offered()
+
+
+def wanted(chosen: str = "") -> str:
+    """The language asked for, which is not always the one that loads."""
+    asked = preferred(chosen)
+    return asked[0] if asked else SOURCE_LANGUAGE
 
 
 def current() -> str:
@@ -101,8 +171,14 @@ def current() -> str:
     return _current
 
 
-def install(app: QCoreApplication) -> str:
-    """Load the catalogues for :func:`wanted` and return the language used.
+def install(app: QCoreApplication, chosen: str = "") -> str:
+    """Load the catalogues for :func:`preferred` and return the language used.
+
+    ``chosen`` is the language picked in the window's own settings, empty for
+    "whatever this machine is set to". It is read out of the stored
+    preferences by ``gui.app`` and handed in rather than read here, so that
+    this module stays the one that knows about languages and that one stays
+    the one that knows about settings.
 
     Returns ``"en"`` when there is nothing else to load, which is not a
     failure: English is the source language, and its own catalogue carries
@@ -115,18 +191,20 @@ def install(app: QCoreApplication) -> str:
     """
     global _current
     _current = SOURCE_LANGUAGE
+    while _installed:
+        app.removeTranslator(_installed.pop())
 
-    language = wanted()
-    if language not in available():
-        if language != SOURCE_LANGUAGE:
-            log.info("no %s translation; falling back to %s", language, SOURCE_LANGUAGE)
-        language = SOURCE_LANGUAGE
+    asked = preferred(chosen)
+    language = next((code for code in asked if code in available()), SOURCE_LANGUAGE)
+    if language not in asked:
+        log.info("no catalogue for %s; falling back to %s", ", ".join(asked), SOURCE_LANGUAGE)
 
     ours = QTranslator(app)
     if not ours.load(f"{PREFIX}_{language}", str(TRANSLATION_DIR)):
         log.warning("could not load the %s translation from %s", language, TRANSLATION_DIR)
         return SOURCE_LANGUAGE
     app.installTranslator(ours)
+    _installed.append(ours)
 
     # Qt's own, for the strings Qt draws rather than we do. Missing is not
     # worth a word: the window is translated either way, and only Qt's own
@@ -135,6 +213,7 @@ def install(app: QCoreApplication) -> str:
     catalogue = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
     if theirs.load(QLocale(language), "qtbase", "_", catalogue):
         app.installTranslator(theirs)
+        _installed.append(theirs)
     else:
         log.debug("no Qt catalogue for %s in %s", language, catalogue)
 
@@ -151,5 +230,7 @@ __all__ = [
     "available",
     "current",
     "install",
+    "offered",
+    "preferred",
     "wanted",
 ]

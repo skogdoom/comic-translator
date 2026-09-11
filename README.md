@@ -565,11 +565,25 @@ the page while you work. This README covers the command line; that guide
 covers the window.
 
 **The window speaks your language if it has been translated into it**, and
-English otherwise. It follows the system's language on its own; set
-`COMICTRANS_LANGUAGE` to force one (`COMICTRANS_LANGUAGE=sv comictrans
-review`), which is how to look at a translation on a machine that is not set
-to it. Swedish ships; the guide the Help menu opens is picked the same way,
-with English behind it, so a window in a language the guide has not been
+English otherwise. Swedish ships. Three places say which, and they are asked
+in this order:
+
+- `COMICTRANS_LANGUAGE`, which forces one whatever anything else says
+  (`COMICTRANS_LANGUAGE=sv comictrans review`) — how to look at a
+  translation on a machine that is not set to it.
+- **Preferences > this window > language**, which is the one to use: it is
+  remembered, and it takes effect the next time the application starts.
+- The machine's own language settings, which on macOS includes the language
+  given to this application in System Settings > General > Language & Region.
+  The built bundle declares what it is translated into, so it appears there
+  rather than as "doesn't support additional languages".
+
+A language named in the first two and not translated falls back to English
+rather than to the next place down: naming one is an answer, and answering a
+different question would be worse than answering in English.
+
+The guide the Help menu opens is picked by the language the window actually
+got, with English behind it, so a window in a language the guide has not been
 written in yet still has help.
 
 This is the window only. The command line is not translated, neither is a

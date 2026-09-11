@@ -149,9 +149,18 @@ def run(plan_path: Path | None = None) -> int:
     # of what the window says lives in module-level constants, evaluated once
     # at import; a translator installed after that leaves them in English for
     # the life of the process. A test pins this ordering.
-    from . import translations
+    #
+    # The settings are read here rather than by the window, because the
+    # language is one of them and the window is what a language has to be
+    # chosen before. The same object is handed to the window below, so there
+    # is one of them and not two.
+    from PySide6.QtCore import QSettings
 
-    language = translations.install(app)
+    from . import translations
+    from .preferences import load_preferences
+
+    settings = QSettings(_ORGANIZATION, _APPLICATION)
+    language = translations.install(app, load_preferences(settings).language)
 
     # Set on the application rather than the window, so every window and
     # dialog this process opens inherits it. On macOS the Dock reads the
@@ -165,11 +174,9 @@ def run(plan_path: Path | None = None) -> int:
     # window to put an icon on.
     QApplication.setWindowIcon(icons.app_icon())
 
-    from PySide6.QtCore import QSettings
-
     from .main_window import MainWindow
 
-    window = MainWindow(plan_path, settings=QSettings(_ORGANIZATION, _APPLICATION))
+    window = MainWindow(plan_path, settings=settings)
     window.show()
     log.debug("window open in %s", language)
     return app.exec()

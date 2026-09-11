@@ -206,6 +206,33 @@ def test_the_bundle_is_named_so_that_the_application_menu_is(
     assert plist["CFBundleDisplayName"] == about.NAME
 
 
+def test_the_bundle_declares_every_language_it_is_translated_into(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without this key, macOS says the application has only one language.
+
+    System Settings > General > Language & Region decides what to offer for
+    an application from its bundle, not from what is inside it: the catalogues
+    can all be there and the picker still reads "doesn't support additional
+    languages" — which is what it did. ``.lproj`` directories are the usual
+    way to say it and are for strings macOS itself loads; these are Qt
+    catalogues loaded by Qt, which is the case ``CFBundleLocalizations`` is
+    for.
+
+    Built from what ships rather than written out, so adding a catalogue and
+    forgetting the spec cannot happen.
+    """
+    from comictrans.gui import translations
+
+    plist = _run_spec(monkeypatch)["BUNDLE"]["info_plist"]
+
+    assert plist["CFBundleDevelopmentRegion"] == translations.SOURCE_LANGUAGE
+    assert set(plist["CFBundleLocalizations"]) == {
+        translations.SOURCE_LANGUAGE,
+        *translations.available(),
+    }
+
+
 def test_the_bundle_is_not_built_as_a_background_application(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

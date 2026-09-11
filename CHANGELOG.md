@@ -22,13 +22,15 @@ for themselves. See **Build the application** in `README.md`.
   toggles of an eleven-megapixel page went from three renders and 34 seconds
   to one and 13.
 - **The window speaks Swedish.** Every word of the interface is translated
-  from a catalogue now, and the window follows the system's language, with
-  English behind it and `COMICTRANS_LANGUAGE` to force one. The guide the
-  Help menu opens follows the same language. The command line, the plan
-  file's content, and what the pipeline says when something goes wrong are
-  deliberately not translated. Swedish is the one translation that ships; the
-  English one holds nothing but plural forms, so a window says "1 page"
-  rather than "1 page(s)".
+  from a catalogue now. Pick a language in Preferences — it applies the next
+  time the application starts — or leave it to the machine, which on macOS
+  includes the per-application language in System Settings, since the bundle
+  now declares what it is translated into. `COMICTRANS_LANGUAGE` overrules
+  both. The guide the Help menu opens follows the same language. The command
+  line, the plan file's content, and what the pipeline says when something
+  goes wrong are deliberately not translated. Swedish is the one translation
+  that ships; the English one holds nothing but plural forms, so a window
+  says "1 page" rather than "1 page(s)".
 
 ## 1.0.0 — 2026-09-11
 

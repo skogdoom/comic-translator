@@ -218,6 +218,45 @@ def test_the_language_asked_for_is_the_environment_then_the_system(
     assert translations.wanted()  # whatever this machine says, it says something
 
 
+def test_three_places_say_which_language_and_they_are_asked_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The environment, then this window's own setting, then the machine's.
+
+    The middle one is the point: it is what makes the language switchable
+    from inside the window at all, and it has to beat the machine's answer
+    or choosing anything but the system language would do nothing.
+    """
+    monkeypatch.setenv(translations.LANGUAGE_ENV, "sv")
+    assert translations.preferred("pt") == ("sv",)
+
+    monkeypatch.delenv(translations.LANGUAGE_ENV)
+    assert translations.preferred("pt-BR") == ("pt",)
+
+    assert translations.preferred("") == translations.offered()
+    assert translations.preferred("   ") == translations.offered()
+
+
+def test_what_the_machine_asks_for_is_a_list_of_bare_codes() -> None:
+    """``uiLanguages``, not ``name``, is what carries a macOS per-app choice.
+
+    Choosing a language for this application in System Settings writes an
+    ``AppleLanguages`` list scoped to it; the system *locale* does not
+    change, so a window reading ``QLocale.system().name()`` alone would go on
+    speaking the Mac's language and the bundle's own setting would do
+    nothing.
+
+    What this can check is the list-building, which is why that half is a
+    function of its own: every machine the suite runs on is set to one
+    language, so the result of :func:`offered` looks the same either way.
+    """
+    assert translations._codes("sv-SE", "en_GB", "sv", "", "EN") == ("sv", "en")
+
+    codes = translations.offered()
+    assert codes, "the machine always asks for something"
+    assert len(set(codes)) == len(codes), codes
+
+
 def test_a_language_with_no_catalogue_falls_back_to_english(
     qapp: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -225,6 +264,45 @@ def test_a_language_with_no_catalogue_falls_back_to_english(
 
     assert translations.install(qapp) == translations.SOURCE_LANGUAGE
     assert translations.current() == translations.SOURCE_LANGUAGE
+
+
+def test_the_window_setting_is_what_actually_loads(
+    qapp: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end: a stored choice, through ``install``, to a Swedish word.
+
+    Installed and put back inside the test. ``install`` removes what it
+    installed last time, which is what makes that possible and what stops a
+    second call from stacking a language over the one before it.
+    """
+    from PySide6.QtCore import QCoreApplication
+
+    monkeypatch.delenv(translations.LANGUAGE_ENV, raising=False)
+    try:
+        assert translations.install(qapp, "sv") == "sv"
+        assert translations.current() == "sv"
+        assert QCoreApplication.translate("RunPanel", "Cancel") == "Avbryt"
+    finally:
+        monkeypatch.setenv(translations.LANGUAGE_ENV, translations.SOURCE_LANGUAGE)
+        translations.install(qapp)
+
+    assert QCoreApplication.translate("RunPanel", "Cancel") == "Cancel"
+
+
+def test_the_preferences_dialog_offers_what_ships_and_nothing_else(qapp: object) -> None:
+    """The field a language is chosen in, and the one row that is not one."""
+    from comictrans.gui.preferences_dialog import SYSTEM_LANGUAGE, PreferencesDialog
+
+    rows = PreferencesDialog.language_choices()
+
+    assert rows[0] == (SYSTEM_LANGUAGE, "")
+    assert [code for _label, code in rows[1:]] == list(translations.available())
+    # Named in themselves, which is the only naming that helps somebody who
+    # opened this dialog because the window is in a language they cannot read.
+    # "English" rather than the "American English" Qt names a bare ``en``
+    # locale: these catalogues are per language, not per country.
+    assert dict(rows)["Svenska"] == "sv"
+    assert dict(rows)["English"] == "en"
 
 
 def test_the_catalogues_that_ship_are_the_ones_compiled() -> None:

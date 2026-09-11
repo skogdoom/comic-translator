@@ -1,4 +1,4 @@
-"""Application defaults: what a *new* thing starts from, and nothing else.
+"""Application settings: what a *new* thing starts from, and the window itself.
 
 **A preference never overrides a plan value.** It fills in a blank when
 something is created, and does that only. A "default font" that quietly won
@@ -9,9 +9,10 @@ The header dialog edits *this* plan; this decides what a *new* one starts
 from, and the two must not blur into each other.
 
 That rule is why nothing here reaches an open document. Every field either
-seeds a new plan's header (the extract dialog's) or picks a run-wide setting
+seeds a new plan's header (the extract dialog's), picks a run-wide setting
 that is not part of a plan at all (the render dialog's erase strategy and
-output format, both of which a region's own ``erase`` still beats). None of
+output format, both of which a region's own ``erase`` still beats), or is
+about this window rather than any comic — which is only ``language``. None of
 them is written into a plan that already exists.
 
 No Qt. ``QSettings`` satisfies :class:`SettingsStore` structurally, so this
@@ -87,6 +88,16 @@ class Preferences:
 
     erase_strategy: str = DEFAULT_ERASE_STRATEGY
     image_format: str = ""
+
+    # -- the window itself ---------------------------------------------
+    language: str = ""
+    """The interface language, empty for whatever this machine asks for.
+
+    A bare code — ``sv`` — matching a catalogue in
+    ``resources/translations/``. Not validated here, which would mean this
+    module knowing what ships: the dialog offers only what does, and
+    ``gui.translations`` falls back to English for anything it cannot load.
+    """
 
     # -- where the file dialogs start ----------------------------------
     last_directory: str = ""
