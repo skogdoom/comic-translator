@@ -39,7 +39,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPalette, QPixmap
 
 log = logging.getLogger(__name__)
@@ -87,15 +86,29 @@ def available() -> frozenset[str]:
 
 
 def _tinted(source: QPixmap, color: QColor) -> QPixmap:
-    """The drawing's shape, in one colour. Alpha is what carries the line."""
-    out = QImage(source.size(), QImage.Format.Format_ARGB32_Premultiplied)
-    out.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(out)
-    painter.drawPixmap(0, 0, source)
+    """The drawing's shape, in one colour. Alpha is what carries the line.
+
+    Painted into the drawing's own image rather than into a blank one of the
+    same pixel size. The difference shows on a Retina screen and on no other
+    kind, which is why this looked perfect everywhere it was tested.
+
+    Measured, on a 2x screen: ``QIcon.pixmap(32, 32)`` hands back 64x64
+    device pixels marked ratio 2, and ``drawPixmap(0, 0, …)`` draws a pixmap
+    at its *device-independent* size — 32x32 — into the corner of a 64x64
+    image marked ratio 1. The icon that came out was a quarter-size drawing
+    in the top-left of a full-size pixmap, so the window drew it at half
+    scale, up and to the left: measured in a real toolbar at 14 points of
+    ink where 27 was asked for, 7.5 points off the button's middle in both
+    directions. Exactly what a person sees as "small and off centre".
+    """
+    image = source.toImage().convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+    painter = QPainter(image)
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(out.rect(), color)
+    painter.fillRect(image.rect(), color)
     painter.end()
-    return QPixmap.fromImage(out)
+    # Both conversions carry the ratio across on their own — measured, and
+    # held by a test rather than by a line here setting it again.
+    return QPixmap.fromImage(image)
 
 
 def icon(name: str, color: QColor | None = None) -> QIcon:

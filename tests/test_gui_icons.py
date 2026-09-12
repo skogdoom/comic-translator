@@ -68,13 +68,28 @@ def test_the_drawings_render_at_every_size_the_window_asks_for(qapp: object) -> 
     renders empty rather than raising, and one empty icon is as invisible
     from the code as a missing one.
     """
+    ratio = _ratio()
     for name in sorted(icons.available()):
         icon = icons.icon(name, QColor(0, 0, 0))
-        assert icon.availableSizes() == [QSize(size, size) for size in icons.SIZES], name
+        # Baked at every size in points; stored, and reported back, in
+        # pixels. On a 2x screen those are different numbers for the same
+        # icon — which is the whole of the bug this file now guards.
+        assert icon.availableSizes() == [
+            QSize(round(size * ratio), round(size * ratio)) for size in icons.SIZES
+        ], name
         for size in icons.SIZES:
             pixmap = icon.pixmap(size, size)
             assert not pixmap.isNull(), f"{name} at {size}px is a null pixmap"
+            assert pixmap.deviceIndependentSize().width() == size, name
         assert _opaque_colors(icon), f"{name} renders nothing at 24px"
+
+
+def _ratio() -> float:
+    """What this screen multiplies points by to get pixels."""
+    application = QApplication.instance()
+    assert isinstance(application, QApplication)
+    screen = application.primaryScreen()
+    return screen.devicePixelRatio() if screen is not None else 1.0
 
 
 def _ink_box(name: str, size: int = 64) -> tuple[float, float, float, float]:
@@ -83,17 +98,20 @@ def _ink_box(name: str, size: int = 64) -> tuple[float, float, float, float]:
     Measured off the pixmap the window actually gets rather than off the
     file, so the answer includes everything between the two: the stroke, the
     rasteriser, and the tint. Grid units rather than pixels so the numbers
-    read as the drawing was laid out.
+    read as the drawing was laid out — and taken off the pixmap's real pixel
+    count rather than the size asked for, which are the same number only on
+    a screen that is not Retina.
     """
-    image = icons.icon(name, QColor(0, 0, 0)).pixmap(size, size).toImage()
-    left, top, right, bottom = size, size, -1, -1
-    for y in range(size):
-        for x in range(size):
+    pixmap = icons.icon(name, QColor(0, 0, 0)).pixmap(size, size)
+    image = pixmap.toImage()
+    left, top, right, bottom = image.width(), image.height(), -1, -1
+    for y in range(image.height()):
+        for x in range(image.width()):
             if image.pixelColor(x, y).alpha():
                 left, right = min(left, x), max(right, x)
                 top, bottom = min(top, y), max(bottom, y)
     assert right >= 0, f"{name} drew nothing"
-    unit = icons.GRID / size
+    unit = icons.GRID / image.width()
     return (
         (right - left + 1) * unit,
         (bottom - top + 1) * unit,
@@ -146,6 +164,48 @@ def test_a_drawing_comes_out_in_the_colour_it_was_asked_for(qapp: object) -> Non
         assert {(c.red(), c.green(), c.blue()) for c in painted} == {
             (asked.red(), asked.green(), asked.blue())
         }
+
+
+def test_tinting_keeps_the_drawing_the_size_the_screen_asked_for(qapp: object) -> None:
+    """The Retina bug, in the one function it lived in.
+
+    Measured on a 2x screen: ``QIcon.pixmap(32, 32)`` hands back 64x64
+    pixels marked ratio 2, and ``drawPixmap(0, 0, …)`` draws a pixmap at its
+    *device-independent* size — 32x32 — so tinting it into a blank 64x64
+    image left a quarter-size drawing in the top-left corner of a full-size
+    pixmap. The window then drew that at half scale, up and to the left: in
+    a real toolbar, 14 points of ink where 27 were asked for, 7.5 points off
+    the button's middle in both directions.
+
+    Written against a pixmap made ratio 2 by hand rather than against a
+    screen, so it asks the same question on every machine the suite runs on
+    — which is the point, since the machine it was found on is the only one
+    that showed it.
+    """
+    from PySide6.QtGui import QPixmap
+
+    source = QIcon(str(icons.ICON_DIR / "open.svg")).pixmap(32, 32)
+    source.setDevicePixelRatio(2.0)
+    assert isinstance(source, QPixmap)
+
+    tinted = icons._tinted(source, QColor(0, 0, 0))
+
+    assert tinted.size() == source.size(), "the pixels the screen asked for"
+    assert tinted.devicePixelRatio() == source.devicePixelRatio(), "and what they measure"
+
+    image = tinted.toImage()
+    left, top, right, bottom = image.width(), image.height(), -1, -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha():
+                left, right = min(left, x), max(right, x)
+                top, bottom = min(top, y), max(bottom, y)
+    assert right >= 0, "nothing was drawn"
+    # The drawing fills the pixmap it was rendered into, rather than sitting
+    # in a corner of it: its middle is the pixmap's middle.
+    assert abs((left + right + 1) / 2 - image.width() / 2) <= 1
+    assert abs((top + bottom + 1) / 2 - image.height() / 2) <= 1
+    assert (right - left + 1) > image.width() * 0.6, "a quarter-size drawing in a full-size pixmap"
 
 
 def test_the_same_name_and_colour_are_only_built_once(qapp: object) -> None:

@@ -950,8 +950,20 @@ this project's own work under its own licence, so there is nothing extra to
 record.
 
 `icons.py` paints the tint through the drawing's alpha
-(`CompositionMode_SourceIn`), so the files are shape only and the colour
-comes from the palette when the icon is built. That is what lets one set
+(`CompositionMode_SourceIn`), **into the drawing's own image** rather than
+into a blank one of the same pixel size, and that distinction is the whole of
+a bug that only a Retina screen could show. Measured on a 2x Mac:
+`QIcon.pixmap(32, 32)` hands back 64x64 device pixels marked ratio 2, and
+`drawPixmap(0, 0, …)` draws a pixmap at its *device-independent* size — 32x32
+— so tinting through a blank 64x64 image marked ratio 1 left a quarter-size
+drawing in its top-left corner. The window then drew that at half scale, up
+and to the left: 14 points of ink in a 42-point button where 27 were asked
+for, 7.5 points off the middle in both directions, which is precisely what a
+person sees as icons that are too small and do not line up. Nothing about it
+is visible at ratio 1, which is every machine this suite runs on, so the
+tests now ask a pixmap what it measures in points rather than counting its
+pixels, and one of them tints a hand-made ratio-2 pixmap and checks the
+drawing still fills it. That is what lets one set
 follow a light window and a dark one: `main_window.changeEvent` drops the
 cache and rebuilds on `PaletteChange`, rather than a second set of files
 being kept in step by hand. A name with no file behind it costs the picture
@@ -984,14 +996,13 @@ window or off it. Qt draws a grip for a movable one and indents the first
 button behind it, nine pixels of the left edge the row is meant to start at.
 
 `tools/inspect_toolbar.py` is a diagnostic rather than part of the
-application, and it exists because a screenshot cannot tell the remaining
-explanations apart. It prints the toolbar's rectangle, each button's
-rectangle, and where the drawing's ink lands inside each button — that last
-one being the question: an ink offset near zero means each button centres its
-own drawing and the row as a whole is misplaced, and a consistent offset
-means the style is putting the icon somewhere other than the middle, which no
-amount of moving the row would fix. On Fusion, measured, every offset is
-zero.
+application, and it is what found that. A screenshot could not tell the
+candidate explanations apart; the numbers could. It prints the toolbar's
+rectangle, each button's rectangle, and where the drawing's ink lands inside
+each button — that last column being the question. The answer it brought back
+from the Mac was every button 42x42 with 14 points of ink at exactly
+(-7.5, -7.5), the same for all fourteen, which is not a layout going wrong in
+fourteen places but one drawing step going wrong once.
 
 **The application icon is a different kind of drawing, and is kept
 differently.** It is full colour and meant to be looked at, where the
