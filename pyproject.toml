@@ -19,6 +19,12 @@ dependencies = [
     # comictrans.ocr.vision is import-guarded so the package still works.
     "pyobjc-framework-Vision>=10.2; sys_platform == 'darwin'",
     "pyobjc-framework-Quartz>=10.2; sys_platform == 'darwin'",
+    # Archive and PDF input. pypdf reads a scan's embedded page images out
+    # of a PDF without rasterising anything; rarfile drives an external
+    # unrar, which is never bundled — see "CBR" in README.md. Both are pure
+    # Python, small, and licensed BSD and ISC, which an MIT project can use.
+    "pypdf>=5.0",
+    "rarfile>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -76,7 +82,7 @@ warn_unreachable = true
 
 # Third-party packages without usable type information.
 [[tool.mypy.overrides]]
-module = ["ruamel.*", "pyphen.*"]
+module = ["ruamel.*", "pyphen.*", "rarfile.*"]
 ignore_missing_imports = true
 
 # pyobjc and pytesseract are absent on Linux and stubbed on macOS. Skipping

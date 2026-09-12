@@ -44,6 +44,10 @@ regions they do have, and the plan is a version 2 one from then on.
 - `planfile` never imports Pillow, OpenCV, or pyobjc.
 - `cli`, `extract` and `validate` are the only modules that know about both
   sides.
+- `sources` turns containers into images, so it imports `imaging` and not the
+  other way round. The one exception is a function-local import inside
+  `collect_inputs`, so that a `.cbz` handed to a pass that reads folders is
+  told what to do with it rather than shown a list of extensions.
 
 That is not tidiness for its own sake. It means the review GUI's
 `gui.document` — the module that loads a plan, tracks edits, and saves —
@@ -59,6 +63,9 @@ boxes.
 load_page(path: Path) -> PageImage                  # read-only, captures dpi/icc
 page_size(path: Path) -> (int, int) | None          # header only, decodes nothing
 collect_inputs(target: Path) -> (list[Path], list[(Path, reason)])
+
+# sources — a chapter that arrived as one file, turned into pages
+unpack(source: Path, into: Path | None) -> UnpackReport
 
 # ocr — one adapter per backend
 class TextRecognizer(Protocol):
@@ -482,6 +489,65 @@ chapter cheap enough to do at all.
 translation fits, whether it is still the source text, whether two polygons
 overlap. Those are answers `apply` and `review` already give, and they need
 the render this exists to run before.
+
+## Chapters that arrive as one file
+
+CBZ, CBR and PDF are **unpacked into a directory beside the file** before
+anything reads them, and nothing downstream knows they existed.
+
+That is the whole design, and the alternative is what makes it one. A plan
+file names its pages relative to itself; `apply.source_for`, the review
+window's `PlanDocument.source_path` and `validate` all resolve them that way,
+and every one of them hashes the file to prove it is still the page the
+polygons were measured on. Reading pages out of a container on demand would
+have to be threaded through all three, and the hash check has no meaning
+against a stream that is regenerated each time it is asked for. Unpacking
+costs the disk twice and changes nothing: what comes out is a folder of
+images, which is what this tool has always read.
+
+The unpacked pages are **outputs of this stage, not sources being modified**.
+The container is opened read-only like every other source, and the folder it
+becomes is the source tree from then on — which is what `--debug-dir` is
+checked against, before the folder exists.
+
+**Order is carried in the filenames.** Archive entries sort in natural
+filename order, PDF pages come in page order, and each page is written with a
+zero-padded index in front of its name. A reader sorts by name and so does
+`collect_inputs`, so the order the chapter is meant to be read in has to
+survive as a name rather than as a list — and the prefix also settles the two
+`001.png` in two folders that a flat directory cannot otherwise hold.
+
+**Unpacking twice writes nothing the second time.** A page already there byte
+for byte is reused; one holding something else stops the run. Re-running
+extract over a chapter — which `--merge` exists to do — therefore costs the
+reads and not the writes, and nobody's file is overwritten on the strength of
+a filename match.
+
+**A PDF is read as a scan, not rendered as a document.** One photograph per
+page is what a scanned comic is, so the page's image is lifted out byte for
+byte: lossless, no rasteriser, no guess at a DPI, and no resampling of the
+pixels a polygon is about to be measured against. The cost is that pages
+which are not one photograph — a born-digital page of drawing instructions,
+a page with several images on it, a page carrying a rotation the reader is
+meant to apply — cannot be read at all, and each is reported rather than
+approximated. That is the same trade the rest of the tool makes: a page it
+cannot handle is named, not mangled.
+
+**The RAR reader is a licence decision before it is a technical one.**
+`unrar`'s licence is not OSI-free, and bundling it would put someone else's
+terms on an MIT project, so `rarfile` drives whichever tool the machine
+already has and `COMICTRANS_UNRAR` names one that is somewhere unusual. The
+check happens before the output directory is made, so a machine without one
+gets a refusal and no half-unpacked chapter. It is the only external binary
+this tool has ever needed, and the only one it is ever likely to: milestone 8
+needs the same kind of decision for writing RAR, where the tool that can do
+it is paid rather than merely unfree.
+
+**The window still takes a folder.** Unpacking from the extract dialog means
+a file picker, a container-aware page count on every keystroke, and a
+progress bar for the unpack — a GUI milestone rather than a pipeline one, and
+the sidecar decision means nothing in the window has to change for a chapter
+to be reviewable once `extract` has run on it.
 
 ## Re-running extract
 

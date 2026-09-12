@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -448,3 +449,115 @@ def test_validate_writes_nothing_at_all(page_dir: Path, font_dir: Path, tmp_path
 
     assert main(["validate", str(plan_path)]) == EXIT_OK
     assert {path: path.stat().st_mtime_ns for path in sorted(page_dir.iterdir())} == before
+
+
+@pytest.fixture
+def chapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """One page of comic in a .cbz, and a recogniser that knows its new name.
+
+    The page is keyed by what it is called once unpacked, which is the whole
+    point of the fixture: what the pipeline reads is the folder, not the
+    archive.
+    """
+    array = make_page_array(
+        (600, 800),
+        ART_DARK,
+        [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, BOXES)],
+    )
+    raw = save_page(array, tmp_path / "page1.png")
+    archive = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("Chapter 1/page1.png", raw.read_bytes())
+    raw.unlink()
+    recognizer = FakeRecognizer({"001-page1.png": lines_for(BOXES, ["NON CI POSSO", "CREDERE!"])})
+    monkeypatch.setattr("comictrans.cli.get_recognizer", lambda config: recognizer)
+    return archive
+
+
+def test_extract_unpacks_a_chapter_and_the_rest_of_the_tool_reads_the_folder(
+    chapter: Path, font_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["extract", str(chapter)]) == EXIT_OK
+    assert "unpacked chapter.cbz" in capsys.readouterr().out
+
+    pages = tmp_path / "chapter-pages"
+    plan_path = pages / "comic-plan.yaml"
+    assert (pages / "001-page1.png").is_file()
+    assert plan_path.is_file()
+    assert chapter.is_file(), "the chapter file itself is a source and is never written to"
+
+    # The point of unpacking rather than reading on demand: every pass after
+    # extract is looking at an ordinary folder of images.
+    assert main(["validate", str(plan_path)]) == EXIT_OK
+
+
+def test_a_second_extract_reuses_the_pages_already_unpacked(
+    chapter: Path, font_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["extract", str(chapter)]) == EXIT_OK
+    page = tmp_path / "chapter-pages" / "001-page1.png"
+    stamp = page.stat().st_mtime_ns
+
+    assert main(["extract", str(chapter), "--force"]) == EXIT_OK
+
+    assert page.stat().st_mtime_ns == stamp
+    assert "already there:     1" in capsys.readouterr().out
+
+
+def test_unpack_dir_decides_where_the_pages_land(
+    chapter: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "unpacked"
+
+    assert main(["extract", str(chapter), "--unpack-dir", str(elsewhere)]) == EXIT_OK
+
+    assert (elsewhere / "001-page1.png").is_file()
+    assert (elsewhere / "comic-plan.yaml").is_file()
+    assert not (tmp_path / "chapter-pages").exists()
+
+
+def test_unpack_dir_means_nothing_for_a_folder_of_images(
+    page_dir: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    assert main(["extract", str(page_dir), "--unpack-dir", str(tmp_path / "out")]) == EXIT_FATAL
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_debug_dir_inside_the_pages_a_chapter_would_unpack_into_is_refused(
+    chapter: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    # The source tree a chapter file has is the folder it unpacks into, which
+    # is somewhere else entirely from the folder the file itself sits in.
+    moved = tmp_path / "chapters" / "chapter.cbz"
+    moved.parent.mkdir()
+    chapter.rename(moved)
+    unpacked = tmp_path / "unpacked"
+
+    assert (
+        main(
+            [
+                "extract",
+                str(moved),
+                "--unpack-dir",
+                str(unpacked),
+                "--debug-dir",
+                str(unpacked / "debug"),
+            ]
+        )
+        == EXIT_FATAL
+    )
+
+    assert not unpacked.exists(), "refused before anything was unpacked"
+
+
+def test_a_run_that_cannot_start_leaves_no_pages_behind(
+    chapter: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Unpacking is the first thing extract writes, so it goes after the
+    # checks that can refuse the run outright.
+    monkeypatch.setenv("COMICTRANS_FONT_PATH", str(tmp_path / "nowhere"))
+    monkeypatch.setattr("comictrans.fonts.SEARCH_DIRS", ())
+
+    assert main(["extract", str(chapter)]) == EXIT_FATAL
+
+    assert not (tmp_path / "chapter-pages").exists()

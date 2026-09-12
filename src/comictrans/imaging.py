@@ -155,6 +155,19 @@ def collect_inputs(target: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
 
     if target.is_file():
         if target.suffix.lower() not in IMAGE_SUFFIXES:
+            # Imported here rather than at the top because sources imports
+            # this module: it reads containers into images, which is the
+            # direction the dependency belongs in. This is the one place that
+            # needs to look back the other way, to tell somebody holding a
+            # chapter file what to do with it instead of listing extensions.
+            from .sources import is_container
+
+            if is_container(target):
+                raise InputError(
+                    f"{target.name} is a chapter file, not an image. "
+                    "`comictrans extract` unpacks one into a folder of pages "
+                    "beside it; every pass after that reads the folder."
+                )
             raise InputError(
                 f"unsupported input file type {target.suffix!r}; "
                 f"expected one of {', '.join(sorted(IMAGE_SUFFIXES))}"

@@ -16,9 +16,14 @@ $EDITOR pages/comic-plan.yaml        # fill in the translation: fields
 comictrans apply pages/comic-plan.yaml --output out/
 ```
 
+A chapter that arrives as one file works the same way: `comictrans extract
+chapter.cbz` unpacks it into `chapter-pages/` beside it and reads that, so
+everything after the first command is the three lines above. CBZ, CBR and
+PDF — see **Chapter files**.
+
 **Source images are never modified, moved, or written to.** They are opened
-read-only, and nothing but `--debug-dir` and (in milestone 2) `--output` is
-ever written.
+read-only, and the only things ever written are `--debug-dir`, `--output`,
+the folder a chapter file is unpacked into, and the plan file itself.
 
 ## Disclaimer
 
@@ -47,8 +52,9 @@ it, for the moment before a long run.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
-Not in it: archive formats. A chapter is a folder of images going in and a
-folder of images coming out; CBZ, CBR and PDF are neither read nor written.
+Chapters can arrive as one file: `extract` reads CBZ, CBR and PDF by
+unpacking them into a folder of pages first. Nothing is written that way
+yet — a chapter comes out as a folder of images, not as an archive or a PDF.
 `docs/ROADMAP.md` covers that and everything else planned, in the order it is
 worth building, and `known-bugs.md` records what is known to be wrong and left
 alone on purpose.
@@ -62,6 +68,9 @@ alone on purpose.
 - Tesseract as an optional fallback: `uv sync --extra tesseract` plus a
   `tesseract` binary with language data for your source language
 - PySide6 for the `review` GUI, optional: `uv sync --extra gui`
+- For CBR input only, a RAR tool already on the machine — `unrar`, `unar`,
+  `bsdtar` or `7z`. None of them ships with comictrans, and the reason is in
+  **Chapter files**. CBZ and PDF need nothing beyond the install below.
 
 Everything runs locally. There are no network calls anywhere in the pipeline —
 translation is manual by design.
@@ -129,14 +138,67 @@ rather than refusing.
 uv run comictrans extract pages/ --debug-dir /tmp/comictrans-debug
 ```
 
-Takes a single image or a directory. Directory scans are non-recursive, accept
-`.png .jpg .jpeg .tif .tiff`, and sort in natural filename order, so `page2`
-comes before `page10`. Anything else is skipped and logged.
+Takes a single image, a directory, or a chapter file (see **Chapter files**
+below). Directory scans are non-recursive, accept `.png .jpg .jpeg .tif
+.tiff`, and sort in natural filename order, so `page2` comes before `page10`.
+Anything else is skipped and logged.
 
 The plan file defaults to `<dir>/comic-plan.yaml`, or `<stem>-plan.yaml` beside
 a single input file. `extract` refuses to overwrite an existing plan file —
 it may hold hours of translation — unless you pass `--force` to discard it or
 `--merge` to keep it.
+
+### Chapter files
+
+```
+uv run comictrans extract chapter.cbz
+```
+
+`.cbz`, `.cbr` and `.pdf` are unpacked into a folder of pages beside the file
+— `chapter.cbz` becomes `chapter-pages/` — and everything from there on reads
+that folder: the plan lands in it, `apply` and `review` open it, and the
+per-page hash check works the way it does for any other chapter. `--unpack-dir`
+puts the pages somewhere else.
+
+Unpacking rather than reading pages out of the file on demand is the decision
+everything else here follows from. A plan names its pages relative to itself
+and hashes each one to prove nothing has moved since; reading from inside a
+container at render time would break that in three places to save a folder
+nobody had asked to be rid of. The container itself is a source like any
+other: opened read-only, never written to.
+
+Pages come out in the order they go in — archive entries in natural filename
+order, PDF pages in page order — each written with a zero-padded index in
+front of its name (`001-page1.png`). That way the folder sorts the way the
+chapter reads even when the names inside do not, and two pages called
+`001.png` in different folders cannot collide.
+
+Unpacking the same chapter twice writes nothing the second time: a page
+already there byte for byte is left alone. A file of that name holding
+something *else* stops the run rather than being overwritten — it is somebody
+else's, or an older chapter's, and picking for you is not this tool's job.
+Whatever is not a page — `ComicInfo.xml`, `.DS_Store`, a Mac's `__MACOSX`
+resource forks — is named in the summary and left where it is.
+
+**CBZ needs nothing**; it is a zip. **PDF needs nothing either**: a scan is
+one photograph per page, so the page's own image is lifted out exactly as the
+PDF stores it — a JPEG comes out the JPEG that went in, nothing is rasterised
+and nothing is resampled. What that cannot do is invent a page out of drawing
+instructions, so a born-digital PDF page, a page with several images on it,
+and a page the reader is told to turn are each reported and skipped rather
+than guessed at.
+
+**CBR needs a RAR tool, and comictrans will never ship one.** `unrar`'s
+licence is not OSI-free and this is an MIT project, so bundling it would put
+somebody else's terms on the whole thing. Instead it drives whatever is
+already on your machine — `unrar`, `unar`, `bsdtar` or `7z`, any of which
+Homebrew has — and `COMICTRANS_UNRAR` names one that lives somewhere the
+`PATH` does not reach. With none of them installed, CBR input is unavailable
+and says so before anything is written, rather than failing part-way through
+a chapter.
+
+The `review` window still asks for a folder of pages, not a chapter file. Run
+`extract` on the chapter first and open the plan it writes.
 
 ### Re-extracting
 
@@ -854,8 +916,9 @@ windowing libraries).
 
 ## Out of scope
 
-Sound effects in artwork, hand-lettered SFX, rotated or vertical text, CBZ and
-PDF input (milestone 3), and preserving italic emphasis from the source.
+Sound effects in artwork, hand-lettered SFX, rotated or vertical text, CBZ,
+CBR and PDF *output* (milestones 8 and 6 — reading them works), and
+preserving italic emphasis from the source.
 
 ## Development
 
