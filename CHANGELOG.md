@@ -39,6 +39,17 @@ for themselves. See **Build the application** in `README.md`.
   much as 2 off centre. The bar's height is unchanged, and it no longer
   carries a drag grip, which no Mac toolbar does.
 
+- **Rendering a page costs a fraction of what it did.** Erasing a region used
+  to compute a colour distance for every pixel of the page to decide a mask a
+  balloon wide: measured on an eleven-megapixel page, 386MB and 1.3 seconds
+  for a region covering 3.4% of it. It now works inside a window around the
+  region — 37MB, of which 33MB is the copy of the page it hands back, and
+  0.083 seconds. Ten regions of that page took 13.1 seconds and take 0.8. The
+  pages that come out are identical, which was checked against every fixture,
+  four regions on each, all four erase strategies, hashed before and after.
+  `apply` gets this as much as the preview does; they call the same function,
+  which is why they still do.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings
