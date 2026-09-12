@@ -3985,13 +3985,13 @@ def test_one_button_opens_whichever_kind_the_radios_say(qapp: object) -> None:
     dialog = ExtractDialog(None, None)
 
     assert dialog._folder_choice.isChecked(), "the usual case, by a long way"
-    assert not dialog._image_choice.isChecked()
+    assert not dialog._file_choice.isChecked()
 
     opened: list[str] = []
     dialog._folder_choice.setChecked(True)
     with monkeypatched_panels(opened):
         dialog._on_choose_source()
-    dialog._image_choice.setChecked(True)
+    dialog._file_choice.setChecked(True)
     with monkeypatched_panels(opened):
         dialog._on_choose_source()
 
@@ -4003,7 +4003,7 @@ def test_either_kind_of_input_is_accepted_whatever_the_radios_say(
 ) -> None:
     """The radios steer the button; the path itself decides what is accepted."""
     dialog = ExtractDialog(None, None)
-    dialog._image_choice.setChecked(True)
+    dialog._file_choice.setChecked(True)
 
     dialog._source.setText(str(loose_pages))
     assert dialog.refusal() == ""
@@ -4610,7 +4610,13 @@ def chapter_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return chapter
 
 
-def test_the_chapter_radio_opens_a_panel_that_offers_chapter_files(qapp: object) -> None:
+def test_the_file_panel_offers_pages_and_chapters_alike(qapp: object) -> None:
+    """One panel for both, because both are one file to open.
+
+    And "All files" on the end of it, for the chapter saved under a name
+    nobody uses: the run reads what a file is rather than what it is called,
+    and a file panel can only filter on the name.
+    """
     dialog = ExtractDialog(None, None)
     filters: list[str] = []
 
@@ -4620,25 +4626,24 @@ def test_the_chapter_radio_opens_a_panel_that_offers_chapter_files(qapp: object)
             "getOpenFileName",
             lambda *args, **kwargs: (filters.append(args[3]), "", "")[1:],
         )
-        dialog._chapter_choice.setChecked(True)
-        dialog._on_choose_source()
-        dialog._image_choice.setChecked(True)
+        dialog._file_choice.setChecked(True)
         dialog._on_choose_source()
 
-    chapters, images = filters
-    assert "*.cbz" in chapters and "*.cbr" in chapters and "*.pdf" in chapters
-    assert "*.png" in images and "*.cbz" not in images
+    offered = filters[0]
+    for suffix in (".cbz", ".cbr", ".pdf", ".png", ".jpg", ".tiff"):
+        assert f"*{suffix}" in offered, suffix
+    assert "All files (*)" in offered
 
 
 def test_nothing_in_the_row_of_choices_is_clipped_in_any_language_that_ships(
     qapp: object, tmp_path: Path
 ) -> None:
-    """Three radios and a sentence beside them do not fit on one line.
+    """Radios and a sentence beside them do not fit on one line.
 
     Measured before it was fixed: 571pt of content in a row 406pt wide, which
-    Qt pays for by squeezing every widget in the row equally — each radio
-    clipped mid-word to make room for a label. The count now has a line of
-    its own and wraps, so what the radios need is all the row has to hold.
+    Qt spends by squeezing every widget in the row equally — each radio
+    clipped mid-word to make room for a label. The count has a line of its
+    own now, so what the radios need is all that row has to hold.
     """
     from PySide6.QtCore import QTranslator
 
@@ -4660,21 +4665,21 @@ def test_nothing_in_the_row_of_choices_is_clipped_in_any_language_that_ships(
             dialog._source.setText(str(archive))
             QApplication.processEvents()
             assert dialog._count.text(), "the state this is about: a chapter, and a hint beside it"
-            for widget in (
-                dialog._folder_choice,
-                dialog._chapter_choice,
-                dialog._image_choice,
-            ):
+            for widget in (dialog._folder_choice, dialog._file_choice):
                 assert widget.width() >= widget.sizeHint().width(), (
                     f"{code or 'en'}: {widget.text()!r} is clipped"
                 )
 
-            # And a longer sentence than any of these costs a second line
-            # rather than a wider dialog: measured, an unwrapped label of
-            # this length takes the dialog's minimum width from 508 to 1027.
+            # And whatever it says, in whatever language, it stays one line
+            # and asks for no width: a wrapped label reports a height from a
+            # guess at its own shape rather than from the width it is given,
+            # so the row came out a line short and the second line was drawn
+            # under the row below.
+            one_line = dialog._count.fontMetrics().height()
             was = dialog.minimumSizeHint().width()
             dialog._count.setText("x " * 80)
             QApplication.processEvents()
+            assert dialog._count.height() == one_line
             assert dialog.minimumSizeHint().width() == was
 
             dialog.close()

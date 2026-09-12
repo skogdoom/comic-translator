@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -121,46 +122,50 @@ class ExtractDialog(QDialog):
         someone typed is not a default to overwrite.
         """
 
-        # One button, because it answers one question — which pages? — and
-        # the two kinds of answer are the same decision made at two
-        # granularities. It is a menu rather than a single panel because Qt
-        # has no file dialog that accepts either: `Directory` mode refuses a
-        # file and `ExistingFile` refuses a directory, both measured. The one
-        # way to get a panel that takes both is to override `accept()`, which
-        # forces `DontUseNativeDialog` — a Qt-drawn Open panel on macOS, and
-        # the only non-native one in an application whose every other file
-        # dialog is the system's. The extra click is the cheaper cost.
-        # One question — which pages? — so one button. Which of the two kinds
-        # of answer it will ask for is a pair of radio buttons beside it,
-        # rather than a menu on the button: the mode is then visible without
-        # clicking anything, and browsing stays one click. Qt has no file
-        # dialog that accepts either kind (measured: `FileMode.Directory`
-        # refuses a file, `ExistingFile` refuses a directory), and the one
-        # route to a panel that does forces `DontUseNativeDialog` — a
-        # Qt-drawn Open panel on macOS, and the only non-native one in an
-        # application whose every other file dialog is the system's.
+        # One question — which pages? — so one button. Which kind of thing it
+        # will ask for is a pair of radio buttons beside it, rather than a
+        # menu on the button: the mode is then visible without clicking
+        # anything, and browsing stays one click. Qt has no file dialog that
+        # accepts either kind (measured: `FileMode.Directory` refuses a file,
+        # `ExistingFile` refuses a directory), and the one route to a panel
+        # that does forces `DontUseNativeDialog` — a Qt-drawn Open panel on
+        # macOS, and the only non-native one in an application whose every
+        # other file dialog is the system's.
+        #
+        # A folder or a file, and not a third for chapter files: a chapter
+        # file and a page are both one file to open, the panel offers both
+        # at once, and what a file turns out to be is read out of it rather
+        # than asked about here — see `sources.chapter_kind`. Asking twice
+        # would be asking a question the answer is already in.
         self._count = QLabel()
-        # Wrapped, and on a line of its own below the radios rather than
-        # beside them. What it says is a sentence in some states ("pages are
-        # counted as it is unpacked") and two words in others, and a row
-        # holding both it and three radio buttons cannot be laid out for
-        # every language: measured at 571pt of content in an English window
+        # On a line of its own below the radios rather than beside them: a
+        # row holding both it and three radio buttons cannot be laid out for
+        # every language, measured at 571pt of content in an English window
         # 406pt wide, which Qt spends by squeezing every widget in the row
-        # equally — three radios clipped mid-word to pay for a label. Wrap
-        # also drops its minimum width to nothing, so a longer translation
-        # costs a second line here and never a letter of anything else.
-        self._count.setWordWrap(True)
+        # equally — three radios clipped mid-word to pay for a label.
+        #
+        # One line, and it asks for no width at all. Wrapping this was the
+        # obvious answer and the wrong one: a wrapped QLabel reports a size
+        # hint from a guess at its own shape rather than from the width it is
+        # given, so a form row is laid out a line shorter than the text turns
+        # out to need and the second line is drawn under the row below. An
+        # Ignored width policy is the other half — whatever this says, and in
+        # whatever language, it can neither widen the dialog nor take space
+        # from anything. The text is kept short enough to fit instead.
+        self._count.setWordWrap(False)
+        self._count.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._quieten(self._count)
 
         self._source = QLineEdit()
         self._folder_choice = QRadioButton(self.tr("a folder of pages"))
-        self._chapter_choice = QRadioButton(self.tr("a chapter file"))
-        self._image_choice = QRadioButton(self.tr("a single image"))
+        self._file_choice = QRadioButton(self.tr("a file"))
+        self._file_choice.setToolTip(
+            self.tr("One page, or a whole chapter as a .cbz, .cbr or .pdf.")
+        )
         self._folder_choice.setChecked(True)  # the usual case, by a long way
         self._source_kind = QButtonGroup(self)
         self._source_kind.addButton(self._folder_choice)
-        self._source_kind.addButton(self._chapter_choice)
-        self._source_kind.addButton(self._image_choice)
+        self._source_kind.addButton(self._file_choice)
         choose_source = QPushButton(self.tr("Open…"))
         choose_source.setAutoDefault(False)
         choose_source.clicked.connect(self._on_choose_source)
@@ -175,8 +180,7 @@ class ExtractDialog(QDialog):
         kind_row = QHBoxLayout()
         kind_row.setContentsMargins(0, 0, 0, 0)
         kind_row.addWidget(self._folder_choice)
-        kind_row.addWidget(self._chapter_choice)
-        kind_row.addWidget(self._image_choice)
+        kind_row.addWidget(self._file_choice)
         kind_row.addStretch(1)
         kind_widget = QWidget()
         kind_widget.setLayout(kind_row)
@@ -283,13 +287,17 @@ class ExtractDialog(QDialog):
         start = str(self._start_in)
         if self._folder_choice.isChecked():
             name = QFileDialog.getExistingDirectory(self, "Pages to Read", start)
-        elif self._chapter_choice.isChecked():
-            name, _filter = QFileDialog.getOpenFileName(
-                self, "Chapter to Read", start, f"Chapters ({_patterns(CONTAINER_SUFFIXES)})"
-            )
         else:
+            # One panel for both, because both are one file to open. "All
+            # files" stays on the end for the chapter saved under a name
+            # nobody uses, which the run reads anyway: what it is decides,
+            # and a file panel can only filter on what it is called.
+            everything = _patterns(IMAGE_SUFFIXES | CONTAINER_SUFFIXES)
             name, _filter = QFileDialog.getOpenFileName(
-                self, "Page to Read", start, f"Images ({_patterns(IMAGE_SUFFIXES)})"
+                self,
+                "Page or Chapter to Read",
+                start,
+                f"Pages and chapters ({everything});;All files (*)",
             )
         if name:
             self._source.setText(name)
@@ -415,9 +423,7 @@ class ExtractDialog(QDialog):
             # Said only once there is a chapter to say it about: a path
             # half-typed is a refusal, and two answers at once about the same
             # field is one too many.
-            self._count.setText(
-                self.tr("pages are counted as it is unpacked") if source.is_file() else ""
-            )
+            self._count.setText(self.tr("counted when unpacked") if source.is_file() else "")
         else:
             self._count.setText(self.tr("%n page(s)", None, len(pages)) if pages else "")
         plan = self._plan.text().strip()

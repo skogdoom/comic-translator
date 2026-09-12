@@ -1542,9 +1542,20 @@ application whose Open Plan, Save As and Render Into are all the system's.
 The choice is radio buttons rather than a menu on the button so that the mode
 is visible without clicking anything and browsing stays one click. They steer
 that button and nothing else: what the field accepts is decided by looking at
-the path, so a folder typed in under "a single image" still works. Folder is
-preselected because it is the usual case by a long way — a single image is
-what `default_plan_path` has its own special case for.
+the path, so a folder typed in under "a file" still works. Folder is
+preselected because it is the usual case by a long way.
+
+**Two of them, not three, once chapter files arrived.** A page and a chapter
+are both one file to open, so one panel offers both and what a file turns out
+to be is read out of it rather than asked about here — a third radio would be
+asking a question whose answer is already in the file. It also keeps that row
+to two labels, which is the row that cannot afford a third: the count beside
+it once made 571pt of content in a 406pt row, and Qt pays for that by
+squeezing every widget in the row equally, so each radio was clipped
+mid-word. The count now has a line of its own, one line tall and asking for no
+width at all — a word-wrapped label reports a height from a guess at its own
+shape rather than from the width it is given, which lays the row out a line
+short and draws the rest under the row below.
 
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what

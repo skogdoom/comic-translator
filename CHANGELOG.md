@@ -77,9 +77,9 @@ for themselves. See **Build the application** in `README.md`.
   cannot be a photograph of it — a logo on a born-digital page — is unpacked
   and flagged for you to look at.
 - **The window opens a chapter file as well.** **Extract Pages** takes one
-  beside a folder or a single image: it unpacks on the worker thread, says
-  what it is unpacking until it knows how many pages there are, and can be
-  stopped between pages like any other run. The plan goes in with the pages,
+  as *a file*, the same choice as a single page: it unpacks on the worker
+  thread, says what it is unpacking until it knows how many pages there are,
+  and can be stopped between pages like any other run. The plan goes in with the pages,
   which is where the command line puts it too. Where `unrar` lives is in
   Preferences, because an application opened from the Finder cannot see a
   Homebrew one. Which of the three formats a chapter file is, its first bytes
