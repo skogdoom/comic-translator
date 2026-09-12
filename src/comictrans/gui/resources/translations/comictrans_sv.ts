@@ -154,8 +154,8 @@
     </message>
     <message>
         <location filename="../../extract_dialog.py" line="160"/>
-        <source>a folder of pages</source>
-        <translation>en mapp med sidor</translation>
+        <source>a folder</source>
+        <translation>en mapp</translation>
     </message>
     <message>
         <location filename="../../extract_dialog.py" line="161"/>

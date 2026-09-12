@@ -157,7 +157,7 @@ class ExtractDialog(QDialog):
         self._quieten(self._count)
 
         self._source = QLineEdit()
-        self._folder_choice = QRadioButton(self.tr("a folder of pages"))
+        self._folder_choice = QRadioButton(self.tr("a folder"))
         self._file_choice = QRadioButton(self.tr("a file"))
         self._file_choice.setToolTip(
             self.tr("One page, or a whole chapter as a .cbz, .cbr or .pdf.")

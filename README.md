@@ -526,8 +526,8 @@ written.
 leaving the window, and opens the plan it wrote. It is the only thing here
 that works with no plan open, because it is how you get one — which is why
 `review` with no argument now opens an empty window rather than an Open
-dialog. Point **Open…** at a folder of pages or, with the radio button
-beside it, at a file — one page, or a whole chapter as a `.cbz`, `.cbr` or
+dialog. Point **Open…** at a folder or, with the radio button beside it,
+at a file — one page, or a whole chapter as a `.cbz`, `.cbr` or
 `.pdf`; say where the plan goes — prefilled with the same path `extract`
 picks with no `--plan` — and give it the language pair and the recogniser.
 The radio steers that button and nothing else: a path of either kind typed
