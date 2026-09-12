@@ -224,9 +224,9 @@ asks the same thing). With none of them installed, CBR input is unavailable
 and says so before anything is written, rather than failing part-way through
 a chapter.
 
-**Extract Pages** in the window reads one too: point it at *a file* — the
-same choice as a single page, since both are one file to open — and it
-unpacks and reads it the same way, with the plan going in with the pages. The
+**Extract Pages** in the window reads one too: **File…** opens one panel for
+a page and a chapter alike, and it unpacks and reads it the same way, with
+the plan going in with the pages. The
 pages are counted as they come out rather than up front — counting them in
 the dialog would mean opening the chapter on every keystroke — so the panel
 says it is unpacking until it knows, and **Cancel** stops it between pages
@@ -526,13 +526,12 @@ written.
 leaving the window, and opens the plan it wrote. It is the only thing here
 that works with no plan open, because it is how you get one — which is why
 `review` with no argument now opens an empty window rather than an Open
-dialog. Point **Open…** at a folder or, with the radio button beside it,
-at a file — one page, or a whole chapter as a `.cbz`, `.cbr` or
-`.pdf`; say where the plan goes — prefilled with the same path `extract`
-picks with no `--plan` — and give it the language pair and the recogniser.
-The radio steers that button and nothing else: a path of either kind typed
-into the field is accepted whichever one is checked, and what a file turns
-out to be is read out of it rather than taken from its name.
+dialog. **Folder…** and **File…** open one panel each — a file being one
+page, or a whole chapter as a `.cbz`, `.cbr` or `.pdf`; say where the plan
+goes, prefilled with the same path `extract` picks with no `--plan`; and give
+it the language pair and the recogniser. The two buttons only browse: a path
+typed into the field is accepted whichever way it got there, and what a file
+turns out to be is read out of it rather than taken from its name.
 
 Those four are the whole dialog. `extract` has around fifteen
 detection-tuning flags, and they stay on the command line: they exist for the

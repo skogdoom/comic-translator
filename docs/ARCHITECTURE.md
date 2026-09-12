@@ -1528,34 +1528,41 @@ regions is destructive against exactly that work, and carrying translations
 across by geometry is a second feature with its own failure mode. Extract to a
 new plan, and open it.
 
-**One button for the input, and a radio pair saying what it will open.** The
-extract dialog asks one question — which pages? — and a folder and a single
-image are the same answer at two granularities, so they belong on one
-control. There are two panels behind it rather than one because Qt has no
-file dialog that takes either: measured, `FileMode.Directory` refuses a file
+**Two buttons for the input, because there are two panels.** Qt has no file
+dialog that takes either kind: measured, `FileMode.Directory` refuses a file
 and `ExistingFile` refuses a directory, both returning `result=0` from
 `accept()`. The only route to a panel that accepts both is subclassing
 `QFileDialog` and overriding `accept()`, which forces `DontUseNativeDialog` —
 a Qt-drawn Open panel on macOS, and the only non-native file dialog in an
 application whose Open Plan, Save As and Render Into are all the system's.
+So **Folder…** and **File…**, each saying what it opens.
 
-The choice is radio buttons rather than a menu on the button so that the mode
-is visible without clicking anything and browsing stays one click. They steer
-that button and nothing else: what the field accepts is decided by looking at
-the path, so a folder typed in under "a file" still works. Folder is
-preselected because it is the usual case by a long way.
+It was one button and a pair of radio buttons beside it saying which panel it
+would show. The radios never decided anything — what the field accepts is
+decided by looking at the path, and always was — so a file picked with "a
+folder" still checked worked, and a control that can be set wrong with no
+consequence is a control that reads as broken. One file panel covers a page
+and a chapter alike, since both are one file to open and what a file turns
+out to be is read out of it rather than asked about here.
 
-**Two of them, not three, once chapter files arrived.** A page and a chapter
-are both one file to open, so one panel offers both and what a file turns out
-to be is read out of it rather than asked about here — a third radio would be
-asking a question whose answer is already in the file. It also keeps that row
-to two labels, which is the row that cannot afford a third: the count beside
-it once made 571pt of content in a 406pt row, and Qt pays for that by
-squeezing every widget in the row equally, so each radio was clipped
-mid-word. The count now has a line of its own, one line tall and asking for no
-width at all — a word-wrapped label reports a height from a guess at its own
-shape rather than from the width it is given, which lays the row out a line
-short and draws the rest under the row below.
+The three buttons are matched to the widest one's size hint and the plan row
+is padded by one button's width, so both fields still end at the same place
+in any language. The padding is added after the row has a widget: until then
+a layout's `spacing()` is -1, meaning "whatever the style says", and adding
+that leaves the two fields seven pixels apart.
+
+**The page count under the field is a plain one-line label**, and both ways
+that has been wrong were the layout being clever. Word wrap makes a QLabel
+report a height from a guess at its own shape rather than from the width it
+is given, so the form row is laid out a line short and the rest is drawn
+under the row below. An `Ignored` width policy — reached for so that no
+translation could widen the dialog — makes `QWidgetItem::sizeHint` report a
+width of *nought*, and a form on macOS leaves a field at its size hint
+instead of growing it to the column (`FieldsStayAtSizeHint` is QMacStyle's
+default, `AllNonFixedFieldsGrow` is everyone else's), so nought is the width
+it got and the label said nothing at all. That one was invisible to every
+test and every screenshot taken on Linux; the test now runs the layout both
+ways round.
 
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what

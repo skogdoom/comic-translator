@@ -60,6 +60,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QWidget,
 )
 
 from comictrans.gui import about, extract_dialog, logfile, main_window, run_job
@@ -3980,30 +3981,27 @@ def loose_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return source
 
 
-def test_one_button_opens_whichever_kind_the_radios_say(qapp: object) -> None:
-    """Qt has no file dialog that accepts either — see the note on the button."""
+def test_a_button_each_for_the_two_panels_there_have_to_be(qapp: object) -> None:
+    """Qt has no file dialog that accepts either — see the note on the buttons.
+
+    Two buttons rather than one and a mode beside it: the mode never decided
+    anything, since what the field accepts is decided by looking at the path.
+    """
     dialog = ExtractDialog(None, None)
-
-    assert dialog._folder_choice.isChecked(), "the usual case, by a long way"
-    assert not dialog._file_choice.isChecked()
-
     opened: list[str] = []
-    dialog._folder_choice.setChecked(True)
+
     with monkeypatched_panels(opened):
-        dialog._on_choose_source()
-    dialog._file_choice.setChecked(True)
-    with monkeypatched_panels(opened):
-        dialog._on_choose_source()
+        dialog._folder_button.click()
+        dialog._file_button.click()
 
     assert opened == ["directory", "file"]
 
 
-def test_either_kind_of_input_is_accepted_whatever_the_radios_say(
+def test_either_kind_of_input_is_accepted_however_it_got_into_the_field(
     qapp: object, loose_pages: Path
 ) -> None:
-    """The radios steer the button; the path itself decides what is accepted."""
+    """The buttons only browse; the path itself decides what is accepted."""
     dialog = ExtractDialog(None, None)
-    dialog._file_choice.setChecked(True)
 
     dialog._source.setText(str(loose_pages))
     assert dialog.refusal() == ""
@@ -4626,8 +4624,7 @@ def test_the_file_panel_offers_pages_and_chapters_alike(qapp: object) -> None:
             "getOpenFileName",
             lambda *args, **kwargs: (filters.append(args[3]), "", "")[1:],
         )
-        dialog._file_choice.setChecked(True)
-        dialog._on_choose_source()
+        dialog._file_button.click()
 
     offered = filters[0]
     for suffix in (".cbz", ".cbr", ".pdf", ".png", ".jpg", ".tiff"):
@@ -4635,22 +4632,36 @@ def test_the_file_panel_offers_pages_and_chapters_alike(qapp: object) -> None:
     assert "All files (*)" in offered
 
 
-def test_nothing_in_the_row_of_choices_is_clipped_in_any_language_that_ships(
+def _right_edge(dialog: ExtractDialog, widget: QWidget) -> int:
+    """Where a field ends, in the dialog's own coordinates."""
+    return widget.mapTo(dialog, widget.rect().topRight()).x()
+
+
+def test_the_hint_under_the_field_is_read_in_every_language_and_on_a_mac(
     qapp: object, tmp_path: Path
 ) -> None:
-    """Radios and a sentence beside them do not fit on one line.
+    """One line of it, on screen, whatever the style does with a form's fields.
 
-    Measured before it was fixed: 571pt of content in a row 406pt wide, which
-    Qt spends by squeezing every widget in the row equally — each radio
-    clipped mid-word to make room for a label. The count has a line of its
-    own now, so what the radios need is all that row has to hold.
+    Both ways this has been wrong were the layout being clever. Wrapping it
+    makes a QLabel report a height from a guess at its own shape rather than
+    from the width it is given, so the row is laid out a line short and the
+    rest is drawn under the row below. An Ignored width policy makes it
+    report a width of nought — and a form on macOS leaves a field at its size
+    hint instead of growing it to the column, so nought is what it got, and
+    the hint said nothing at all. This runs the layout both ways round,
+    because the platform this ships on is the one it was invisible on.
     """
     from PySide6.QtCore import QTranslator
+    from PySide6.QtWidgets import QFormLayout
 
     from comictrans.gui import translations
 
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+    policies = (
+        QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+        QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint,  # what macOS does
+    )
 
     for code in ("", *translations.available()):
         translator = QTranslator()
@@ -4660,29 +4671,40 @@ def test_nothing_in_the_row_of_choices_is_clipped_in_any_language_that_ships(
             )
             qapp.installTranslator(translator)  # type: ignore[attr-defined]
         try:
-            dialog = ExtractDialog(None, None)
-            dialog.show()
-            dialog._source.setText(str(archive))
-            QApplication.processEvents()
-            assert dialog._count.text(), "the state this is about: a chapter, and a hint beside it"
-            for widget in (dialog._folder_choice, dialog._file_choice):
-                assert widget.width() >= widget.sizeHint().width(), (
-                    f"{code or 'en'}: {widget.text()!r} is clipped"
+            for policy in policies:
+                dialog = ExtractDialog(None, None)
+                form = dialog.findChild(QFormLayout)
+                assert form is not None
+                form.setFieldGrowthPolicy(policy)
+                dialog.show()
+                dialog._source.setText(str(archive))
+                QApplication.processEvents()
+                where = f"{code or 'en'}/{policy.name}"
+
+                hint = dialog._count
+                assert hint.text(), f"{where}: the state this is about — a chapter, and a hint"
+                assert hint.width() >= hint.sizeHint().width(), f"{where}: the hint is cut off"
+                assert hint.height() == hint.fontMetrics().height(), f"{where}: not one line"
+                for button in (dialog._folder_button, dialog._file_button):
+                    assert button.width() >= button.sizeHint().width(), (
+                        f"{where}: {button.text()!r} is clipped"
+                    )
+
+                # The two fields end together, which is what the buttons are
+                # matched in width for and what the plan row is padded for.
+                assert _right_edge(dialog, dialog._source) == _right_edge(dialog, dialog._plan), (
+                    f"{where}: the two fields do not end at the same place"
                 )
 
-            # And whatever it says, in whatever language, it stays one line
-            # and asks for no width: a wrapped label reports a height from a
-            # guess at its own shape rather than from the width it is given,
-            # so the row came out a line short and the second line was drawn
-            # under the row below.
-            one_line = dialog._count.fontMetrics().height()
-            was = dialog.minimumSizeHint().width()
-            dialog._count.setText("x " * 80)
-            QApplication.processEvents()
-            assert dialog._count.height() == one_line
-            assert dialog.minimumSizeHint().width() == was
-
-            dialog.close()
+                # And a longer hint than any language has costs nothing but
+                # its own tail: wrapped, it would cost the row a second line
+                # that the row has not been given.
+                dialog._count.setText("x " * 80)
+                QApplication.processEvents()
+                assert dialog._count.height() == dialog._count.fontMetrics().height(), (
+                    f"{where}: the hint grew a second line"
+                )
+                dialog.close()
         finally:
             if code:
                 qapp.removeTranslator(translator)  # type: ignore[attr-defined]
