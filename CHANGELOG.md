@@ -71,7 +71,12 @@ for themselves. See **Build the application** in `README.md`.
   that is not one photograph is named and skipped. CBR needs a RAR tool that
   is already on the machine — `unrar`, `unar`, `bsdtar` or `7z`, or
   `COMICTRANS_UNRAR` pointing at one — because unrar's licence is not one an
-  MIT project can redistribute. The `review` window still asks for a folder.
+  MIT project can redistribute. The unpacked folder has to hold that chapter
+  and nothing else page-shaped, and the run stops rather than letting a
+  re-release leave its old pages in with the new ones. A page whose one image
+  cannot be a photograph of it — a logo on a born-digital page — is unpacked
+  and flagged for you to look at. The `review` window still asks for a
+  folder.
 
 ### Known limitations
 

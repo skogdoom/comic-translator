@@ -111,6 +111,82 @@ def test_a_page_of_somebody_elses_stops_the_run_rather_than_being_overwritten(
     assert mine.read_bytes() == b"not that page"
 
 
+def test_pages_left_from_an_earlier_unpack_stop_the_run(tmp_path: Path) -> None:
+    # A re-release with one page inserted at the front renumbers every name
+    # after it, so the old files collide with nothing and simply stay. Left
+    # alone, extract lists the directory and reads p1 and p2 twice each.
+    archive = _cbz(
+        tmp_path,
+        {
+            "p1.png": _page_bytes(tmp_path, "a.png", 201),
+            "p2.png": _page_bytes(tmp_path, "b.png", 202),
+        },
+    )
+    unpack(archive)
+    _cbz(
+        tmp_path,
+        {
+            "p0.png": _page_bytes(tmp_path, "c.png", 203),
+            "p1.png": _page_bytes(tmp_path, "a.png", 201),
+            "p2.png": _page_bytes(tmp_path, "b.png", 202),
+        },
+    )
+
+    with pytest.raises(InputError, match=r"that are not pages of chapter\.cbz"):
+        unpack(archive)
+
+
+def test_somebody_elses_images_where_the_pages_go_stop_the_run(tmp_path: Path) -> None:
+    archive = _three_page_cbz(tmp_path)
+    elsewhere = tmp_path / "mine"
+    elsewhere.mkdir()
+    save_page(np.full((10, 10, 3), 7, dtype=np.uint8), elsewhere / "holiday.png")
+
+    with pytest.raises(InputError, match=r"holiday\.png"):
+        unpack(archive, elsewhere)
+
+
+def test_the_plan_file_living_with_the_pages_is_not_one_of_those(tmp_path: Path) -> None:
+    # The translation is written into this directory by extract, and deleting
+    # it on a re-run would be the worst thing this could do.
+    archive = _three_page_cbz(tmp_path)
+    report = unpack(archive)
+    plan = report.directory / "comic-plan.yaml"
+    plan.write_text("hours of work", encoding="utf-8")
+
+    assert unpack(archive).reused == 3
+    assert plan.read_text(encoding="utf-8") == "hours of work"
+
+
+def test_a_link_in_an_archive_is_named_rather_than_written(tmp_path: Path) -> None:
+    # Reading a symlink entry gives the path it points at, not an image.
+    archive = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("001.png", _page_bytes(tmp_path, "a.png", 201))
+        link = zipfile.ZipInfo("002.png")
+        link.create_system = 3
+        link.external_attr = 0o120777 << 16
+        handle.writestr(link, "/etc/passwd")
+
+    report = unpack(archive)
+
+    assert [path.name for path in report.pages] == ["001-001.png"]
+    assert report.skipped == (("002.png", "a link or a device, not a file"),)
+
+
+def test_an_archive_that_records_no_mode_at_all_is_still_read(tmp_path: Path) -> None:
+    # A zip written on Windows carries no Unix mode, which is not a reason to
+    # doubt the entry.
+    archive = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(archive, "w") as handle:
+        info = zipfile.ZipInfo("001.png")
+        info.create_system = 0
+        info.external_attr = 0
+        handle.writestr(info, _page_bytes(tmp_path, "a.png", 201))
+
+    assert [path.name for path in unpack(archive).pages] == ["001-001.png"]
+
+
 def test_what_is_not_a_page_is_named_rather_than_unpacked(tmp_path: Path) -> None:
     archive = _cbz(
         tmp_path,
@@ -206,9 +282,17 @@ def test_a_chapter_file_handed_to_the_rest_of_the_tool_says_what_to_do_with_it(
 # -- PDF ----------------------------------------------------------------
 
 
-def _pdf(tmp_path: Path, pages: list[Image.Image], name: str = "chapter.pdf") -> Path:
+def _pdf(
+    tmp_path: Path, pages: list[Image.Image], name: str = "chapter.pdf", resolution: int = 150
+) -> Path:
+    """Pages saved the way a scanner would: pixels, and the paper they cover.
+
+    The resolution matters to more than the file size — it is what decides
+    the page's size in points, which is half of what tells a scan of a page
+    from a picture sitting on one.
+    """
     path = tmp_path / name
-    pages[0].save(path, save_all=True, append_images=pages[1:])
+    pages[0].save(path, save_all=True, append_images=pages[1:], resolution=resolution)
     return path
 
 
@@ -292,6 +376,70 @@ def test_a_page_stored_in_a_format_this_tool_does_not_read_is_named(
     assert not (tmp_path / "out").exists()
 
 
+def _page_carrying(tmp_path: Path, image: Image.Image, resolution: int, name: str) -> Path:
+    """A letter-sized page with ``image`` dropped onto it and nothing else.
+
+    Which is what a born-digital PDF looks like from here: the text is drawn
+    as text, so the only image on the page is whatever picture is sitting on
+    it.
+    """
+    from pypdf import PdfWriter, Transformation
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    from pypdf import PdfReader
+
+    carried = PdfReader(_pdf(tmp_path, [image], "carried.pdf", resolution)).pages[0]
+    writer.pages[0].merge_transformed_page(carried, Transformation().translate(40, 650))
+    path = tmp_path / name
+    with path.open("wb") as handle:
+        writer.write(handle)
+    return path
+
+
+def test_a_scan_that_fills_its_page_is_doubted_by_nothing(tmp_path: Path) -> None:
+    report = unpack(_pdf(tmp_path, [_scan(201), _scan(120)]))
+
+    assert report.doubtful == ()
+
+
+def test_a_picture_too_small_to_be_the_page_is_unpacked_and_flagged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    source = _page_carrying(tmp_path, _scan(30, (100, 100)), 72, "born-digital.pdf")
+
+    with caplog.at_level(logging.WARNING):
+        report = unpack(source, tmp_path / "out")
+
+    assert [path.name for path in report.pages] == ["001-page.jpg"], (
+        "flagged, not refused: it is still the only thing on the page"
+    )
+    assert len(report.doubtful) == 1
+    page, reason = report.doubtful[0]
+    assert page == "page 1"
+    assert "dots per inch" in reason
+    assert reason in caplog.text
+
+
+def test_a_scan_letterboxed_onto_other_paper_is_within_the_slack(tmp_path: Path) -> None:
+    # 1700x2100 on letter paper is 5% off the page's own proportions, which
+    # is what the tolerance is for: paper of a different shape is ordinary,
+    # and is not what the test is looking for.
+    source = _page_carrying(tmp_path, _scan(30, (1700, 2100)), 200, "letterboxed.pdf")
+
+    assert unpack(source, tmp_path / "out").doubtful == ()
+
+
+def test_a_picture_shaped_unlike_the_page_is_flagged_too(tmp_path: Path) -> None:
+    # Big enough to be a scan of something, but square on letter paper.
+    source = _page_carrying(tmp_path, _scan(30, (1700, 1700)), 200, "square.pdf")
+
+    report = unpack(source, tmp_path / "out")
+
+    assert len(report.doubtful) == 1
+    assert "does not cover the page" in report.doubtful[0][1]
+
+
 def test_a_pdf_that_is_not_a_pdf_says_so(tmp_path: Path) -> None:
     broken = tmp_path / "chapter.pdf"
     broken.write_bytes(b"%PDF-1.4 and then nothing")
@@ -304,12 +452,16 @@ def test_a_pdf_that_is_not_a_pdf_says_so(tmp_path: Path) -> None:
 
 
 class _FakeRarInfo:
-    def __init__(self, filename: str, directory: bool = False) -> None:
+    def __init__(self, filename: str, directory: bool = False, link: bool = False) -> None:
         self.filename = filename
         self._directory = directory
+        self._link = link
 
     def is_dir(self) -> bool:
         return self._directory
+
+    def is_symlink(self) -> bool:
+        return self._link
 
 
 class _FakeRarFile:
@@ -334,7 +486,7 @@ class _FakeRarFile:
         return None
 
     def infolist(self) -> list[_FakeRarInfo]:
-        return [_FakeRarInfo(name) for name in self.entries]
+        return [_FakeRarInfo(name, link=name.endswith(".link.png")) for name in self.entries]
 
     def read(self, info: _FakeRarInfo) -> bytes:
         return self.entries[info.filename]
@@ -383,6 +535,20 @@ def test_a_cbr_is_read_like_any_other_archive(
     assert [path.name for path in report.pages] == ["001-page1.png", "002-page2.png"]
     assert report.skipped == (("Ch/notes.txt", "unsupported extension .txt"),)
     assert _FakeRarFile.opened == [archive]
+
+
+def test_a_link_in_a_cbr_is_named_as_well(
+    tmp_path: Path, fake_rarfile: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(_FAKE_RAR_CONTENT, "page1.png", _page_bytes(tmp_path, "a.png", 201))
+    monkeypatch.setitem(_FAKE_RAR_CONTENT, "page2.link.png", b"/etc/passwd")
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+
+    report = unpack(archive)
+
+    assert [path.name for path in report.pages] == ["001-page1.png"]
+    assert report.skipped == (("page2.link.png", "a link or a device, not a file"),)
 
 
 def test_without_a_rar_tool_cbr_says_so_and_leaves_nothing_behind(

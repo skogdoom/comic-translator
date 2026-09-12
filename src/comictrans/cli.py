@@ -464,6 +464,14 @@ def _unpack_summary(report: UnpackReport) -> None:
         print(f"  already there:     {report.reused}")
     for name, reason in report.skipped:
         print(f"  SKIPPED:           {name}: {reason}")
+    for name, reason in report.doubtful:
+        print(f"  LOOK AT:           {name}: {reason}")
+    if report.doubtful:
+        print(
+            f"\n{len(report.doubtful)} unpacked page(s) may not be a scan of the "
+            "page they came from. They are in the directory like any other; look "
+            "at them before translating them."
+        )
 
 
 def run_extract(args: argparse.Namespace) -> int:

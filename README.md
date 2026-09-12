@@ -178,15 +178,32 @@ already there byte for byte is left alone. A file of that name holding
 something *else* stops the run rather than being overwritten — it is somebody
 else's, or an older chapter's, and picking for you is not this tool's job.
 Whatever is not a page — `ComicInfo.xml`, `.DS_Store`, a Mac's `__MACOSX`
-resource forks — is named in the summary and left where it is.
+resource forks, a symlink stored in the archive — is named in the summary and
+left where it is.
+
+**The folder has to hold this chapter and nothing else that looks like a
+page**, and the run stops if it does not. Everything downstream reads the
+folder rather than a list, so a stray image in it is a page of the comic as
+far as the plan is concerned. The way to get one is a re-release: insert a
+page at the front and every name after it shifts, so the old files collide
+with nothing, stay where they are, and the chapter comes out with half its
+pages twice. Unpack a changed chapter into a new folder with `--unpack-dir`
+— and look for a plan file before deleting the old one, because your
+translation lives in there too.
+
+Some pages are unpacked *and* flagged. A page whose one image cannot be a
+photograph of it — too few pixels for the paper it covers, or not the shape
+of it — is listed under `LOOK AT` in the summary: that is what a born-digital
+PDF looks like from here, where the text is drawn as text and the only image
+on the page is a logo sitting on it. Flagged rather than refused, because it
+is still the only thing on that page and only you can say what it is.
 
 **CBZ needs nothing**; it is a zip. **PDF needs nothing either**: a scan is
 one photograph per page, so the page's own image is lifted out exactly as the
 PDF stores it — a JPEG comes out the JPEG that went in, nothing is rasterised
 and nothing is resampled. What that cannot do is invent a page out of drawing
-instructions, so a born-digital PDF page, a page with several images on it,
-and a page the reader is told to turn are each reported and skipped rather
-than guessed at.
+instructions, so a page with several images on it, one with none, and one the
+reader is told to turn are each reported and skipped rather than guessed at.
 
 **CBR needs a RAR tool, and comictrans will never ship one.** `unrar`'s
 licence is not OSI-free and this is an MIT project, so bundling it would put

@@ -561,3 +561,37 @@ def test_a_run_that_cannot_start_leaves_no_pages_behind(
     assert main(["extract", str(chapter)]) == EXIT_FATAL
 
     assert not (tmp_path / "chapter-pages").exists()
+
+
+def test_a_page_that_may_not_be_a_scan_is_named_in_the_summary(
+    tmp_path: Path,
+    font_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A born-digital PDF unpacks, and says which pages to go and look at."""
+    from PIL import Image
+    from pypdf import PdfReader, PdfWriter, Transformation
+
+    monkeypatch.setattr("comictrans.cli.get_recognizer", lambda config: FakeRecognizer({}))
+    scan = Image.fromarray(make_page_array((600, 800), ART_DARK, []))
+    scan.save(tmp_path / "scan.pdf", resolution=150)
+    logo = Image.fromarray(make_page_array((100, 100), ART_DARK, []))
+    logo.save(tmp_path / "logo.pdf", resolution=72)
+
+    writer = PdfWriter()
+    writer.append(tmp_path / "scan.pdf")
+    writer.add_blank_page(width=612, height=792)
+    writer.pages[1].merge_transformed_page(
+        PdfReader(tmp_path / "logo.pdf").pages[0], Transformation().translate(40, 650)
+    )
+    chapter = tmp_path / "chapter.pdf"
+    with chapter.open("wb") as handle:
+        writer.write(handle)
+
+    main(["extract", str(chapter)])
+
+    printed = capsys.readouterr().out
+    assert "  pages:             2" in printed
+    assert "LOOK AT:           page 2:" in printed
+    assert "may not be a scan of the page they came from" in printed

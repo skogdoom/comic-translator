@@ -523,15 +523,37 @@ extract over a chapter — which `--merge` exists to do — therefore costs the
 reads and not the writes, and nobody's file is overwritten on the strength of
 a filename match.
 
+**And the directory must hold that chapter and nothing else page-shaped.**
+`unpack` returns the pages it wrote, but nothing downstream reads that list:
+`extract` is handed the directory and lists it again, so an image in there
+that is not one of this chapter's pages ends up in the plan as one. The way
+to get some is the re-release — a page inserted at the front renumbers every
+name after it, so the old files collide with nothing, stay, and the chapter
+comes out with pages repeated. So the run stops, naming them. The pages
+written by then are this chapter's own, which is why stopping late costs
+nothing; a plan file is not an image, so the translation that lives in this
+directory is never mistaken for one.
+
 **A PDF is read as a scan, not rendered as a document.** One photograph per
 page is what a scanned comic is, so the page's image is lifted out byte for
 byte: lossless, no rasteriser, no guess at a DPI, and no resampling of the
-pixels a polygon is about to be measured against. The cost is that pages
-which are not one photograph — a born-digital page of drawing instructions,
-a page with several images on it, a page carrying a rotation the reader is
-meant to apply — cannot be read at all, and each is reported rather than
-approximated. That is the same trade the rest of the tool makes: a page it
-cannot handle is named, not mangled.
+pixels a polygon is about to be measured against. The cost is that a page
+which is not one photograph — several images on it, none at all, or a
+rotation the reader is meant to apply — cannot be read, and each is reported
+rather than approximated.
+
+**"One image on the page" is not "this image is the page", and the difference
+is measured rather than assumed.** A born-digital PDF draws its text as text,
+so its only image is whatever logo sits on it, and lifting that out would
+make a chapter of logos. Two numbers separate the cases, both free once the
+image is in hand: what the image would have been scanned at if it did fill
+the page (below 72 dpi it cannot be the page — a logo on letter paper works
+out at about twelve), and whether its proportions are the page's, within a
+tolerance wide enough for a scan letterboxed onto paper of a different shape.
+Failing either is a **warning, not a refusal**: the image is still the only
+thing on that page, the measurements are a proxy rather than a proof, and a
+page somebody should look at before translating is a different thing from a
+page this tool cannot read.
 
 **The RAR reader is a licence decision before it is a technical one.**
 `unrar`'s licence is not OSI-free, and bundling it would put someone else's

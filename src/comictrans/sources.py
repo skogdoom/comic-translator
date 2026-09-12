@@ -32,9 +32,10 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 import zipfile
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
@@ -59,9 +60,31 @@ _Page = tuple[str, bytes]
 """What a reader yields: the name the page should take on disk, before the
 index prefix, and the bytes to write under it."""
 
-_Reader = Callable[[Path, list[tuple[str, str]]], Iterator[_Page]]
-"""Readers append to the skipped list rather than returning one, so that a
-page they refuse is reported in the same order it was met."""
+PAGE_SHAPE_TOLERANCE = 0.10
+"""How far a page image's proportions may sit from the page's own before it
+is worth mentioning. A scan is placed to fill its page, so it matches within
+a percent or two; the slack is for one letterboxed onto paper of a different
+shape, which is a real thing and not a reason to doubt anything."""
+
+MIN_PAGE_DPI = 72
+"""Below this, an image cannot be the page it sits on. Read as "if this image
+did fill the page, what would it have been scanned at" — a real scan is 150
+to 1200, and a logo on a letter page works out at about twelve."""
+
+
+@dataclass(slots=True)
+class _Notes:
+    """What a reader met on the way through that did not become a page.
+
+    One object rather than three out-parameters, and a list rather than a
+    return value, so that each note keeps the position it was met in.
+    """
+
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+    doubtful: list[tuple[str, str]] = field(default_factory=list)
+
+
+_Reader = Callable[[Path, _Notes], Iterator[_Page]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +99,12 @@ class UnpackReport:
     Unpacking the same chapter twice writes nothing the second time."""
     skipped: tuple[tuple[str, str], ...] = ()
     """``(what it was called inside the container, why it was not a page)``."""
+    doubtful: tuple[tuple[str, str], ...] = ()
+    """``(page, why it may not be the page it should be)`` — unpacked all the
+    same. Nothing here is wrong enough to refuse: what it catches is a PDF
+    that is not a scan, where the one image on a page is a logo rather than a
+    photograph of it, and the answer to that is to say so and let somebody
+    look. See :func:`_page_doubt`."""
 
 
 def is_container(path: Path) -> bool:
@@ -119,31 +148,52 @@ class _Archive(Protocol):
     def read(self, member: Any) -> bytes: ...
 
 
-def _archive_pages(archive: _Archive, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
+def _zip_is_regular(member: Any) -> bool:
+    """Whether a zip entry is a file rather than a link or a device.
+
+    An archive can hold a symlink, and reading one gives the path it points
+    at rather than any image — thirteen bytes reading ``/etc/passwd`` written
+    out as a page. Nothing escapes the directory either way, because only the
+    entry's basename is ever used, but a file that cannot be a page should be
+    named rather than written.
+
+    A zip made on Windows carries no mode at all, which is not a reason to
+    doubt it: no mode means a file.
+    """
+    kind = stat.S_IFMT(member.external_attr >> 16)
+    return kind in (0, stat.S_IFREG)
+
+
+def _archive_pages(
+    archive: _Archive, notes: _Notes, regular: Callable[[Any], bool]
+) -> Iterator[_Page]:
     """The pages of an open zip or rar, in the order a reader would show them.
 
     One function for both because a CBR is a CBZ with a different compressor
     behind it: same member list, same names, same question about which of
     them is a page. Only opening it differs, which is where the licensing
-    lives too.
+    lives too — and asking what kind of entry this is, which the two formats
+    record in their own ways.
     """
     for info in sorted(archive.infolist(), key=lambda member: natural_key(member.filename)):
         if info.is_dir():
             continue  # ordinary inside a comic archive, and not a page
         reason = _skip_reason(info.filename)
+        if reason is None and not regular(info):
+            reason = "a link or a device, not a file"
         if reason is not None:
-            skipped.append((info.filename, reason))
+            notes.skipped.append((info.filename, reason))
             continue
         yield PurePosixPath(info.filename).name, archive.read(info)
 
 
-def _zip_pages(source: Path, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
+def _zip_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
     try:
         archive = zipfile.ZipFile(source)
     except (zipfile.BadZipFile, OSError) as exc:
         raise InputError(f"cannot read {source.name}: {exc}") from exc
     with archive:
-        yield from _archive_pages(archive, skipped)
+        yield from _archive_pages(archive, notes, _zip_is_regular)
 
 
 def _rar_tool() -> None:
@@ -169,7 +219,7 @@ def _rar_tool() -> None:
         ) from exc
 
 
-def _rar_pages(source: Path, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
+def _rar_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
     import rarfile
 
     try:
@@ -177,10 +227,56 @@ def _rar_pages(source: Path, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
     except rarfile.Error as exc:
         raise InputError(f"cannot read {source.name}: {exc}") from exc
     with archive:
-        yield from _archive_pages(archive, skipped)
+        yield from _archive_pages(archive, notes, lambda member: not member.is_symlink())
 
 
-def _pdf_pages(source: Path, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
+def _page_doubt(page: Any, image: Any) -> str | None:
+    """Whether this image looks like a photograph of that page, or not.
+
+    "Exactly one image on the page" is not the same as "this image is the
+    page", and the difference is a born-digital PDF: text drawn as text, with
+    one logo on it, which would otherwise be lifted out and called a page. Two
+    measurements catch it, and neither refuses anything — a PDF this tool
+    cannot read at all is one thing, and a page somebody should look at before
+    translating it is another.
+
+    **Shape.** A scan is placed to fill its page, so its proportions are the
+    page's. A logo's are its own.
+
+    **Size.** Read the image's pixels against the page's paper size and see
+    what it would have been scanned at. A logo on a letter page comes out at
+    about twelve dots per inch, which is not a number any scanner produces —
+    and this one catches a square logo on a square page, which the shape test
+    cannot.
+    """
+    pixels = getattr(image, "image", None)
+    if pixels is None:
+        return None
+    try:
+        width, height = (float(page.mediabox.width), float(page.mediabox.height))
+        across, down = (float(pixels.width), float(pixels.height))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if min(width, height, across, down) <= 0:
+        return None
+
+    dpi = min(across / (width / 72), down / (height / 72))
+    if dpi < MIN_PAGE_DPI:
+        return (
+            f"its image is {int(across)}x{int(down)} on {width:.0f}x{height:.0f}pt of paper, "
+            f"which is {dpi:.0f} dots per inch — too few for a scan of the page, so this is "
+            "more likely a picture sitting on it"
+        )
+    shape = (across / down) / (width / height)
+    if abs(shape - 1) > PAGE_SHAPE_TOLERANCE:
+        return (
+            f"its image is {across / down:.2f} wide to tall and the page is "
+            f"{width / height:.2f}, so it does not cover the page it was taken from"
+        )
+    return None
+
+
+def _pdf_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
     """The image on each page of a scan, exactly as the PDF stores it.
 
     A scanned comic is one photograph per page, so the page's own image is
@@ -206,23 +302,25 @@ def _pdf_pages(source: Path, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
             rotation = page.rotation % 360
             count = len(page.images)
         except (PyPdfError, ValueError) as exc:
-            skipped.append((label, f"unreadable: {exc}"))
+            notes.skipped.append((label, f"unreadable: {exc}"))
             continue
         if rotation:
-            skipped.append((label, f"the page is turned {rotation}°; its image is not upright"))
+            notes.skipped.append(
+                (label, f"the page is turned {rotation}°; its image is not upright")
+            )
             continue
         if count != 1:
             what = "no image on it" if count == 0 else f"{count} images on it"
-            skipped.append((label, f"{what}, so there is no one page image to lift out"))
+            notes.skipped.append((label, f"{what}, so there is no one page image to lift out"))
             continue
         try:
             image = page.images[0]
         except (PyPdfError, ValueError, NotImplementedError) as exc:
-            skipped.append((label, f"its image could not be read: {exc}"))
+            notes.skipped.append((label, f"its image could not be read: {exc}"))
             continue
         suffix = PurePosixPath(image.name).suffix.lower()
         if suffix not in IMAGE_SUFFIXES:
-            skipped.append(
+            notes.skipped.append(
                 (
                     label,
                     f"its image is {suffix or 'of an unknown kind'}, which is not"
@@ -230,6 +328,9 @@ def _pdf_pages(source: Path, skipped: list[tuple[str, str]]) -> Iterator[_Page]:
                 )
             )
             continue
+        doubt = _page_doubt(page, image)
+        if doubt is not None:
+            notes.doubtful.append((label, doubt))
         yield f"page{suffix}", image.data
 
 
@@ -253,6 +354,31 @@ def _reader_for(source: Path) -> _Reader:
     )
 
 
+def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
+    """Images in the unpacked directory that this chapter did not put there.
+
+    They matter because nothing downstream reads the list this function's
+    caller returns: ``extract`` is handed the directory and lists it again,
+    so anything image-shaped in there is a page of the chapter as far as the
+    plan is concerned. The way to get some is to unpack a re-release over an
+    older unpack — one page inserted at the front renumbers every name after
+    it, so the old files collide with nothing and simply stay, and the
+    chapter comes out with half its pages twice.
+
+    A plan file is not an image, so the translation living in this directory
+    is never one of these.
+    """
+    kept = {page.resolve() for page in pages}
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file()
+        and not path.name.startswith(".")
+        and path.suffix.lower() in IMAGE_SUFFIXES
+        and path.resolve() not in kept
+    )
+
+
 def unpack(source: Path, into: Path | None = None) -> UnpackReport:
     """Write every page of a container into a directory, and say what it did.
 
@@ -262,16 +388,22 @@ def unpack(source: Path, into: Path | None = None) -> UnpackReport:
     same name holding something else is not overwritten — it is somebody
     else's, or an older chapter's, and the run stops rather than deciding
     which.
+
+    The directory has to hold this chapter and nothing else that looks like a
+    page, for the reason :func:`_stray_pages` gives. When it does not, the
+    run stops there: the pages written are this chapter's own, so nothing is
+    lost by it, and the run would otherwise end in a plan describing somebody
+    else's images as pages of this comic.
     """
     if not source.is_file():
         raise InputError(f"input path does not exist: {source}")
     reader = _reader_for(source)
 
     directory = into if into is not None else default_unpack_dir(source)
-    skipped: list[tuple[str, str]] = []
+    notes = _Notes()
     pages: list[Path] = []
     reused = 0
-    for index, (name, data) in enumerate(reader(source, skipped), start=1):
+    for index, (name, data) in enumerate(reader(source, notes), start=1):
         if not pages:
             # Made when there is a page to put in it, so that a file which
             # turns out not to be a chapter at all leaves the directory it
@@ -294,17 +426,33 @@ def unpack(source: Path, into: Path | None = None) -> UnpackReport:
         target.write_bytes(data)
         pages.append(target)
 
-    for name, reason in skipped:
+    for name, reason in notes.skipped:
         log.warning("%s: skipping %s: %s", source.name, name, reason)
+    for name, reason in notes.doubtful:
+        log.warning("%s: %s: %s", source.name, name, reason)
     if not pages:
         raise InputError(f"no pages found in {source.name}")
+
+    strays = _stray_pages(directory, pages)
+    if strays:
+        named = ", ".join(path.name for path in strays[:4])
+        more = f" and {len(strays) - 4} more" if len(strays) > 4 else ""
+        raise InputError(
+            f"{directory} holds {len(strays)} image(s) that are not pages of "
+            f"{source.name}: {named}{more}. extract reads the whole directory, "
+            "so they would go into the plan as pages of this chapter. Unpack "
+            "somewhere else with --unpack-dir, or clear that directory out — "
+            "check it for a plan file of your own first."
+        )
+
     log.info("unpacked %d page(s) from %s into %s", len(pages), source.name, directory)
     return UnpackReport(
         source=source,
         directory=directory,
         pages=tuple(pages),
         reused=reused,
-        skipped=tuple(skipped),
+        skipped=tuple(notes.skipped),
+        doubtful=tuple(notes.doubtful),
     )
 
 
