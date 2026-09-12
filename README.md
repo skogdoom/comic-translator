@@ -198,6 +198,15 @@ PDF looks like from here, where the text is drawn as text and the only image
 on the page is a logo sitting on it. Flagged rather than refused, because it
 is still the only thing on that page and only you can say what it is.
 
+**What a chapter file is, its first bytes decide, not its name.** A CBR that
+is really a zip and a CBZ that is really a RAR are both ordinary out in the
+world — both extensions mean "comic book archive" to whoever wrote them, and
+which compressor made it is an afterthought — so each is read as what it is,
+and a zip called `chapter.dat` is read too. The name is used only for a file
+that cannot be opened at all, which is every keystroke of one being typed
+into the window. A page that has been renamed `.cbz` is not a chapter, and
+says so rather than failing as a broken archive.
+
 **CBZ needs nothing**; it is a zip. **PDF needs nothing either**: a scan is
 one photograph per page, so the page's own image is lifted out exactly as the
 PDF stores it — a JPEG comes out the JPEG that went in, nothing is rasterised

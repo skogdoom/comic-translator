@@ -4,7 +4,7 @@
 <context>
     <name>ExtractDialog</name>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="389"/>
+        <location filename="../../extract_dialog.py" line="422"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n page</numerusform>

@@ -18,7 +18,11 @@ from comictrans.errors import InputError
 from comictrans.imaging import collect_inputs
 from comictrans.progress import PageProgress
 from comictrans.sources import (
+    PDF,
+    RAR,
     UNRAR_ENV,
+    ZIP,
+    chapter_kind,
     check_readable,
     default_unpack_dir,
     is_container,
@@ -302,17 +306,19 @@ def test_running_again_after_stopping_finishes_the_chapter(tmp_path: Path) -> No
     assert len(report.pages) == 3
 
 
-def test_asking_whether_a_chapter_can_be_read_opens_nothing(tmp_path: Path) -> None:
-    # The dialog asks this on every keystroke, so it may not read the file —
-    # which is why a broken archive passes here and fails when it is unpacked.
-    broken = tmp_path / "chapter.cbz"
-    broken.write_bytes(b"not a zip at all")
+def test_asking_whether_a_chapter_can_be_read_reads_only_its_first_bytes(
+    tmp_path: Path,
+) -> None:
+    # The dialog asks this on every keystroke, so it reads a header and no
+    # more: enough to know a file is not a chapter at all, not enough to know
+    # an archive is damaged further in.
+    junk = tmp_path / "chapter.cbz"
+    junk.write_bytes(b"not a zip at all")
 
-    check_readable(broken)
+    with pytest.raises(InputError, match="named like a chapter file but is not one"):
+        check_readable(junk)
 
     assert not (tmp_path / "chapter-pages").exists()
-    with pytest.raises(InputError, match=r"cannot read chapter\.cbz"):
-        unpack(broken)
 
 
 def test_asking_about_something_that_is_not_a_chapter_says_so(tmp_path: Path) -> None:
@@ -320,7 +326,7 @@ def test_asking_about_something_that_is_not_a_chapter_says_so(tmp_path: Path) ->
         check_readable(tmp_path / "nothing.cbz")
 
     page = save_page(np.full((10, 10, 3), 7, dtype=np.uint8), tmp_path / "page.png")
-    with pytest.raises(InputError, match="unsupported container"):
+    with pytest.raises(InputError, match="is not a chapter file"):
         check_readable(page)
 
 
@@ -361,9 +367,23 @@ def test_a_file_that_is_not_an_archive_says_so(tmp_path: Path) -> None:
     broken = tmp_path / "chapter.cbz"
     broken.write_bytes(b"not a zip at all")
 
-    with pytest.raises(InputError, match=r"cannot read chapter\.cbz"):
+    with pytest.raises(InputError, match="named like a chapter file but is not one"):
         unpack(broken)
     assert not (tmp_path / "chapter-pages").exists()
+
+
+def test_an_archive_that_starts_well_and_ends_badly_says_so_when_it_is_read(
+    tmp_path: Path,
+) -> None:
+    # A header is all the cheap check can see, so this is the failure that
+    # has to wait for the run — and it still says what it is.
+    truncated = tmp_path / "chapter.cbz"
+    truncated.write_bytes(b"PK\x03\x04" + b"\x00" * 200)
+
+    check_readable(truncated)
+
+    with pytest.raises(InputError, match=r"cannot read chapter\.cbz"):
+        unpack(truncated)
 
 
 def test_unpack_dir_overrides_where_the_pages_go(tmp_path: Path) -> None:
@@ -380,6 +400,83 @@ def test_a_missing_chapter_file_is_reported_before_anything_is_made(tmp_path: Pa
     with pytest.raises(InputError, match="input path does not exist"):
         unpack(tmp_path / "nothing.cbz")
     assert list(tmp_path.iterdir()) == []
+
+
+# -- what a chapter file is, as against what it is called ----------------
+
+
+def test_a_zip_called_cbr_is_read_as_the_zip_it_is(tmp_path: Path) -> None:
+    """Both extensions mean "comic book archive" to whoever wrote them.
+
+    Which compressor made it is an afterthought, and files land under the
+    wrong one of the two constantly. Read by name, this would ask for a RAR
+    tool to open a zip — and refuse the chapter on a machine that has none.
+    """
+    archive = _three_page_cbz(tmp_path, name="chapter.cbr")
+
+    assert chapter_kind(archive) == ZIP
+    assert [path.name for path in unpack(archive).pages] == [
+        "001-page1.png",
+        "002-page2.png",
+        "003-page10.png",
+    ]
+
+
+def test_a_rar_called_cbz_asks_for_the_rar_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "rarfile", _fake_rarfile(works=False))
+    archive = tmp_path / "chapter.cbz"
+    archive.write_bytes(b"Rar!\x1a\x07\x01\x00 a RAR 5 header")
+
+    assert chapter_kind(archive) == RAR
+    with pytest.raises(InputError, match="CBR needs a RAR tool"):
+        unpack(archive)
+
+
+def test_a_pdf_by_any_name_is_a_pdf(tmp_path: Path) -> None:
+    source = _pdf(tmp_path, [_scan(201)])
+    renamed = source.rename(tmp_path / "chapter.cbz")
+
+    assert chapter_kind(renamed) == PDF
+    assert [path.name for path in unpack(renamed).pages] == ["001-page.jpg"]
+
+
+def test_a_pdf_that_does_not_start_at_the_first_byte_is_still_a_pdf(tmp_path: Path) -> None:
+    # A download that picked something up in front of it. Acrobat's own rule
+    # is that the header must be inside the first kilobyte, not at nought,
+    # and pypdf reads one of these — measured — so refusing it here would be
+    # this tool being stricter than the format.
+    plain = _pdf(tmp_path, [_scan(201)])
+    prefixed = tmp_path / "chapter-2.pdf"
+    prefixed.write_bytes(b"downloaded-junk\n" + plain.read_bytes())
+
+    assert chapter_kind(prefixed) == PDF
+    assert [path.name for path in unpack(prefixed, tmp_path / "out").pages] == ["001-page.jpg"]
+
+
+def test_a_chapter_under_a_name_nobody_uses_is_still_a_chapter(tmp_path: Path) -> None:
+    archive = _three_page_cbz(tmp_path, name="chapter.dat")
+
+    assert is_container(archive)
+    assert len(unpack(archive).pages) == 3
+
+
+def test_an_image_called_cbz_is_not_a_chapter(tmp_path: Path) -> None:
+    page = save_page(np.full((10, 10, 3), 7, dtype=np.uint8), tmp_path / "page.png").rename(
+        tmp_path / "page.cbz"
+    )
+
+    assert chapter_kind(page) is None
+    assert not is_container(page)
+
+
+def test_a_path_that_is_not_there_yet_is_judged_by_its_name(tmp_path: Path) -> None:
+    # Which is every keystroke of one being typed into the window.
+    assert is_container(tmp_path / "chapter.cbz")
+    assert chapter_kind(tmp_path / "chapter.cbr") == RAR
+    assert not is_container(tmp_path / "page.png")
+    assert not is_container(tmp_path)
 
 
 def test_what_counts_as_a_chapter_file() -> None:

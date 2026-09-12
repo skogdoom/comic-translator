@@ -133,123 +133,128 @@
 <context>
     <name>ExtractDialog</name>
     <message>
-        <location filename="../../extract_dialog.py" line="65"/>
+        <location filename="../../extract_dialog.py" line="72"/>
         <source>automatic (Apple Vision, then Tesseract)</source>
         <translation>automatiskt (Apple Vision, sedan Tesseract)</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="74"/>
+        <location filename="../../extract_dialog.py" line="81"/>
         <source>Extract</source>
         <translation>Extrahera</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="98"/>
+        <location filename="../../extract_dialog.py" line="83"/>
+        <source>Preferences, under “reading a .cbr”, is where to say where the tool is.</source>
+        <translation>Inställningar, under ”läsa en .cbr”, är där du säger var verktyget finns.</translation>
+    </message>
+    <message>
+        <location filename="../../extract_dialog.py" line="113"/>
         <source>Extract Pages</source>
         <translation>Extrahera sidor</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="131"/>
+        <location filename="../../extract_dialog.py" line="156"/>
         <source>a folder of pages</source>
         <translation>en mapp med sidor</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="132"/>
+        <location filename="../../extract_dialog.py" line="157"/>
         <source>a chapter file</source>
         <translation>en kapitelfil</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="133"/>
+        <location filename="../../extract_dialog.py" line="158"/>
         <source>a single image</source>
         <translation>en enstaka bild</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="139"/>
+        <location filename="../../extract_dialog.py" line="164"/>
         <source>Open…</source>
         <translation>Öppna…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="162"/>
+        <location filename="../../extract_dialog.py" line="185"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="182"/>
+        <location filename="../../extract_dialog.py" line="205"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="185"/>
+        <location filename="../../extract_dialog.py" line="208"/>
         <source>Languages to hand the recogniser, comma-separated. Left empty this is the source language; give a region-qualified tag here if the recogniser needs one, such as pt-BR.</source>
         <translation>Språk att ge textigenkänningen, kommaseparerade. Lämnas fältet tomt används källspråket; ange en regionskvalificerad tagg här om igenkänningen kräver en, till exempel pt-BR.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="196"/>
+        <location filename="../../extract_dialog.py" line="219"/>
         <source>overwrite it, discarding everything in it</source>
         <translation>skriv över den och kasta allt som finns i den</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="207"/>
+        <location filename="../../extract_dialog.py" line="230"/>
         <source>read pages from</source>
         <translation>läs sidor från</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="209"/>
+        <location filename="../../extract_dialog.py" line="236"/>
         <source>write the plan to</source>
         <translation>skriv planen till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="211"/>
+        <location filename="../../extract_dialog.py" line="238"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="212"/>
+        <location filename="../../extract_dialog.py" line="239"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="213"/>
+        <location filename="../../extract_dialog.py" line="240"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="214"/>
+        <location filename="../../extract_dialog.py" line="241"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="344"/>
+        <location filename="../../extract_dialog.py" line="371"/>
         <source>Choose a folder of pages, a chapter file, or one image.</source>
         <translation>Välj en mapp med sidor, en kapitelfil eller en enstaka bild.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="355"/>
-        <location filename="../../extract_dialog.py" line="366"/>
+        <location filename="../../extract_dialog.py" line="388"/>
+        <location filename="../../extract_dialog.py" line="399"/>
         <source>{0} cannot be read: {1}</source>
         <translation>{0} kan inte läsas: {1}</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="370"/>
+        <location filename="../../extract_dialog.py" line="403"/>
         <source>Choose where to write the plan file.</source>
         <translation>Välj var planfilen ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="373"/>
+        <location filename="../../extract_dialog.py" line="406"/>
         <source>{0} is a directory, not a plan file.</source>
         <translation>{0} är en katalog, inte en planfil.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="375"/>
+        <location filename="../../extract_dialog.py" line="408"/>
         <source>{0} already exists.</source>
         <translation>{0} finns redan.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="386"/>
+        <location filename="../../extract_dialog.py" line="419"/>
         <source>pages are counted as it is unpacked</source>
         <translation>sidorna räknas när den packas upp</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="389"/>
+        <location filename="../../extract_dialog.py" line="422"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n sida</numerusform>

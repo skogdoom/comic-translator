@@ -19,6 +19,13 @@ is written with a zero-padded index in front of its name — so the directory
 sorts the way the chapter reads even when the names inside the container do
 not, and two pages with the same name in different folders cannot collide.
 
+**What a chapter file is, its first bytes decide.** A CBR that is really a
+zip and a CBZ that is really a RAR are both ordinary: the two extensions say
+"comic book archive" to the people who write them, and which compressor made
+it is an afterthought. The name is used only for a file whose bytes cannot be
+read — one that is not there yet, which is every keystroke of a path being
+typed into the window.
+
 **CBR needs a binary this project will not ship.** `unrar`'s licence is not
 OSI-free and this is an MIT project, so bundling it would put somebody
 else's terms on the whole thing. `rarfile` drives whichever tool is already
@@ -50,9 +57,30 @@ ZIP_SUFFIXES = frozenset({".cbz", ".zip"})
 RAR_SUFFIXES = frozenset({".cbr", ".rar"})
 PDF_SUFFIXES = frozenset({".pdf"})
 CONTAINER_SUFFIXES = ZIP_SUFFIXES | RAR_SUFFIXES | PDF_SUFFIXES
-"""Every extension :func:`unpack` reads. A plain ``.zip`` and ``.rar`` are in
-there because a chapter is regularly saved under the general extension, and
-what is inside decides whether it is a chapter, not what it is called."""
+"""Every extension a chapter file is likely to arrive under, for a file
+panel's filter and for answering about a path that is not there yet. It is
+not what decides how one is read — see :func:`chapter_kind`."""
+
+ZIP, RAR, PDF = "zip", "rar", "pdf"
+"""What a chapter file turns out to be. Not the same as what it is called."""
+
+_SUFFIX_KINDS: tuple[tuple[frozenset[str], str], ...] = (
+    (ZIP_SUFFIXES, ZIP),
+    (RAR_SUFFIXES, RAR),
+    (PDF_SUFFIXES, PDF),
+)
+
+_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"PK\x03\x04", ZIP),  # and the two below: an empty and a spanned archive
+    (b"PK\x05\x06", ZIP),
+    (b"PK\x07\x08", ZIP),
+    (b"Rar!\x1a\x07", RAR),  # RAR 4 and RAR 5 differ after this
+)
+
+HEADER_BYTES = 1024
+"""How much of a file is read to tell what it is. The three signatures sit at
+the very start; ``%PDF-`` is allowed to sit a little way in, and Acrobat's
+own rule is that it must be inside the first kilobyte."""
 
 UNRAR_ENV = "COMICTRANS_UNRAR"
 """Names the RAR tool when it is not on ``PATH``; see the module docstring."""
@@ -122,8 +150,13 @@ class UnpackReport:
 
 
 def is_container(path: Path) -> bool:
-    """Whether ``extract`` would unpack this before reading it."""
-    return path.suffix.lower() in CONTAINER_SUFFIXES
+    """Whether ``extract`` would unpack this before reading it.
+
+    What it holds decides; see :func:`chapter_kind`. A chapter saved as
+    ``chapter.dat`` is still a chapter, and a page saved as ``page.cbz`` is
+    still a page.
+    """
+    return chapter_kind(path) is not None
 
 
 def default_unpack_dir(source: Path) -> Path:
@@ -370,24 +403,64 @@ def _pdf_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
         yield f"page{suffix}", image.data
 
 
-_READERS: tuple[tuple[frozenset[str], _Reader], ...] = (
-    (ZIP_SUFFIXES, _zip_pages),
-    (RAR_SUFFIXES, _rar_pages),
-    (PDF_SUFFIXES, _pdf_pages),
-)
+_READERS: dict[str, _Reader] = {ZIP: _zip_pages, RAR: _rar_pages, PDF: _pdf_pages}
+
+
+def _kind_from_header(header: bytes) -> str | None:
+    for signature, kind in _MAGIC:
+        if header.startswith(signature):
+            return kind
+    return PDF if b"%PDF-" in header else None
+
+
+def _kind_from_name(source: Path) -> str | None:
+    suffix = source.suffix.lower()
+    for suffixes, kind in _SUFFIX_KINDS:
+        if suffix in suffixes:
+            return kind
+    return None
+
+
+def chapter_kind(source: Path) -> str | None:
+    """What this chapter file is — ``"zip"``, ``"rar"``, ``"pdf"`` — or ``None``.
+
+    **Its first bytes decide, not its name.** A CBR that is really a zip and
+    a CBZ that is really a RAR are both ordinary out in the world: the two
+    extensions say "comic book archive" to the people who write them, and
+    which compressor made it is an afterthought. Reading one by its name
+    would refuse a file every comic reader opens.
+
+    The name is the fallback, and only for a file whose bytes cannot be had
+    — one that is not there yet, which is every keystroke of a path being
+    typed. A directory is neither, and is nothing.
+    """
+    try:
+        with source.open("rb") as handle:
+            kind = _kind_from_header(handle.read(HEADER_BYTES))
+    except OSError:
+        return _kind_from_name(source)
+    return kind
 
 
 def _reader_for(source: Path, rar_tool: str = "") -> _Reader:
-    suffix = source.suffix.lower()
-    for suffixes, reader in _READERS:
-        if suffix in suffixes:
-            if suffixes is RAR_SUFFIXES:
-                _rar_tool(rar_tool)
-            return reader
-    raise InputError(
-        f"unsupported container {source.suffix!r}; "
-        f"expected one of {', '.join(sorted(CONTAINER_SUFFIXES))}"
-    )
+    """The reader for what this file is. Callers check it exists first."""
+    kind = chapter_kind(source)
+    if kind is None:
+        named = _kind_from_name(source)
+        if named is None:
+            raise InputError(
+                f"{source.name} is not a chapter file: it is not a zip, a rar "
+                f"or a PDF, and it is not named like one either. Chapters are "
+                f"{', '.join(sorted(CONTAINER_SUFFIXES))}."
+            )
+        raise InputError(
+            f"{source.name} is named like a chapter file but is not one: it "
+            "begins as neither a zip, a rar nor a PDF. Something renamed, or "
+            "a download that did not finish."
+        )
+    if kind is RAR:
+        _rar_tool(rar_tool)
+    return _READERS[kind]
 
 
 def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
@@ -419,9 +492,11 @@ def check_readable(source: Path, rar_tool: str = "") -> None:
     """Raise unless :func:`unpack` could read this, reading nothing itself.
 
     For asking before a run rather than during one — the window asks on every
-    keystroke, so this may not open the file, let alone a page of it. What it
-    catches is the kind it does not read and, for CBR, the tool that is not
-    there, which is the refusal worth making before somebody has waited.
+    keystroke, so this reads a file's first kilobyte and never a page of it.
+    What it catches is a file that is not a chapter at all and, for a RAR,
+    the tool that is not there: the two refusals worth making before somebody
+    has waited. What it cannot catch is an archive whose header is fine and
+    whose contents are not.
     """
     if not source.is_file():
         raise InputError(f"input path does not exist: {source}")
@@ -543,8 +618,13 @@ def unpack(
 
 __all__ = [
     "CONTAINER_SUFFIXES",
+    "PDF",
+    "RAR",
+    "RAR_SUFFIXES",
     "UNRAR_ENV",
+    "ZIP",
     "UnpackReport",
+    "chapter_kind",
     "check_readable",
     "default_unpack_dir",
     "is_container",

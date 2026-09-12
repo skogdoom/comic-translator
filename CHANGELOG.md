@@ -82,7 +82,9 @@ for themselves. See **Build the application** in `README.md`.
   stopped between pages like any other run. The plan goes in with the pages,
   which is where the command line puts it too. Where `unrar` lives is in
   Preferences, because an application opened from the Finder cannot see a
-  Homebrew one.
+  Homebrew one. Which of the three formats a chapter file is, its first bytes
+  decide rather than its name: a CBR that is really a zip, or a CBZ that is
+  really a RAR, is read as what it is.
 
 ### Known limitations
 

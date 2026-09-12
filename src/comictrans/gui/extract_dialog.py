@@ -56,7 +56,14 @@ from ..config import (
 from ..errors import ComictransError
 from ..extract import PLAN_NAME, default_plan_path
 from ..imaging import IMAGE_SUFFIXES, collect_inputs
-from ..sources import CONTAINER_SUFFIXES, check_readable, default_unpack_dir, is_container
+from ..sources import (
+    CONTAINER_SUFFIXES,
+    RAR,
+    chapter_kind,
+    check_readable,
+    default_unpack_dir,
+    is_container,
+)
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
@@ -72,6 +79,14 @@ ENGINE_CHOICES: tuple[tuple[str, str], ...] = (
 rather than a quiet downgrade, which is why ``auto`` is spelled out."""
 
 EXTRACT = QCoreApplication.translate("ExtractDialog", "Extract")
+
+RAR_IN_PREFERENCES = QCoreApplication.translate(
+    "ExtractDialog",
+    "Preferences, under “reading a .cbr”, is where to say where the tool is.",
+)
+"""Where the window's answer to a missing RAR tool lives. The pipeline's own
+message names an environment variable instead, which is the command line's
+answer to the same question."""
 
 
 def _patterns(suffixes: frozenset[str]) -> str:
@@ -125,6 +140,16 @@ class ExtractDialog(QDialog):
         # Qt-drawn Open panel on macOS, and the only non-native one in an
         # application whose every other file dialog is the system's.
         self._count = QLabel()
+        # Wrapped, and on a line of its own below the radios rather than
+        # beside them. What it says is a sentence in some states ("pages are
+        # counted as it is unpacked") and two words in others, and a row
+        # holding both it and three radio buttons cannot be laid out for
+        # every language: measured at 571pt of content in an English window
+        # 406pt wide, which Qt spends by squeezing every widget in the row
+        # equally — three radios clipped mid-word to pay for a label. Wrap
+        # also drops its minimum width to nothing, so a longer translation
+        # costs a second line here and never a letter of anything else.
+        self._count.setWordWrap(True)
         self._quieten(self._count)
 
         self._source = QLineEdit()
@@ -152,8 +177,6 @@ class ExtractDialog(QDialog):
         kind_row.addWidget(self._folder_choice)
         kind_row.addWidget(self._chapter_choice)
         kind_row.addWidget(self._image_choice)
-        kind_row.addSpacing(12)
-        kind_row.addWidget(self._count)
         kind_row.addStretch(1)
         kind_widget = QWidget()
         kind_widget.setLayout(kind_row)
@@ -206,6 +229,10 @@ class ExtractDialog(QDialog):
         form = QFormLayout()
         form.addRow(self.tr("read pages from"), source_widget)
         form.addRow("", kind_widget)
+        # Always in the layout, empty or not: it is empty exactly when the
+        # refusal below has something to say instead, and a dialog that
+        # changes height as you type a path is worse than one line of space.
+        form.addRow("", self._count)
         form.addRow(self.tr("write the plan to"), plan_widget)
         form.addRow("", self._force)
         form.addRow(self.tr("pages are lettered in"), self._source_language)
@@ -350,6 +377,12 @@ class ExtractDialog(QDialog):
                 # making now rather than after a wait. Nothing is read.
                 check_readable(source, self._preferences.rar_tool)
             except ComictransError as exc:
+                if chapter_kind(source) == RAR:
+                    # The pipeline's own message names the environment
+                    # variable, which is the command line's answer and no use
+                    # to somebody reading this. The window's answer is a
+                    # preference, and this is the moment to say where.
+                    return f"{exc}\n{RAR_IN_PREFERENCES}"
                 return f"{exc}"
             except OSError as exc:
                 return self.tr("{0} cannot be read: {1}").format(source, exc)

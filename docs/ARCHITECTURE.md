@@ -510,6 +510,16 @@ The container is opened read-only like every other source, and the folder it
 becomes is the source tree from then on — which is what `--debug-dir` is
 checked against, before the folder exists.
 
+**Which of the three it is, its first bytes decide.** `chapter_kind` reads a
+kilobyte and matches a signature; the extension is consulted only for a file
+whose bytes cannot be had, which is a path being typed into the window and
+not yet a file. That is not pedantry about magic numbers: `.cbz` and `.cbr`
+both mean "comic book archive" to the people who write them, which compressor
+made it is an afterthought, and a CBR that is really a zip is common enough
+that reading by name would refuse chapters every reader opens — and would ask
+for a RAR tool to open a zip. It cuts the other way too: a page renamed
+`.cbz` is told it is not a chapter rather than failing as a damaged archive.
+
 **Order is carried in the filenames.** Archive entries sort in natural
 filename order, PDF pages come in page order, and each page is written with a
 zero-padded index in front of its name. A reader sorts by name and so does

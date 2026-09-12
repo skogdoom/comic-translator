@@ -4630,6 +4630,59 @@ def test_the_chapter_radio_opens_a_panel_that_offers_chapter_files(qapp: object)
     assert "*.png" in images and "*.cbz" not in images
 
 
+def test_nothing_in_the_row_of_choices_is_clipped_in_any_language_that_ships(
+    qapp: object, tmp_path: Path
+) -> None:
+    """Three radios and a sentence beside them do not fit on one line.
+
+    Measured before it was fixed: 571pt of content in a row 406pt wide, which
+    Qt pays for by squeezing every widget in the row equally — each radio
+    clipped mid-word to make room for a label. The count now has a line of
+    its own and wraps, so what the radios need is all the row has to hold.
+    """
+    from PySide6.QtCore import QTranslator
+
+    from comictrans.gui import translations
+
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+
+    for code in ("", *translations.available()):
+        translator = QTranslator()
+        if code:
+            assert translator.load(
+                f"{translations.PREFIX}_{code}", str(translations.TRANSLATION_DIR)
+            )
+            qapp.installTranslator(translator)  # type: ignore[attr-defined]
+        try:
+            dialog = ExtractDialog(None, None)
+            dialog.show()
+            dialog._source.setText(str(archive))
+            QApplication.processEvents()
+            assert dialog._count.text(), "the state this is about: a chapter, and a hint beside it"
+            for widget in (
+                dialog._folder_choice,
+                dialog._chapter_choice,
+                dialog._image_choice,
+            ):
+                assert widget.width() >= widget.sizeHint().width(), (
+                    f"{code or 'en'}: {widget.text()!r} is clipped"
+                )
+
+            # And a longer sentence than any of these costs a second line
+            # rather than a wider dialog: measured, an unwrapped label of
+            # this length takes the dialog's minimum width from 508 to 1027.
+            was = dialog.minimumSizeHint().width()
+            dialog._count.setText("x " * 80)
+            QApplication.processEvents()
+            assert dialog.minimumSizeHint().width() == was
+
+            dialog.close()
+        finally:
+            if code:
+                qapp.removeTranslator(translator)  # type: ignore[attr-defined]
+
+
 def test_a_chapter_file_is_accepted_and_its_plan_goes_with_its_pages(
     qapp: object, chapter_file: Path, tmp_path: Path
 ) -> None:
@@ -4681,7 +4734,12 @@ def test_a_cbr_with_nothing_to_open_it_is_refused_before_the_run(
 
     dialog._source.setText(str(archive))
 
-    assert "CBR needs a RAR tool" in dialog.refusal()
+    refusal = dialog.refusal()
+    assert "CBR needs a RAR tool" in refusal
+    assert "Preferences" in refusal, (
+        "the pipeline's message names an environment variable, which is the "
+        "command line's answer and no use to somebody reading a window"
+    )
 
 
 def test_the_preferences_rar_tool_reaches_the_run(qapp: object, tmp_path: Path) -> None:
