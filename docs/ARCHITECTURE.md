@@ -974,9 +974,24 @@ half. `GRID` and `INK` in `icons.py` are the rule; a test measures the ink of
 every shipped drawing off the pixmap the window gets, so the next one added
 cannot quietly sit small or off centre.
 
-That was the whole change: the toolbar's icon size was left alone, because a
-larger one grows the bar it sits in — measured at one pixel of bar per pixel
-of icon — and the bar's height was not on offer.
+The toolbar's icon size was left alone, because a larger one grows the bar it
+sits in — measured at one pixel of bar per pixel of icon — and the bar's
+height was not on offer.
+
+The bar is neither movable nor floatable, which is what a Mac toolbar is: no
+application on that platform lets its toolbar be dragged to the side of the
+window or off it. Qt draws a grip for a movable one and indents the first
+button behind it, nine pixels of the left edge the row is meant to start at.
+
+`tools/inspect_toolbar.py` is a diagnostic rather than part of the
+application, and it exists because a screenshot cannot tell the remaining
+explanations apart. It prints the toolbar's rectangle, each button's
+rectangle, and where the drawing's ink lands inside each button — that last
+one being the question: an ink offset near zero means each button centres its
+own drawing and the row as a whole is misplaced, and a consistent offset
+means the style is putting the icon somewhere other than the middle, which no
+amount of moving the row would fix. On Fusion, measured, every offset is
+zero.
 
 **The application icon is a different kind of drawing, and is kept
 differently.** It is full colour and meant to be looked at, where the

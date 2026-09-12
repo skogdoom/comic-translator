@@ -577,6 +577,13 @@ class MainWindow(QMainWindow):
         self._toolbar = QToolBar(self.tr("Main"), self)
         self._toolbar.setObjectName("main_toolbar")
         self._toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        # Neither movable nor floatable, which is what a Mac toolbar is: no
+        # application on that platform lets its toolbar be dragged to the
+        # side of the window or off it. Qt draws a grip for a movable one and
+        # indents the first button behind it — measured at nine pixels, which
+        # is nine pixels of the left edge this row is meant to start at.
+        self._toolbar.setMovable(False)
+        self._toolbar.setFloatable(False)
         # The toolbar drawn into the title bar, which is what a Mac window
         # looks like. Qt ignores it everywhere else, so it costs nothing to
         # ask for unconditionally.
