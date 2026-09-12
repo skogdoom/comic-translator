@@ -477,3 +477,79 @@ underneath, which is a decision nothing in the tool makes yet —
 `sample_colors` reads the colours that are there. Note which pass may do
 that: `review` may measure the page, `apply` may not, so the choice has to
 be made at extract time and recorded, like every other colour in a plan.
+
+**WebP, in and out.** Reading one is nearly free and writing one is not.
+Pillow decodes WebP already — `features.check("webp")` is true in this
+project's own environment — so an input would be a suffix added to
+`IMAGE_SUFFIXES` and a fixture to prove it, with the rest of the pipeline
+none the wiser: it works on the array `load_page` hands back.
+
+Output is where it runs into the promises `apply` makes. Two of them:
+
+- **The lossy trap `apply` already avoids.** A JPEG source is written out as
+  PNG rather than re-encoded, because a second generation of artefacts on
+  artwork nobody asked to change is damage. WebP is both — lossless WebP
+  round-trips a page bit for bit (measured), lossy does not — so it is not
+  one format to the output rules but two, and the default would have to be
+  lossless for the same reason `output_format_for` turns JPEG into PNG.
+- **DPI is dropped.** Measured, saving the same page through Pillow at 300
+  DPI: PNG keeps it, TIFF keeps it, WebP hands back `None`. `save_page`
+  carries DPI and the ICC profile across deliberately — the profile does
+  survive WebP — so writing one would either lose a fact about the page or
+  need it written into EXIF, which is a thing to decide rather than a
+  parameter to pass.
+
+Alpha is fine: WebP stores it, so it would join `ALPHA_FORMATS` rather than
+warn like JPEG does. The format is also capped at 16383 pixels a side, which
+no comic page reaches and a double-page scan at 1200 DPI would.
+
+**Drawing a region with a brush.** The conversion this needs already exists
+and is not the hard part. `detect` turns a raster mask into a polygon today:
+largest contour, `approxPolyDP` at three epsilons in turn, rejecting anything
+that comes out non-simple or with fewer than three points. A brush stroke is
+a raster mask. So a brush that paints into a scratch mask and converts on
+release would reuse that, produce a `Geometry.MANUAL` region like the polygon
+tool does, need no schema change and no `PLAN_VERSION` bump.
+
+What it runs into is what a polygon cannot hold. A plan's region is *one
+simple ring* — `MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced by the
+reader and again by the GUI so that the window cannot write a file it could
+not reopen. A brush makes holes, and two strokes apart make two blobs;
+largest-contour-wins throws both away silently, which is the same thing
+detection does and would be a surprise coming from a tool that draws what
+you drew. Deciding what a stroke that paints a doughnut *means* is the
+design work, and it is a decision about the plan format before it is one
+about a cursor.
+
+The rest is window work of a kind that already has a shape: a fourth
+`CanvasMode` beside select, reshape and draw, its own line on the hint bar,
+and whole-plan undo swallowing a stroke the way it swallows a drag, through
+the same run-key coalescing the arrow keys use.
+
+**Running on an iPad.** Not a port, on the evidence. What the tool is built
+from, as the wheel index has it today:
+
+| | iOS wheel |
+| --- | --- |
+| PySide6 — the window | none; macOS, Linux and Windows only |
+| numpy | none |
+| opencv-python-headless | none |
+| pyobjc, which is how Vision is reached | none |
+| Pillow | yes — `ios_13_0_arm64_iphoneos` and the simulators |
+| ruamel.yaml, pyphen | pure Python |
+
+So the window does not run there and neither does the pipeline. What does
+exist is the thing this tool was built around: **the plan file is the
+interface**, and reviewing one needs none of those four. Reading and writing
+YAML, drawing polygons over a page, typing a translation and walking the
+flagged regions is a document editor over a text file — an iPad application
+in its own right, sharing the format rather than the code, with `extract` and
+`apply` staying on the Mac where the recognisers and the renderer are. That
+is a second front end, not a second copy of the tool, and the two-pass design
+is what makes it possible to say so.
+
+Worth knowing before starting it: this window's gestures are keyboard-shaped.
+Move is `Cmd`-drag, a corner is added by double-clicking an edge, Escape
+cancels a shape, and three docks share the width. None of that transfers to a
+finger. An iPad front end is a different interaction design onto the same
+file, which is the work, and the file is what makes the work worth anything.
