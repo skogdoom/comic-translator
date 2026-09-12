@@ -54,8 +54,9 @@ from ..config import (
     OcrConfig,
 )
 from ..errors import ComictransError
-from ..extract import default_plan_path
+from ..extract import PLAN_NAME, default_plan_path
 from ..imaging import IMAGE_SUFFIXES, collect_inputs
+from ..sources import CONTAINER_SUFFIXES, check_readable, default_unpack_dir, is_container
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
@@ -71,6 +72,16 @@ ENGINE_CHOICES: tuple[tuple[str, str], ...] = (
 rather than a quiet downgrade, which is why ``auto`` is spelled out."""
 
 EXTRACT = QCoreApplication.translate("ExtractDialog", "Extract")
+
+
+def _patterns(suffixes: frozenset[str]) -> str:
+    """``*.cbr *.cbz *.pdf`` — a file panel's filter, from the list itself.
+
+    Written from the same constants the run reads, so a panel cannot come to
+    offer something the pass then refuses, or hide something it would have
+    taken.
+    """
+    return " ".join(f"*{suffix}" for suffix in sorted(suffixes))
 
 
 class ExtractDialog(QDialog):
@@ -118,10 +129,12 @@ class ExtractDialog(QDialog):
 
         self._source = QLineEdit()
         self._folder_choice = QRadioButton(self.tr("a folder of pages"))
+        self._chapter_choice = QRadioButton(self.tr("a chapter file"))
         self._image_choice = QRadioButton(self.tr("a single image"))
         self._folder_choice.setChecked(True)  # the usual case, by a long way
         self._source_kind = QButtonGroup(self)
         self._source_kind.addButton(self._folder_choice)
+        self._source_kind.addButton(self._chapter_choice)
         self._source_kind.addButton(self._image_choice)
         choose_source = QPushButton(self.tr("Open…"))
         choose_source.setAutoDefault(False)
@@ -137,6 +150,7 @@ class ExtractDialog(QDialog):
         kind_row = QHBoxLayout()
         kind_row.setContentsMargins(0, 0, 0, 0)
         kind_row.addWidget(self._folder_choice)
+        kind_row.addWidget(self._chapter_choice)
         kind_row.addWidget(self._image_choice)
         kind_row.addSpacing(12)
         kind_row.addWidget(self._count)
@@ -242,10 +256,13 @@ class ExtractDialog(QDialog):
         start = str(self._start_in)
         if self._folder_choice.isChecked():
             name = QFileDialog.getExistingDirectory(self, "Pages to Read", start)
-        else:
-            suffixes = " ".join(f"*{suffix}" for suffix in sorted(IMAGE_SUFFIXES))
+        elif self._chapter_choice.isChecked():
             name, _filter = QFileDialog.getOpenFileName(
-                self, "Page to Read", start, f"Images ({suffixes});;All files (*)"
+                self, "Chapter to Read", start, f"Chapters ({_patterns(CONTAINER_SUFFIXES)})"
+            )
+        else:
+            name, _filter = QFileDialog.getOpenFileName(
+                self, "Page to Read", start, f"Images ({_patterns(IMAGE_SUFFIXES)})"
             )
         if name:
             self._source.setText(name)
@@ -266,9 +283,27 @@ class ExtractDialog(QDialog):
 
     def _on_source_changed(self, text: str) -> None:
         if not self._plan_edited:
-            source = Path(text.strip()).expanduser()
-            self._plan.setText(str(default_plan_path(source)) if text.strip() else "")
+            self._plan.setText(str(self.suggested_plan()) if text.strip() else "")
         self._validate()
+
+    def suggested_plan(self) -> Path:
+        """Where the plan goes if nobody says otherwise.
+
+        A chapter file's plan belongs with the pages it describes, which are
+        not beside the chapter file but inside the folder it unpacks into —
+        so this answers for the folder, which is decided before it exists.
+        That is what ``comictrans extract chapter.cbz`` writes too: the two
+        must not put the same plan in two places.
+
+        Spelled out rather than handed to ``default_plan_path``, which
+        decides between a directory and a file by looking at the path: the
+        folder is not there yet, so it would be taken for a file and the plan
+        would land beside it under a name nothing else uses.
+        """
+        source = self.source()
+        if is_container(source):
+            return default_unpack_dir(source) / PLAN_NAME
+        return default_plan_path(source)
 
     # -- what it will read -----------------------------------------------
 
@@ -279,9 +314,16 @@ class ExtractDialog(QDialog):
         return Path(self._plan.text().strip()).expanduser()
 
     def pages(self) -> tuple[Path, ...]:
-        """The images this run would read, or empty if the input is unusable."""
+        """The images this run would read, or empty if the input is unusable.
+
+        A chapter file has none yet, and counting them would mean reading it:
+        an archive's member list on every keystroke, or worse, a RAR tool
+        started as a subprocess on each one. The pages are counted when they
+        are unpacked, and the panel is told the total then — see
+        :class:`ExtractJob`.
+        """
         text = self._source.text().strip()
-        if not text:
+        if not text or is_container(self.source()):
             return ()
         try:
             accepted, _skipped = collect_inputs(Path(text).expanduser())
@@ -299,18 +341,29 @@ class ExtractDialog(QDialog):
         run will read cannot disagree.
         """
         if not self._source.text().strip():
-            return self.tr("Choose a folder of pages, or one image.")
+            return self.tr("Choose a folder of pages, a chapter file, or one image.")
         source = self.source()
-        try:
-            # Raises on a path that does not exist, one that is neither file
-            # nor directory, an unsupported single file, and a directory with
-            # no images in it — every refusal the command line makes, in the
-            # words it makes them in.
-            collect_inputs(source)
-        except ComictransError as exc:
-            return f"{exc}"
-        except OSError as exc:
-            return self.tr("{0} cannot be read: {1}").format(source, exc)
+        if is_container(source):
+            try:
+                # Cheap on purpose: the kind of file it is, and whether the
+                # tool a .cbr needs is here — which is the refusal worth
+                # making now rather than after a wait. Nothing is read.
+                check_readable(source, self._preferences.rar_tool)
+            except ComictransError as exc:
+                return f"{exc}"
+            except OSError as exc:
+                return self.tr("{0} cannot be read: {1}").format(source, exc)
+        else:
+            try:
+                # Raises on a path that does not exist, one that is neither
+                # file nor directory, an unsupported single file, and a
+                # directory with no images in it — every refusal the command
+                # line makes, in the words it makes them in.
+                collect_inputs(source)
+            except ComictransError as exc:
+                return f"{exc}"
+            except OSError as exc:
+                return self.tr("{0} cannot be read: {1}").format(source, exc)
 
         plan = self._plan.text().strip()
         if not plan:
@@ -324,7 +377,16 @@ class ExtractDialog(QDialog):
 
     def _validate(self) -> None:
         pages = self.pages()
-        self._count.setText(self.tr("%n page(s)", None, len(pages)) if pages else "")
+        source = self.source()
+        if is_container(source):
+            # Said only once there is a chapter to say it about: a path
+            # half-typed is a refusal, and two answers at once about the same
+            # field is one too many.
+            self._count.setText(
+                self.tr("pages are counted as it is unpacked") if source.is_file() else ""
+            )
+        else:
+            self._count.setText(self.tr("%n page(s)", None, len(pages)) if pages else "")
         plan = self._plan.text().strip()
         # The overwrite box appears only when there is a file under the
         # cursor to overwrite, so it cannot be ticked in advance and then
@@ -366,6 +428,7 @@ class ExtractDialog(QDialog):
             font=self._preferences.font or None,
             force=self._force.isChecked(),
             pages=self.pages(),
+            rar_tool=self._preferences.rar_tool,
         )
 
 

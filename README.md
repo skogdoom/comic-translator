@@ -210,12 +210,20 @@ licence is not OSI-free and this is an MIT project, so bundling it would put
 somebody else's terms on the whole thing. Instead it drives whatever is
 already on your machine — `unrar`, `unar`, `bsdtar` or `7z`, any of which
 Homebrew has — and `COMICTRANS_UNRAR` names one that lives somewhere the
-`PATH` does not reach. With none of them installed, CBR input is unavailable
+`PATH` does not reach (**Preferences ▸ reading a .cbr** is where the window
+asks the same thing). With none of them installed, CBR input is unavailable
 and says so before anything is written, rather than failing part-way through
 a chapter.
 
-The `review` window still asks for a folder of pages, not a chapter file. Run
-`extract` on the chapter first and open the plan it writes.
+**Extract Pages** in the window reads one too: pick *a chapter file*, and it
+unpacks and reads it the same way, with the plan going in with the pages. The
+pages are counted as they come out rather than up front — counting them in
+the dialog would mean opening the chapter on every keystroke — so the panel
+says it is unpacking until it knows, and **Cancel** stops it between pages
+like any other run. Where `unrar` lives is a preference rather than a
+per-run question, because an application opened from the Finder does not
+inherit a terminal's `PATH` and cannot see a Homebrew one: **Preferences ▸
+reading a .cbr**.
 
 ### Re-extracting
 

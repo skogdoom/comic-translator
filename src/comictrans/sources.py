@@ -41,6 +41,7 @@ from typing import Any, Protocol
 
 from .errors import InputError
 from .imaging import IMAGE_SUFFIXES
+from .progress import CancelCheck, PageProgress, ProgressCallback
 from .util import natural_key
 
 log = logging.getLogger(__name__)
@@ -83,6 +84,15 @@ class _Notes:
     skipped: list[tuple[str, str]] = field(default_factory=list)
     doubtful: list[tuple[str, str]] = field(default_factory=list)
 
+    total: int = 0
+    """How many pages are coming, set before the first one is read.
+
+    Every reader can answer this without reading a page's bytes — an archive
+    from its member list, a PDF from the pages that pass the cheap checks —
+    and a progress bar with no total is a bar that does not move. It can
+    still end up one high: a PDF page whose image turns out to be stored in
+    something this tool does not read is only found by looking at it."""
+
 
 _Reader = Callable[[Path, _Notes], Iterator[_Page]]
 
@@ -99,6 +109,10 @@ class UnpackReport:
     Unpacking the same chapter twice writes nothing the second time."""
     skipped: tuple[tuple[str, str], ...] = ()
     """``(what it was called inside the container, why it was not a page)``."""
+    cancelled: bool = False
+    """Whether it was stopped part-way. What is on disk is whole pages of
+    this chapter either way, and running it again finishes the job."""
+
     doubtful: tuple[tuple[str, str], ...] = ()
     """``(page, why it may not be the page it should be)`` — unpacked all the
     same. Nothing here is wrong enough to refuse: what it catches is a PDF
@@ -175,6 +189,7 @@ def _archive_pages(
     lives too — and asking what kind of entry this is, which the two formats
     record in their own ways.
     """
+    members = []
     for info in sorted(archive.infolist(), key=lambda member: natural_key(member.filename)):
         if info.is_dir():
             continue  # ordinary inside a comic archive, and not a page
@@ -184,6 +199,12 @@ def _archive_pages(
         if reason is not None:
             notes.skipped.append((info.filename, reason))
             continue
+        members.append(info)
+    # Decided in full before anything is read: an archive's member list costs
+    # nothing to walk, and knowing how many pages are coming is what lets a
+    # progress bar mean something.
+    notes.total = len(members)
+    for info in members:
         yield PurePosixPath(info.filename).name, archive.read(info)
 
 
@@ -196,23 +217,29 @@ def _zip_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
         yield from _archive_pages(archive, notes, _zip_is_regular)
 
 
-def _rar_tool() -> None:
+def _rar_tool(named: str = "") -> None:
     """Point ``rarfile`` at a tool, or say which ones would have done.
 
     Called before the directory is made, so a machine with no RAR tool gets
     the same nothing-happened it started with.
+
+    ``named`` is for a caller that has been told where the tool is — the
+    window, which has a Preferences field for it, because an application
+    opened from the Finder does not inherit the shell's ``PATH`` and so
+    cannot see a Homebrew ``unrar`` at all. The environment variable is the
+    command line's way of saying the same thing, and is the fallback.
     """
     import rarfile
 
-    configured = os.environ.get(UNRAR_ENV, "").strip()
+    configured = named.strip() or os.environ.get(UNRAR_ENV, "").strip()
     if configured:
         rarfile.UNRAR_TOOL = configured
     try:
         rarfile.tool_setup(force=True)
     except rarfile.RarCannotExec as exc:
-        named = f" {UNRAR_ENV} names {configured!r}, which did not work." if configured else ""
+        tried = f" {configured!r} was named and did not work." if configured else ""
         raise InputError(
-            f"CBR needs a RAR tool and none was found: {exc}.{named} Install one "
+            f"CBR needs a RAR tool and none was found: {exc}.{tried} Install one "
             "of unrar, unar, bsdtar or 7z — none of them ships with comictrans, "
             "because unrar's licence is not one an MIT project can redistribute "
             f"— or set {UNRAR_ENV} to the one you have. CBZ and PDF need nothing."
@@ -296,6 +323,11 @@ def _pdf_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
     except (PyPdfError, OSError, ValueError) as exc:
         raise InputError(f"cannot read {source.name}: {exc}") from exc
 
+    # Which pages are pages is settled first. Every question asked here is
+    # answered from the page's own dictionary — how it is turned, how many
+    # images are on it — so none of it decodes anything, and the run knows
+    # how many pages are coming before it reads the first.
+    readable: list[tuple[str, Any]] = []
     for number, page in enumerate(pages, start=1):
         label = f"page {number}"
         try:
@@ -313,6 +345,10 @@ def _pdf_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
             what = "no image on it" if count == 0 else f"{count} images on it"
             notes.skipped.append((label, f"{what}, so there is no one page image to lift out"))
             continue
+        readable.append((label, page))
+    notes.total = len(readable)
+
+    for label, page in readable:
         try:
             image = page.images[0]
         except (PyPdfError, ValueError, NotImplementedError) as exc:
@@ -341,12 +377,12 @@ _READERS: tuple[tuple[frozenset[str], _Reader], ...] = (
 )
 
 
-def _reader_for(source: Path) -> _Reader:
+def _reader_for(source: Path, rar_tool: str = "") -> _Reader:
     suffix = source.suffix.lower()
     for suffixes, reader in _READERS:
         if suffix in suffixes:
             if suffixes is RAR_SUFFIXES:
-                _rar_tool()
+                _rar_tool(rar_tool)
             return reader
     raise InputError(
         f"unsupported container {source.suffix!r}; "
@@ -379,7 +415,27 @@ def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
     )
 
 
-def unpack(source: Path, into: Path | None = None) -> UnpackReport:
+def check_readable(source: Path, rar_tool: str = "") -> None:
+    """Raise unless :func:`unpack` could read this, reading nothing itself.
+
+    For asking before a run rather than during one — the window asks on every
+    keystroke, so this may not open the file, let alone a page of it. What it
+    catches is the kind it does not read and, for CBR, the tool that is not
+    there, which is the refusal worth making before somebody has waited.
+    """
+    if not source.is_file():
+        raise InputError(f"input path does not exist: {source}")
+    _reader_for(source, rar_tool)
+
+
+def unpack(
+    source: Path,
+    into: Path | None = None,
+    *,
+    rar_tool: str = "",
+    progress: ProgressCallback | None = None,
+    should_cancel: CancelCheck | None = None,
+) -> UnpackReport:
     """Write every page of a container into a directory, and say what it did.
 
     Unpacking the same container twice is the same directory: a page already
@@ -394,16 +450,29 @@ def unpack(source: Path, into: Path | None = None) -> UnpackReport:
     run stops there: the pages written are this chapter's own, so nothing is
     lost by it, and the run would otherwise end in a plan describing somebody
     else's images as pages of this comic.
+
+    ``progress`` is called once per page, before it is written, and
+    ``should_cancel`` is asked at the same moment — the same two hooks the
+    passes take, see :mod:`comictrans.progress`. Stopping leaves whole pages
+    of this chapter on disk, which is what running it again continues from,
+    and the report says so.
     """
     if not source.is_file():
         raise InputError(f"input path does not exist: {source}")
-    reader = _reader_for(source)
+    reader = _reader_for(source, rar_tool)
 
     directory = into if into is not None else default_unpack_dir(source)
     notes = _Notes()
     pages: list[Path] = []
     reused = 0
+    cancelled = False
     for index, (name, data) in enumerate(reader(source, notes), start=1):
+        if should_cancel is not None and should_cancel():
+            cancelled = True
+            log.warning("cancelled after %d page(s) of %s", len(pages), source.name)
+            break
+        if progress is not None:
+            progress(PageProgress(index=index - 1, total=notes.total, image=name))
         if not pages:
             # Made when there is a page to put in it, so that a file which
             # turns out not to be a chapter at all leaves the directory it
@@ -430,6 +499,22 @@ def unpack(source: Path, into: Path | None = None) -> UnpackReport:
         log.warning("%s: skipping %s: %s", source.name, name, reason)
     for name, reason in notes.doubtful:
         log.warning("%s: %s: %s", source.name, name, reason)
+    if cancelled:
+        # Before the empty check below, and ahead of the stray check: a run
+        # stopped before its first page has no pages for the reason it was
+        # asked for, which is not the same as a file with nothing in it. And
+        # the directory is half a chapter by design, so what is not in it yet
+        # is nobody else's.
+        return UnpackReport(
+            source=source,
+            directory=directory,
+            pages=tuple(pages),
+            reused=reused,
+            cancelled=True,
+            skipped=tuple(notes.skipped),
+            doubtful=tuple(notes.doubtful),
+        )
+
     if not pages:
         raise InputError(f"no pages found in {source.name}")
 
@@ -460,6 +545,7 @@ __all__ = [
     "CONTAINER_SUFFIXES",
     "UNRAR_ENV",
     "UnpackReport",
+    "check_readable",
     "default_unpack_dir",
     "is_container",
     "unpack",

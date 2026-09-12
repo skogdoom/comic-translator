@@ -62,7 +62,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from comictrans.gui import about, extract_dialog, logfile, run_job
+from comictrans.gui import about, extract_dialog, logfile, main_window, run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -4287,6 +4287,26 @@ def test_the_preferences_dialog_shows_what_it_was_given(qapp: object, font_dir: 
     assert dialog.preferences() == _preferences()
 
 
+def test_where_unrar_is_can_be_said_here_and_is_said_nowhere_else(qapp: object) -> None:
+    """The one field about this machine rather than about comics.
+
+    It is in this dialog because an application opened from the Finder does
+    not inherit the shell's PATH: a Homebrew unrar works on the command line
+    and is invisible to the window, which is not something a per-run dialog
+    should be asking about.
+    """
+    from comictrans.gui.preferences_dialog import RAR_NOTE
+
+    dialog = PreferencesDialog(Preferences(), None)
+    assert dialog._rar_tool.text() == ""
+    assert "PATH" in dialog._rar_tool.placeholderText() or dialog._rar_tool.placeholderText()
+    assert "licence" in RAR_NOTE, "why nothing ships is the part worth saying"
+
+    dialog._rar_tool.setText("  /opt/homebrew/bin/unrar  ")
+
+    assert dialog.preferences().rar_tool == "/opt/homebrew/bin/unrar"
+
+
 def test_an_unset_font_is_not_called_the_plan_default_here(qapp: object) -> None:
     """There is no plan in this dialog; what happens instead is extract's chain."""
     dialog = PreferencesDialog(Preferences(), None)
@@ -4552,3 +4572,250 @@ def test_a_desktop_that_will_not_open_it_still_says_where_it_is(
     window._on_open_logs()
 
     assert str(tmp_path) in window.statusBar().currentMessage()
+
+
+# -- a chapter that arrives as one file ---------------------------------
+
+
+@pytest.fixture
+def chapter_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Two pages and a stray note in a .cbz, with OCR stubbed out.
+
+    The recogniser is keyed by the names the pages take once unpacked, which
+    is the point: what the window reads is the folder the chapter becomes.
+    """
+    import zipfile
+
+    boxes = [Box(160, 140, 360, 164), Box(160, 180, 340, 204)]
+    raw = save_page(
+        make_page_array(
+            (600, 800),
+            ART_DARK,
+            [("ellipse", Box(120, 100, 420, 260), BALLOON_WHITE, INK_BLACK, boxes)],
+        ),
+        tmp_path / "raw.png",
+    )
+    chapter = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(chapter, "w") as handle:
+        handle.writestr("Ch/page-001.png", raw.read_bytes())
+        handle.writestr("Ch/page-002.png", raw.read_bytes()[:-1] + b"\x00")
+        handle.writestr("Ch/notes.txt", "not a page")
+    raw.unlink()
+
+    lines = {
+        name: lines_for(boxes, ["NON CI POSSO", "CREDERE!"])
+        for name in ("001-page-001.png", "002-page-002.png")
+    }
+    monkeypatch.setattr(run_job, "get_recognizer", lambda config: FakeRecognizer(lines))
+    return chapter
+
+
+def test_the_chapter_radio_opens_a_panel_that_offers_chapter_files(qapp: object) -> None:
+    dialog = ExtractDialog(None, None)
+    filters: list[str] = []
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            extract_dialog.QFileDialog,
+            "getOpenFileName",
+            lambda *args, **kwargs: (filters.append(args[3]), "", "")[1:],
+        )
+        dialog._chapter_choice.setChecked(True)
+        dialog._on_choose_source()
+        dialog._image_choice.setChecked(True)
+        dialog._on_choose_source()
+
+    chapters, images = filters
+    assert "*.cbz" in chapters and "*.cbr" in chapters and "*.pdf" in chapters
+    assert "*.png" in images and "*.cbz" not in images
+
+
+def test_a_chapter_file_is_accepted_and_its_plan_goes_with_its_pages(
+    qapp: object, chapter_file: Path, tmp_path: Path
+) -> None:
+    dialog = ExtractDialog(None, None)
+
+    dialog._source.setText(str(chapter_file))
+
+    assert dialog.refusal() == ""
+    assert dialog.pages() == ()
+    assert "counted" in dialog._count.text()
+    assert dialog.plan_path() == tmp_path / "chapter-pages" / "comic-plan.yaml", (
+        "the plan belongs with the pages, which are not beside the chapter file"
+    )
+    assert dialog.request().source == chapter_file
+
+
+def test_a_chapter_is_never_read_to_answer_a_keystroke(
+    qapp: object, chapter_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Counting the pages inside one would mean opening it on every keystroke.
+
+    An archive's member list is cheap and a PDF's page tree is not, and a
+    .cbr would start a subprocess. The pages are counted when they are
+    unpacked instead, and the panel is told the total then.
+    """
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the chapter was opened to answer a keystroke")
+
+    monkeypatch.setattr(extract_dialog, "collect_inputs", refuse)
+    dialog = ExtractDialog(None, None)
+
+    dialog._source.setText(str(chapter_file))
+
+    assert dialog.pages() == ()
+    assert dialog.refusal() == ""
+
+
+def test_a_cbr_with_nothing_to_open_it_is_refused_before_the_run(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_tool(named: str = "") -> None:
+        raise InputError("CBR needs a RAR tool and none was found")
+
+    monkeypatch.setattr("comictrans.sources._rar_tool", no_tool)
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+    dialog = ExtractDialog(None, None)
+
+    dialog._source.setText(str(archive))
+
+    assert "CBR needs a RAR tool" in dialog.refusal()
+
+
+def test_the_preferences_rar_tool_reaches_the_run(qapp: object, tmp_path: Path) -> None:
+    archive = tmp_path / "chapter.cbz"
+    archive.write_bytes(b"not read by this test")
+    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+
+    dialog._source.setText(str(archive))
+
+    assert dialog.request().rar_tool == "/opt/bin/unrar"
+
+
+def test_the_panel_says_it_is_unpacking_until_the_pages_are_counted(qapp: object) -> None:
+    window = MainWindow()
+    panel = window._run_panel
+
+    panel.start_unpack(Path("/comics/chapter.cbz"))
+
+    assert "chapter.cbz" in panel._headline.text()
+    assert "0" not in panel._headline.text(), (
+        "it says what it is doing rather than claiming a page count nobody has"
+    )
+    assert panel._progress.maximum() == 0, "a bar with no total, which Qt draws as busy"
+
+    panel.start_extract(7, Path("/comics/chapter-pages/comic-plan.yaml"))
+
+    assert "7" in panel._headline.text()
+
+
+def test_where_unrar_is_reaches_the_unpacking(
+    qapp: object, chapter_file: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The preference is no use unless it arrives where the tool is looked for."""
+    from comictrans.sources import UnpackReport, unpack
+
+    seen: list[str] = []
+
+    def recorded(source: Path, into: Path | None = None, **kwargs: object) -> UnpackReport:
+        seen.append(str(kwargs["rar_tool"]))
+        return unpack(source, into, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(run_job, "unpack", recorded)
+    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog._source.setText(str(chapter_file))
+    job = ExtractJob(dialog.request(), None)
+
+    job.work(lambda progress: None, lambda: False)
+
+    assert seen == ["/opt/bin/unrar"]
+
+
+def test_the_dialog_asks_about_the_rar_tool_it_would_hand_to_the_run(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asked about before the run, with the same answer the run would use."""
+    asked: list[str] = []
+    monkeypatch.setattr("comictrans.sources._rar_tool", lambda named="": asked.append(named))
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+
+    dialog._source.setText(str(archive))
+
+    assert dialog.refusal() == ""
+    assert set(asked) == {"/opt/bin/unrar"}
+    assert asked, "asked once for the keystroke and once for this call, which is the cost of it"
+
+
+def test_stopping_while_a_chapter_unpacks_reads_none_of_it(
+    qapp: object, chapter_file: Path, font_dir: Path
+) -> None:
+    """A cancelled run writes no plan, and does not go on to read what it has."""
+    dialog = ExtractDialog(None, None)
+    dialog._source.setText(str(chapter_file))
+    request = dialog.request()
+    job = ExtractJob(request, None)
+
+    report = job.work(lambda progress: None, lambda: True)
+
+    assert report.cancelled
+    assert report.pages_read == 0
+    assert not request.plan_path.exists()
+
+
+def test_the_panel_is_told_the_total_once_the_chapter_has_been_counted(
+    qapp: object, chapter_file: Path
+) -> None:
+    window = MainWindow()
+    dialog = ExtractDialog(None, window)
+    dialog._source.setText(str(chapter_file))
+    window._job = ExtractJob(dialog.request(), window)
+    window._run_panel.start_unpack(chapter_file)
+
+    window._on_unpacked(7)
+
+    assert "7" in window._run_panel._headline.text()
+    assert "7" in window.statusBar().currentMessage()
+    assert "chapter-pages" in window._run_panel._headline.text(), "and where the plan is going"
+    window._job = None
+
+
+def test_the_window_reads_a_chapter_file_from_end_to_end(
+    qapp: object,
+    chapter_file: Path,
+    font_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole path: pick a chapter, unpack it, read it, open the plan."""
+    window = MainWindow()
+
+    def prepared(start: Path | None, parent: object, **kwargs: object) -> ExtractDialog:
+        dialog = ExtractDialog(start, window, **kwargs)  # type: ignore[arg-type]
+        dialog._source.setText(str(chapter_file))
+        return dialog
+
+    monkeypatch.setattr(main_window.ExtractDialog, "exec", lambda self: 1)
+    monkeypatch.setattr(main_window, "ExtractDialog", prepared)
+    counted: list[int] = []
+    monkeypatch.setattr(MainWindow, "_on_unpacked", lambda self, total: counted.append(total))
+
+    window._on_extract()
+    assert "unpacking chapter.cbz" in window.statusBar().currentMessage()
+    assert "chapter.cbz" in window._run_panel._headline.text()
+    assert "0" not in window._run_panel._headline.text(), "no page count has been taken yet"
+    _await_run(window)
+
+    pages = tmp_path / "chapter-pages"
+    assert sorted(path.name for path in pages.glob("*.png")) == [
+        "001-page-001.png",
+        "002-page-002.png",
+    ]
+    assert counted == [2], "the job said how many pages there were once it knew"
+    assert window.document is not None
+    assert window.document.path == pages / "comic-plan.yaml"
+    assert window._pages.count() == 2
+    assert chapter_file.is_file(), "the chapter file is a source and is never written to"

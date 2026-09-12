@@ -121,6 +121,18 @@ class RunPanel(QWidget):
             total,
         )
 
+    def start_unpack(self, chapter: Path) -> None:
+        """A chapter file is being unpacked, and nobody has counted it yet.
+
+        A separate sentence rather than "Reading 0 page(s)" because that is
+        what a run over a chapter file would otherwise say for as long as the
+        unpacking takes: the dialog cannot count the pages inside one without
+        reading it on every keystroke, so the total arrives when the pages
+        do. The bar has no range until then, which Qt draws as busy — which
+        is exactly what is true.
+        """
+        self._start(self.tr("Unpacking {0}…").format(chapter.name), 0)
+
     def _start(self, headline: str, total: int) -> None:
         """One whole sentence, not a verb and a tail.
 

@@ -50,6 +50,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
+from ..sources import is_container
 from . import about, alerts, help_dialog, icons, recent, translations
 from .about_dialog import AboutDialog
 from .busy_bar import BusyBar
@@ -1517,10 +1518,28 @@ class MainWindow(QMainWindow):
         self._remember_directory(request.plan_path)
         job = ExtractJob(request, self)
         job.completed.connect(self._on_extract_finished)
-        self._run_panel.start_extract(request.total, request.plan_path)
-        self._start(
-            job,
-            self.tr("reading %n page(s) — {0}", None, request.total).format(request.plan_path),
+        if is_container(request.source):
+            # Nothing has been counted yet — the chapter has not been opened.
+            # The job says how many pages it found once it has them, and the
+            # panel switches to the sentence it would have started with.
+            job.unpacked.connect(self._on_unpacked)
+            self._run_panel.start_unpack(request.source)
+            said = self.tr("unpacking {0}").format(request.source.name)
+        else:
+            self._run_panel.start_extract(request.total, request.plan_path)
+            said = self.tr("reading %n page(s) — {0}", None, request.total).format(
+                request.plan_path
+            )
+        self._start(job, said)
+
+    def _on_unpacked(self, total: int) -> None:
+        """A chapter file is now a folder of pages, and that many of them."""
+        job = self._job
+        if not isinstance(job, ExtractJob):
+            return
+        self._run_panel.start_extract(total, job.request.plan_path)
+        self.statusBar().showMessage(
+            self.tr("reading %n page(s) — {0}", None, total).format(job.request.plan_path)
         )
 
     def _start(self, job: RunJob, said: str) -> None:

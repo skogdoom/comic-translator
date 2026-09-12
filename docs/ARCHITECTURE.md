@@ -558,18 +558,40 @@ page this tool cannot read.
 **The RAR reader is a licence decision before it is a technical one.**
 `unrar`'s licence is not OSI-free, and bundling it would put someone else's
 terms on an MIT project, so `rarfile` drives whichever tool the machine
-already has and `COMICTRANS_UNRAR` names one that is somewhere unusual. The
+already has; `COMICTRANS_UNRAR` names one that is somewhere unusual, and the
+window passes its own preference down the same way, since it cannot rely on
+the environment it was launched in. The
 check happens before the output directory is made, so a machine without one
 gets a refusal and no half-unpacked chapter. It is the only external binary
 this tool has ever needed, and the only one it is ever likely to: milestone 8
 needs the same kind of decision for writing RAR, where the tool that can do
 it is paid rather than merely unfree.
 
-**The window still takes a folder.** Unpacking from the extract dialog means
-a file picker, a container-aware page count on every keystroke, and a
-progress bar for the unpack — a GUI milestone rather than a pipeline one, and
-the sidecar decision means nothing in the window has to change for a chapter
-to be reviewable once `extract` has run on it.
+**The window reads one too, and the sidecar decision is why that was small.**
+`ExtractJob` unpacks on the worker thread, after the font and the recogniser
+and before anything else, which is the order `run_extract` uses and for the
+same reason: unpacking is the first thing that writes, so a run that was
+going to fail should fail before it has left a folder behind. Everything
+after it is the extract that was already there, pointed at a directory.
+
+Two things about a chapter file do not fit the dialog as it was. **It cannot
+be counted on a keystroke** — an archive's member list is cheap, a PDF's page
+tree is not, and a `.cbr` would start a subprocess for each one — so the
+dialog counts nothing, the panel says it is unpacking rather than claiming a
+total, and `ExtractJob.unpacked` carries the count the moment the pages
+exist. And **the plan's default location cannot be looked up**, because
+`default_plan_path` decides between a directory and a file by looking at the
+path and the directory does not exist yet; the dialog spells out
+`default_unpack_dir(source) / PLAN_NAME` so that the window and the command
+line cannot put the same plan in two places.
+
+What the dialog does ask before the run is whether the chapter is readable at
+all — `sources.check_readable`, which opens nothing and answers the one
+question worth answering early: a `.cbr` with no RAR tool on the machine.
+Where that tool is, is a **preference** rather than a field in the run
+dialog, and for a reason that is about macOS rather than about comics: an
+application opened from the Finder does not inherit a shell's `PATH`, so a
+Homebrew `unrar` that works on the command line is invisible to the window.
 
 ## Re-running extract
 

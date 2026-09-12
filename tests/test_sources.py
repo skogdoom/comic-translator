@@ -16,8 +16,10 @@ from PIL import Image
 
 from comictrans.errors import InputError
 from comictrans.imaging import collect_inputs
+from comictrans.progress import PageProgress
 from comictrans.sources import (
     UNRAR_ENV,
+    check_readable,
     default_unpack_dir,
     is_container,
     unpack,
@@ -223,6 +225,129 @@ def test_two_pages_with_the_same_name_in_different_folders_do_not_collide(
 
     assert [path.name for path in report.pages] == ["001-001.png", "002-001.png"]
     assert report.pages[0].read_bytes() != report.pages[1].read_bytes()
+
+
+def test_every_page_is_announced_before_it_is_written(tmp_path: Path) -> None:
+    seen: list[PageProgress] = []
+
+    report = unpack(_three_page_cbz(tmp_path), progress=seen.append)
+
+    assert [(step.index, step.total) for step in seen] == [(0, 3), (1, 3), (2, 3)], (
+        "the total is known from the archive's member list, before a page is read"
+    )
+    assert [step.image for step in seen] == ["page1.png", "page2.png", "page10.png"]
+    assert len(report.pages) == 3
+
+
+def test_a_pdf_counts_only_the_pages_it_can_read(tmp_path: Path) -> None:
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.append(_pdf(tmp_path, [_scan(201), _scan(120)]))
+    writer.add_blank_page(width=200, height=300)  # nothing on it to lift out
+    path = tmp_path / "mixed.pdf"
+    with path.open("wb") as handle:
+        writer.write(handle)
+    seen: list[PageProgress] = []
+
+    unpack(path, tmp_path / "out", progress=seen.append)
+
+    assert [step.total for step in seen] == [2, 2], "not three: the blank one is not a page"
+
+
+def test_stopping_leaves_the_pages_it_got_to_and_says_it_stopped(tmp_path: Path) -> None:
+    archive = _three_page_cbz(tmp_path)
+    written: list[str] = []
+
+    def stop_after_one(step: PageProgress) -> None:
+        written.append(step.image)
+
+    report = unpack(archive, progress=stop_after_one, should_cancel=lambda: len(written) >= 2)
+
+    assert report.cancelled
+    assert [path.name for path in report.pages] == ["001-page1.png", "002-page2.png"]
+    assert sorted(path.name for path in report.directory.iterdir()) == [
+        "001-page1.png",
+        "002-page2.png",
+    ]
+
+
+def test_stopping_before_the_first_page_is_stopping_and_not_an_empty_chapter(
+    tmp_path: Path,
+) -> None:
+    archive = _three_page_cbz(tmp_path)
+
+    report = unpack(archive, should_cancel=lambda: True)
+
+    assert report.cancelled
+    assert report.pages == ()
+    assert not (tmp_path / "chapter-pages").exists()
+
+
+def test_running_again_after_stopping_finishes_the_chapter(tmp_path: Path) -> None:
+    # What is on disk is whole pages of this chapter, so the second run reuses
+    # them rather than treating them as somebody else's.
+    archive = _three_page_cbz(tmp_path)
+    stopped: list[str] = []
+    unpack(
+        archive,
+        progress=lambda step: stopped.append(step.image),
+        should_cancel=lambda: len(stopped) >= 2,
+    )
+
+    report = unpack(archive)
+
+    assert not report.cancelled
+    assert report.reused == 2
+    assert len(report.pages) == 3
+
+
+def test_asking_whether_a_chapter_can_be_read_opens_nothing(tmp_path: Path) -> None:
+    # The dialog asks this on every keystroke, so it may not read the file —
+    # which is why a broken archive passes here and fails when it is unpacked.
+    broken = tmp_path / "chapter.cbz"
+    broken.write_bytes(b"not a zip at all")
+
+    check_readable(broken)
+
+    assert not (tmp_path / "chapter-pages").exists()
+    with pytest.raises(InputError, match=r"cannot read chapter\.cbz"):
+        unpack(broken)
+
+
+def test_asking_about_something_that_is_not_a_chapter_says_so(tmp_path: Path) -> None:
+    with pytest.raises(InputError, match="input path does not exist"):
+        check_readable(tmp_path / "nothing.cbz")
+
+    page = save_page(np.full((10, 10, 3), 7, dtype=np.uint8), tmp_path / "page.png")
+    with pytest.raises(InputError, match="unsupported container"):
+        check_readable(page)
+
+
+def test_asking_about_a_cbr_asks_whether_the_tool_is_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "rarfile", _fake_rarfile(works=False))
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+
+    with pytest.raises(InputError, match="CBR needs a RAR tool"):
+        check_readable(archive)
+
+
+def test_the_caller_can_name_the_rar_tool_as_well_as_the_environment(
+    tmp_path: Path, fake_rarfile: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The window has a Preferences field for it, because an application
+    # opened from the Finder cannot see a Homebrew unrar at all.
+    monkeypatch.setenv(UNRAR_ENV, "/from/the/environment")
+    monkeypatch.setitem(_FAKE_RAR_CONTENT, "page1.png", _page_bytes(tmp_path, "a.png", 201))
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+
+    unpack(archive, rar_tool="/named/by/the/caller")
+
+    assert fake_rarfile.UNRAR_TOOL == "/named/by/the/caller"
 
 
 def test_an_archive_with_no_pages_in_it_is_an_error(tmp_path: Path) -> None:
@@ -586,5 +711,5 @@ def test_a_named_rar_tool_that_does_not_work_is_named_in_the_refusal(
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
 
-    with pytest.raises(InputError, match="'/nowhere/unrar', which did not work"):
+    with pytest.raises(InputError, match="'/nowhere/unrar' was named and did not work"):
         unpack(archive)

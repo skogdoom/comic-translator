@@ -82,6 +82,18 @@ class Preferences:
     fallback chain, which is the right default and was, until now, the only
     answer available from the window."""
 
+    # -- reading a chapter file ----------------------------------------
+    rar_tool: str = ""
+    """Where ``unrar`` is, for opening a .cbr. Empty looks on ``PATH``.
+
+    The one setting here that is about this machine rather than about comics,
+    and it exists because an application opened from the Finder does not
+    inherit the shell's ``PATH``: a Homebrew ``unrar`` is on it for the
+    command line and invisible to the window. Nothing else needs it — CBZ and
+    PDF are read with no help — and no tool ships with comictrans, because
+    unrar's licence is not one an MIT project can redistribute.
+    """
+
     # -- how a run writes pages ----------------------------------------
     output_directory: str = ""
     """Empty means the render dialog's own suggestion, beside the pages."""

@@ -75,8 +75,14 @@ for themselves. See **Build the application** in `README.md`.
   and nothing else page-shaped, and the run stops rather than letting a
   re-release leave its old pages in with the new ones. A page whose one image
   cannot be a photograph of it — a logo on a born-digital page — is unpacked
-  and flagged for you to look at. The `review` window still asks for a
-  folder.
+  and flagged for you to look at.
+- **The window opens a chapter file as well.** **Extract Pages** takes one
+  beside a folder or a single image: it unpacks on the worker thread, says
+  what it is unpacking until it knows how many pages there are, and can be
+  stopped between pages like any other run. The plan goes in with the pages,
+  which is where the command line puts it too. Where `unrar` lives is in
+  Preferences, because an application opened from the Finder cannot see a
+  Homebrew one.
 
 ### Known limitations
 

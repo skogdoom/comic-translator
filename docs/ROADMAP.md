@@ -355,22 +355,6 @@ the metadata the apply pass needs is a measurement nobody has taken. It
 matters most where pages are read in a loop, which is `apply` over a chapter
 rather than a preview of one page.
 
-**A chapter file in the window.** `extract` reads CBZ, CBR and PDF by
-unpacking them into a folder of pages, and the extract dialog does not: it
-asks for a folder or one image, counts the pages on every keystroke by
-listing the directory, and a chapter file gets the same refusal any other
-unreadable input does — a message that now at least says what to do with it.
-Making the window take one is a file picker, a page count that can answer
-for a container without unpacking it twice, and the unpack itself on the
-worker thread with the progress the other two passes have, since a 300MB
-archive is not an instant. What it is *not* is any change to the pipeline:
-the sidecar decision means the window only has to call `sources.unpack` and
-then open the folder it gets back. The Preferences field milestone 3
-imagined for naming a RAR tool belongs here rather than where it was
-written — with no chapter file reachable from the window there is nothing
-for it to serve, so the command line has `COMICTRANS_UNRAR` and the window
-has nothing.
-
 **Rotate a region.** Cheaper than it looks, and it splits in two. A `Region`
 already holds an arbitrary polygon, so a rotated outline is representable
 today with no schema change and no `PLAN_VERSION` bump — a tilted rectangle
