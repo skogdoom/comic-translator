@@ -41,7 +41,8 @@ rather than a version anybody builds from on purpose. All three passes are
 here and in use: `extract` writes a plan file, `apply` renders translated
 pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
-reason is in the first paragraph.
+reason is in the first paragraph. `validate` checks a plan without rendering
+it, for the moment before a long run.
 
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
@@ -679,6 +680,52 @@ unsaved changes asks first, and offers to save rather than only to discard.
 Like every other pass, `review` never writes to a source image — only ever
 to the plan file you explicitly save to.
 
+## validate
+
+```
+comictrans validate pages/comic-plan.yaml
+```
+
+Answers "would `apply` get through this?" without rendering anything. A
+chapter takes minutes to render and can fail in the first second on a font
+that will not resolve, so this checks what is checkable in the time it takes
+to hash the images:
+
+- the plan parses and every field is one the reader accepts
+- every page named is still there and still hashes as it did at `extract`
+- every polygon fits on the page it is drawn on
+- every font the plan names resolves on this machine, bold face included
+
+It prints **every** problem it finds rather than stopping at the first, which
+is the whole difference between this and opening the plan to render it: a
+chapter with three missing pages and two unresolvable fonts says so once
+instead of over five runs. It renders nothing and writes nothing.
+
+```
+pages/comic-plan.yaml
+  images:   12
+  regions:  87
+  fonts:    Comic Sans MS, Chalkboard SE
+
+2 problem(s):
+  page-004.png has changed since extract (expected 3ac70d0f1b2c…, found 91ee4c7a0d51…). Re-run extract, or restore the original image.
+  page-007-002: polygon reaches past page-007.png (1650x2550): (1650, 402)
+```
+
+What it accepts is what `apply` accepts, because it calls the same functions
+rather than agreeing with them: the schema is the plan reader's, the page
+check is the one `apply` runs before it renders, and the fonts go through
+`fonts.resolve` with the precedence `apply` uses. It takes no `--font`, so
+what it checks is what the plan file says.
+
+What it does not check is anything that needs pixels drawn: whether a
+translation fits its balloon, whether a region is still holding the source
+text, whether two polygons overlap. Those are answers `apply` and `review`
+give, and they need the render this exists to run before.
+
+It exits 1 if anything is wrong — including a file that is not a plan at all,
+which it reports rather than raising — so a script can stop on it.
+
 ## The plan file
 
 YAML, UTF-8, stable key order, hand-editable. One entry per detected region.
@@ -793,14 +840,17 @@ Set `COMICTRANS_FONT_PATH` (colon-separated) to add font directories.
 | code | meaning |
 | --- | --- |
 | 0 | everything succeeded |
-| 1 | the run completed but something needs attention: for `extract`, a page failed or yielded no regions; for `apply`, a region had no translation or would not fit |
+| 1 | the run completed but something needs attention: for `extract`, a page failed or yielded no regions; for `apply`, a region had no translation or would not fit; for `validate`, anything at all was wrong with the plan |
 | 2 | the run could not start: bad arguments, no OCR backend, no resolvable font |
 
-Both commands process every page and report at the end. Neither aborts on the
-first bad region. `review` has no code 1: it is interactive, not a batch run,
-so there is nothing to report at the end beyond what is already on screen —
-it exits 0 when the window closes normally, 2 if it could not open one at all
-(PySide6 missing, or the platform's own windowing libraries).
+`extract`, `apply` and `validate` all process every page and report at the
+end. None of them aborts on the first bad region — and `validate` goes
+furthest: a plan it cannot even parse is a problem it prints, not an error it
+raises, so the exit code is 1 there too. `review` has no code 1: it is
+interactive, not a batch run, so there is nothing to report at the end beyond
+what is already on screen — it exits 0 when the window closes normally, 2 if
+it could not open one at all (PySide6 missing, or the platform's own
+windowing libraries).
 
 ## Out of scope
 

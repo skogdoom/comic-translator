@@ -223,6 +223,35 @@ def test_image_hash_mismatch_is_an_error(tmp_path: Path) -> None:
         load_plan(plan_path)
 
 
+def test_the_hash_check_stops_at_the_first_bad_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # image_problems yields lazily so that loading a plan still costs one
+    # hash when page one is already wrong, rather than hashing the chapter.
+    save_page(np.full((20, 20, 3), 255, dtype=np.uint8), tmp_path / "page-001.png")
+    second = save_page(np.full((20, 20, 3), 255, dtype=np.uint8), tmp_path / "page-002.png")
+    plan_path = tmp_path / "plan.yaml"
+    write_plan(
+        make_plan(
+            _header(),
+            (_region(),),  # its page keeps the placeholder digest, so it fails
+            extra_images=(PlanImage(name="page-002.png", sha256=sha256_file(second)),),
+        ),
+        plan_path,
+    )
+    hashed: list[str] = []
+    real = sha256_file
+    monkeypatch.setattr(
+        "comictrans.planfile.reader.sha256_file",
+        lambda path: (hashed.append(Path(path).name), real(path))[1],
+    )
+
+    with pytest.raises(PlanError, match="has changed since extract"):
+        load_plan(plan_path)
+
+    assert hashed == ["page-001.png"]
+
+
 def test_missing_source_image_is_an_error(tmp_path: Path) -> None:
     plan_path = tmp_path / "plan.yaml"
     write_plan(_plan(), plan_path)

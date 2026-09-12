@@ -7,7 +7,7 @@ and any downstream tooling can depend on this package alone.
 from __future__ import annotations
 
 from .merge import MergeReport, merge_plans
-from .reader import load_plan, loads, verify_images
+from .reader import image_problems, load_plan, loads, verify_images
 from .schema import PLAN_VERSION, REGION_KEY_ORDER
 from .writer import dumps, write_plan
 
@@ -16,6 +16,7 @@ __all__ = [
     "REGION_KEY_ORDER",
     "MergeReport",
     "dumps",
+    "image_problems",
     "load_plan",
     "loads",
     "merge_plans",

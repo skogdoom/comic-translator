@@ -418,3 +418,33 @@ def test_lost_hand_work_fails_the_run(page_dir: Path, font_dir: Path) -> None:
     write_plan(replace(plan, regions=(*plan.regions, ghost)), plan_path, force=True)
 
     assert main(["extract", str(page_dir), "--merge"]) == EXIT_PROBLEMS
+
+
+def test_validate_passes_a_plan_extract_just_wrote(
+    page_dir: Path, font_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["extract", str(page_dir)]) == EXIT_OK
+
+    assert main(["validate", str(page_dir / "comic-plan.yaml")]) == EXIT_OK
+    printed = capsys.readouterr().out
+    assert "no problems" in printed
+    assert "Comic Sans MS" in printed
+
+
+def test_validate_exits_nonzero_and_names_what_is_wrong(
+    page_dir: Path, font_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["extract", str(page_dir)]) == EXIT_OK
+    save_page(make_page_array((600, 800), (10, 10, 10), []), page_dir / "page1.png")
+
+    assert main(["validate", str(page_dir / "comic-plan.yaml")]) == EXIT_PROBLEMS
+    assert "  page1.png has changed since extract" in capsys.readouterr().out
+
+
+def test_validate_writes_nothing_at_all(page_dir: Path, font_dir: Path, tmp_path: Path) -> None:
+    assert main(["extract", str(page_dir)]) == EXIT_OK
+    plan_path = page_dir / "comic-plan.yaml"
+    before = {path: path.stat().st_mtime_ns for path in sorted(page_dir.iterdir())}
+
+    assert main(["validate", str(plan_path)]) == EXIT_OK
+    assert {path: path.stat().st_mtime_ns for path in sorted(page_dir.iterdir())} == before

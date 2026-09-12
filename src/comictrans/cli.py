@@ -43,6 +43,7 @@ from .model import Plan, TextCase
 from .ocr import get_recognizer
 from .planfile import MergeReport, load_plan, merge_plans, write_plan
 from .util import is_within
+from .validate import ValidateReport, validate_plan
 
 log = logging.getLogger("comictrans")
 
@@ -96,6 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_extract(subparsers, verbosity)
     _add_apply(subparsers, verbosity)
     _add_review(subparsers, verbosity)
+    _add_validate(subparsers, verbosity)
     return parser
 
 
@@ -341,6 +343,27 @@ def _add_review(
     )
 
 
+def _add_validate(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    verbosity: argparse.ArgumentParser,
+) -> None:
+    validate_parser = subparsers.add_parser(
+        "validate",
+        parents=[verbosity],
+        help="check a plan file without rendering it, and list everything wrong",
+        description=(
+            "Answers 'would apply get through this?' in the time it takes to "
+            "hash the images: the schema, every page still being the one that "
+            "was extracted, every polygon fitting on its own page, and every "
+            "font named resolving on this machine. Reports every problem it "
+            "finds rather than the first, renders nothing, and writes nothing. "
+            "Exits 1 if anything is wrong, including a file that is not a "
+            "plan, so a script can stop on it."
+        ),
+    )
+    validate_parser.add_argument("plan", type=Path, help="plan file to check")
+
+
 def configure_logging(*, verbose: bool, quiet: bool) -> None:
     """Set the root log level. ``-v`` wins if both somehow arrive set."""
     level = logging.DEBUG if verbose else logging.WARNING if quiet else logging.INFO
@@ -559,12 +582,37 @@ def run_review(args: argparse.Namespace) -> int:
     return gui_app.run(args.plan)
 
 
+def _validate_summary(report: ValidateReport) -> None:
+    print(f"\n{report.plan_path}")
+    if report.parsed:
+        print(f"  images:   {report.images}")
+        print(f"  regions:  {report.regions}")
+        print(f"  fonts:    {', '.join(report.fonts) if report.fonts else '(none named)'}")
+    if report.ok:
+        print("\nno problems: apply would get through this plan.")
+        return
+    print(f"\n{len(report.problems)} problem(s):")
+    for problem in report.problems:
+        print(f"  {problem}")
+
+
+def run_validate(args: argparse.Namespace) -> int:
+    report = validate_plan(args.plan)
+    _validate_summary(report)
+    return EXIT_OK if report.ok else EXIT_PROBLEMS
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(verbose=args.verbose, quiet=args.quiet)
 
-    handlers = {"extract": run_extract, "apply": run_apply, "review": run_review}
+    handlers = {
+        "extract": run_extract,
+        "apply": run_apply,
+        "review": run_review,
+        "validate": run_validate,
+    }
     try:
         return handlers[args.command](args)
     except ComictransError as exc:

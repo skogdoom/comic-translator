@@ -125,6 +125,24 @@ def load_page(path: Path) -> PageImage:
     return PageImage(path=path, rgb=rgb, sha256=sha256_file(path), meta=meta, alpha=alpha)
 
 
+def page_size(path: Path) -> tuple[int, int] | None:
+    """``(width, height)`` in pixels, or ``None`` if the file will not open.
+
+    Read from the file's header: ``Image.open`` decodes nothing until the
+    pixels are asked for, so this costs a few bytes a page rather than the
+    megabytes ``load_page`` costs. That is what makes measuring every page of
+    a chapter cheap enough to do before a run — see ``validate``.
+
+    ``None`` rather than an exception because every caller so far already has
+    a better answer for an unreadable page than this function could give.
+    """
+    try:
+        with path.open("rb") as handle, Image.open(handle) as image:
+            return (image.width, image.height)
+    except (UnidentifiedImageError, OSError):
+        return None
+
+
 def collect_inputs(target: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
     """Resolve a file or directory into a sorted list of source images.
 

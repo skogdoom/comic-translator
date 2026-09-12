@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 
 from comictrans.errors import InputError
-from comictrans.imaging import collect_inputs, load_page
+from comictrans.imaging import collect_inputs, load_page, page_size
 from comictrans.imaging import save_page as write_output_page
 
 from .conftest import save_page
@@ -83,6 +83,27 @@ def test_load_page_reports_a_corrupt_image(tmp_path: Path) -> None:
     path.write_bytes(b"not really a png")
     with pytest.raises(InputError, match="cannot read image"):
         load_page(path)
+
+
+def test_page_size_reads_the_header_without_decoding_the_pixels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = save_page(_blank(width=40, height=30), tmp_path / "page.png")
+    decoded: list[str] = []
+    original = Image.Image.load
+    monkeypatch.setattr(
+        Image.Image, "load", lambda self: (decoded.append("decoded"), original(self))[1]
+    )
+
+    assert page_size(path) == (40, 30)
+    assert decoded == []
+
+
+def test_page_size_answers_none_for_what_it_cannot_open(tmp_path: Path) -> None:
+    (tmp_path / "broken.png").write_bytes(b"not really a png")
+
+    assert page_size(tmp_path / "broken.png") is None
+    assert page_size(tmp_path / "not-there.png") is None
 
 
 def test_transparency_is_flattened_onto_white_not_dropped(tmp_path: Path) -> None:

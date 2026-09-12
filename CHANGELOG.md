@@ -49,6 +49,15 @@ for themselves. See **Build the application** in `README.md`.
   four regions on each, all four erase strategies, hashed before and after.
   `apply` gets this as much as the preview does; they call the same function,
   which is why they still do.
+- **`comictrans validate <plan>` says what is wrong with a plan without
+  rendering it.** For the moment before a long run: the schema, every page
+  still being the one that was extracted, every polygon fitting on its own
+  page, and every font the plan names resolving on this machine — bold face
+  included, which is the failure this is really for, since nothing in a plan
+  file can record whether a font exists here. It prints every problem it
+  finds rather than stopping at the first, exits 1 if there is one, and
+  writes nothing. It checks what it checks by calling the same functions
+  `apply` calls, so what it accepts is what `apply` accepts.
 
 ### Known limitations
 

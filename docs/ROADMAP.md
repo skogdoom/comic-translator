@@ -44,7 +44,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 5 | Validate a plan file | S |
 | 4.26 | Extract text for one region | M |
 | 4.27 | Lock a region | M |
 | 4.28 | Region context menu | S |
@@ -137,28 +136,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 5 Validate a plan file
-
-`comictrans validate <plan>`: read a plan, check everything checkable
-without rendering it, and say what is wrong. For debugging, and
-deliberately not in the GUI for now — the window opens plans and reports
-problems as it goes, which is a different job for a different moment.
-
-Most of the machinery exists. `load_plan` enforces the schema and
-`check_images` verifies the per-page hashes; both already produce messages
-worth printing. This is largely a matter of running them from one command
-and reporting what they say instead of raising on the first one.
-
-**It also checks that every font named resolves**, and that is the failure
-this command is really for. A plan can be perfectly well-formed, name every
-image correctly, hash clean, and still refuse to render every region on the
-page because the font it names has no bold face on this machine. Nothing in
-the schema catches that, because it is a fact about the machine rather than
-about the file. `fonts.resolve_family` is the call `apply` makes, so what
-`validate` accepts is what `apply` accepts.
-
-Exit non-zero on any failure, so it is usable from a script.
 
 ## 4.26 Extract text for one region
 
