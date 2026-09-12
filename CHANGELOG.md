@@ -30,6 +30,14 @@ for themselves. See **Build the application** in `README.md`.
   goes wrong are deliberately not translated. Swedish is the one translation
   that ships; the English one holds nothing but plural forms, so a window
   says "1 page" rather than "1 page(s)".
+- **The toolbar's icons are the size they were always meant to be.** On a
+  Retina screen every one of them had been drawn at half scale and anchored
+  up and to the left of its button — 14 points of ink in a 42-point button
+  where 27 were asked for. The drawings were also refitted to one grid while
+  this was being chased: all fifteen now fill the same box and sit in the
+  middle of it, where they had ranged from 14 units across to 22 and sat as
+  much as 2 off centre. The bar's height is unchanged, and it no longer
+  carries a drag grip, which no Mac toolbar does.
 
 ### Known limitations
 

@@ -1629,6 +1629,23 @@ def test_the_toolbar_reuses_the_menu_actions(qapp: object) -> None:
         assert action in on_toolbar
 
 
+def test_the_toolbar_is_fixed_where_it_is(qapp: object) -> None:
+    """A Mac toolbar does not come away from the top of the window.
+
+    Qt draws a grip for a movable one and indents the first button behind it,
+    which is nine pixels of the left edge the row is meant to start at —
+    measured, and visible as a column of dots in a screenshot.
+    """
+    window = MainWindow()
+
+    assert not window._toolbar.isMovable()
+    assert not window._toolbar.isFloatable()
+
+    first = window._toolbar.widgetForAction(window._open_action)
+    assert first is not None
+    assert first.x() <= 6, f"the first button starts at {first.x()}, behind something"
+
+
 def test_the_layout_is_remembered_for_the_next_window(qapp: object, tmp_path: Path) -> None:
     from PySide6.QtCore import QSettings
 

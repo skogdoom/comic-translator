@@ -92,9 +92,13 @@ def test_the_application_icon_renders_at_the_sizes_an_icon_is_asked_for(qapp: ob
     assert not icon.isNull()
 
     for size in (16, 32, 128, 512):
-        image = icon.pixmap(size, size).toImage()
+        pixmap = icon.pixmap(size, size)
+        image = pixmap.toImage()
         assert not image.isNull(), f"nothing at {size}px"
-        assert image.width() == size
+        # The size asked for is in points; what comes back is in pixels, and
+        # on a 2x screen that is twice as many. Asking the pixmap what it
+        # measures in points is the question that has one answer everywhere.
+        assert pixmap.deviceIndependentSize().width() == size
         drawn = {
             image.pixelColor(x, y).rgb()
             for y in range(image.height())

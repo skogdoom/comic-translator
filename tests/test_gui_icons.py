@@ -68,13 +68,92 @@ def test_the_drawings_render_at_every_size_the_window_asks_for(qapp: object) -> 
     renders empty rather than raising, and one empty icon is as invisible
     from the code as a missing one.
     """
+    ratio = _ratio()
     for name in sorted(icons.available()):
         icon = icons.icon(name, QColor(0, 0, 0))
-        assert icon.availableSizes() == [QSize(size, size) for size in icons.SIZES], name
+        # Baked at every size in points; stored, and reported back, in
+        # pixels. On a 2x screen those are different numbers for the same
+        # icon — which is the whole of the bug this file now guards.
+        assert icon.availableSizes() == [
+            QSize(round(size * ratio), round(size * ratio)) for size in icons.SIZES
+        ], name
         for size in icons.SIZES:
             pixmap = icon.pixmap(size, size)
             assert not pixmap.isNull(), f"{name} at {size}px is a null pixmap"
+            assert pixmap.deviceIndependentSize().width() == size, name
         assert _opaque_colors(icon), f"{name} renders nothing at 24px"
+
+
+def _ratio() -> float:
+    """What this screen multiplies points by to get pixels."""
+    application = QApplication.instance()
+    assert isinstance(application, QApplication)
+    screen = application.primaryScreen()
+    return screen.devicePixelRatio() if screen is not None else 1.0
+
+
+def _ink_box(name: str, size: int = 64) -> tuple[float, float, float, float]:
+    """``(width, height, centre x, centre y)`` of a drawing, in grid units.
+
+    Measured off the pixmap the window actually gets rather than off the
+    file, so the answer includes everything between the two: the stroke, the
+    rasteriser, and the tint. Grid units rather than pixels so the numbers
+    read as the drawing was laid out — and taken off the pixmap's real pixel
+    count rather than the size asked for, which are the same number only on
+    a screen that is not Retina.
+    """
+    pixmap = icons.icon(name, QColor(0, 0, 0)).pixmap(size, size)
+    image = pixmap.toImage()
+    left, top, right, bottom = image.width(), image.height(), -1, -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha():
+                left, right = min(left, x), max(right, x)
+                top, bottom = min(top, y), max(bottom, y)
+    assert right >= 0, f"{name} drew nothing"
+    unit = icons.GRID / image.width()
+    return (
+        (right - left + 1) * unit,
+        (bottom - top + 1) * unit,
+        (left + right + 1) / 2 * unit - icons.GRID / 2,
+        (top + bottom + 1) / 2 * unit - icons.GRID / 2,
+    )
+
+
+def test_every_drawing_fills_the_same_box_and_sits_in_the_middle_of_it(qapp: object) -> None:
+    """What makes a row of them read as one set rather than fifteen pictures.
+
+    Measured before this rule existed: the set ran from 14 grid units across
+    to 22, and as much as 2 off centre — the up arrow high, the down arrow
+    low, next to each other on the bar. The toolbar looked ragged and small,
+    and that was why.
+
+    The tolerances are what a 64px raster of a 24-unit grid can say: one
+    pixel is 0.375 of a unit, so a drawing is held to half a unit of centre
+    and a unit of size rather than to the number it was fitted to.
+    """
+    for name in sorted(icons.available()):
+        width, height, centre_x, centre_y = _ink_box(name)
+
+        assert abs(max(width, height) - icons.INK) <= 1.0, (
+            f"{name} is {max(width, height):.2f} units where the set is {icons.INK}"
+        )
+        assert abs(centre_x) <= 0.5 and abs(centre_y) <= 0.5, (
+            f"{name} sits at ({centre_x:+.2f}, {centre_y:+.2f}) rather than in the middle"
+        )
+        assert min(width, height) > 0, name
+
+
+def test_no_drawing_reaches_the_edge_of_its_canvas(qapp: object) -> None:
+    """The margin the grid leaves is what stops a button looking crowded.
+
+    Two units all round at :data:`icons.INK` of :data:`icons.GRID`. A drawing
+    that fills its canvas would sit tighter in the toolbar than the rest and
+    risk being clipped by a style that insets the icon at all.
+    """
+    for name in sorted(icons.available()):
+        width, height, _x, _y = _ink_box(name)
+        assert max(width, height) < icons.GRID - 1, f"{name} nearly fills its canvas"
 
 
 def test_a_drawing_comes_out_in_the_colour_it_was_asked_for(qapp: object) -> None:
@@ -85,6 +164,48 @@ def test_a_drawing_comes_out_in_the_colour_it_was_asked_for(qapp: object) -> Non
         assert {(c.red(), c.green(), c.blue()) for c in painted} == {
             (asked.red(), asked.green(), asked.blue())
         }
+
+
+def test_tinting_keeps_the_drawing_the_size_the_screen_asked_for(qapp: object) -> None:
+    """The Retina bug, in the one function it lived in.
+
+    Measured on a 2x screen: ``QIcon.pixmap(32, 32)`` hands back 64x64
+    pixels marked ratio 2, and ``drawPixmap(0, 0, …)`` draws a pixmap at its
+    *device-independent* size — 32x32 — so tinting it into a blank 64x64
+    image left a quarter-size drawing in the top-left corner of a full-size
+    pixmap. The window then drew that at half scale, up and to the left: in
+    a real toolbar, 14 points of ink where 27 were asked for, 7.5 points off
+    the button's middle in both directions.
+
+    Written against a pixmap made ratio 2 by hand rather than against a
+    screen, so it asks the same question on every machine the suite runs on
+    — which is the point, since the machine it was found on is the only one
+    that showed it.
+    """
+    from PySide6.QtGui import QPixmap
+
+    source = QIcon(str(icons.ICON_DIR / "open.svg")).pixmap(32, 32)
+    source.setDevicePixelRatio(2.0)
+    assert isinstance(source, QPixmap)
+
+    tinted = icons._tinted(source, QColor(0, 0, 0))
+
+    assert tinted.size() == source.size(), "the pixels the screen asked for"
+    assert tinted.devicePixelRatio() == source.devicePixelRatio(), "and what they measure"
+
+    image = tinted.toImage()
+    left, top, right, bottom = image.width(), image.height(), -1, -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha():
+                left, right = min(left, x), max(right, x)
+                top, bottom = min(top, y), max(bottom, y)
+    assert right >= 0, "nothing was drawn"
+    # The drawing fills the pixmap it was rendered into, rather than sitting
+    # in a corner of it: its middle is the pixmap's middle.
+    assert abs((left + right + 1) / 2 - image.width() / 2) <= 1
+    assert abs((top + bottom + 1) / 2 - image.height() / 2) <= 1
+    assert (right - left + 1) > image.width() * 0.6, "a quarter-size drawing in a full-size pixmap"
 
 
 def test_the_same_name_and_colour_are_only_built_once(qapp: object) -> None:
