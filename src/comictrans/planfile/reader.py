@@ -7,7 +7,7 @@ silent shrug or a bare KeyError would waste your time on every one of them.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -398,6 +398,31 @@ def _parse_images(
     return images
 
 
+def image_problems(plan: Plan, plan_path: Path) -> Iterator[tuple[str, str]]:
+    """``(image name, the whole message)`` for every page not as recorded.
+
+    All of them rather than the first, because ``validate`` reports a plan's
+    problems in one go and a chapter with three pages missing should say so
+    once. :func:`verify_images` is this check stopping at the first, which is
+    what loading a plan in order to render it wants — and lazily, so that
+    stopping there still means not hashing the pages after it.
+    """
+    base = plan_path.parent
+    for image in plan.images:
+        resolved = (base / image.name).resolve()
+        if not resolved.is_file():
+            yield image.name, f"source image not found: {image.name} (resolved to {resolved})"
+            continue
+        actual = sha256_file(resolved)
+        if image.sha256 != actual:
+            yield (
+                image.name,
+                f"{image.name} has changed since extract "
+                f"(expected {image.sha256[:12]}…, found {actual[:12]}…). "
+                "Re-run extract, or restore the original image.",
+            )
+
+
 def verify_images(plan: Plan, plan_path: Path) -> None:
     """Check that every referenced image exists and still hashes the same.
 
@@ -405,21 +430,8 @@ def verify_images(plan: Plan, plan_path: Path) -> None:
     the pixels they were measured from. Rendering anyway would put text in the
     wrong place, so this is an error rather than a warning.
     """
-    base = plan_path.parent
-    for image in plan.images:
-        resolved = (base / image.name).resolve()
-        if not resolved.is_file():
-            raise PlanError(
-                f"source image not found: {image.name} (resolved to {resolved})", path=plan_path
-            )
-        actual = sha256_file(resolved)
-        if image.sha256 != actual:
-            raise PlanError(
-                f"{image.name} has changed since extract "
-                f"(expected {image.sha256[:12]}…, found {actual[:12]}…). "
-                "Re-run extract, or restore the original image.",
-                path=plan_path,
-            )
+    for _name, message in image_problems(plan, plan_path):
+        raise PlanError(message, path=plan_path)
 
 
 def load_plan(path: Path, *, check_images: bool = True) -> Plan:

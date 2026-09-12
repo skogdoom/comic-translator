@@ -42,7 +42,8 @@ regions they do have, and the plan is a version 2 one from then on.
 
 - `ocr/` and `detect/` never import `planfile`.
 - `planfile` never imports Pillow, OpenCV, or pyobjc.
-- `cli` and `extract` are the only modules that know about both sides.
+- `cli`, `extract` and `validate` are the only modules that know about both
+  sides.
 
 That is not tidiness for its own sake. It means the review GUI's
 `gui.document` — the module that loads a plan, tracks edits, and saves —
@@ -56,6 +57,7 @@ boxes.
 ```python
 # imaging
 load_page(path: Path) -> PageImage                  # read-only, captures dpi/icc
+page_size(path: Path) -> (int, int) | None          # header only, decodes nothing
 collect_inputs(target: Path) -> (list[Path], list[(Path, reason)])
 
 # ocr — one adapter per backend
@@ -435,13 +437,51 @@ lettering is.
 
 ## Failure behaviour
 
-Both commands process every page and report at the end. A corrupt scan halfway
-through a chapter costs you that page, not the run.
+Every batch command processes every page and reports at the end. A corrupt
+scan halfway through a chapter costs you that page, not the run.
 
 Exit codes: 0 clean, 1 completed with something to look at, 2 could not start.
 For `extract`, "something to look at" means a page failed to decode or a page
 produced no regions at all. A stray `.txt` file in the directory is logged and
 does not affect the exit code.
+
+## Checking a plan without rendering it
+
+`validate` answers "would `apply` get through this?" for the moment before a
+long run: a chapter takes minutes to render and can fail in the first second
+on a font with no bold face here.
+
+**It agrees with `apply` by calling `apply`'s functions, not by matching
+them.** The schema is `load_plan`, the pages are `planfile.image_problems` —
+which is exactly the list `verify_images` raises the first of, factored out so
+the two cannot drift — and the fonts go through `fonts.resolve` with the
+precedence `apply.resolve_styles` uses. A check written here in the same
+spirit as one of those would be a second opinion, and a second opinion is what
+a validator must not be. That is also why a plan with no regions names no
+fonts: `resolve_styles` walks regions, so a header font that will not resolve
+never stops a plan with nothing to letter, and refusing one here would refuse
+something `apply` accepts.
+
+**It reports every problem rather than the first**, which is the whole
+difference between this and loading a plan in order to render it. `load_plan`
+raising on the first bad thing is right when something is about to use the
+result; here, a chapter with three missing pages and two unresolvable fonts
+should say so once rather than over five runs. The one exception is a file
+that will not parse: everything after that reads the object the reader would
+have produced, so there is nothing left to check.
+
+**One check is its own**, because the reader cannot make it. `_parse_polygon`
+refuses a negative coordinate as off the page and has no way to refuse the
+other three edges, knowing nothing about how big the page is; `validate` has
+the images to hand, so it finishes the rule. The page is measured with
+`imaging.page_size`, which reads the header and decodes nothing — a few bytes
+a page instead of megabytes, which is what makes checking every polygon in a
+chapter cheap enough to do at all.
+
+**What it does not check is anything that needs pixels drawn**: whether a
+translation fits, whether it is still the source text, whether two polygons
+overlap. Those are answers `apply` and `review` already give, and they need
+the render this exists to run before.
 
 ## Re-running extract
 
