@@ -51,6 +51,7 @@ from ..ocr import get_recognizer
 from ..planfile import write_plan
 from ..progress import CancelCheck, PageProgress, ProgressCallback
 from ..render import RenderCancelled
+from ..sources import is_container, unpack
 from .preview import Preview, PreviewRequest, render_preview
 
 log = logging.getLogger(__name__)
@@ -178,7 +179,7 @@ class ExtractRequest:
     """Everything one extract needs, settled before the thread starts."""
 
     source: Path
-    """A directory of pages, or one image."""
+    """A directory of pages, one image, or a chapter file to unpack first."""
 
     plan_path: Path
     config: ExtractConfig
@@ -191,6 +192,10 @@ class ExtractRequest:
 
     force: bool = False
     """Overwrite an existing plan file, discarding everything in it."""
+
+    rar_tool: str = ""
+    """Where ``unrar`` is, for a .cbr. Empty looks on ``PATH``, which an
+    application opened from the Finder barely has — hence the preference."""
 
     pages: tuple[Path, ...] = field(default_factory=tuple)
     """The images the run will read, as the dialog counted them. Carried so
@@ -213,7 +218,23 @@ class ExtractJob(RunJob):
     **A cancelled run writes nothing.** A render stopped part-way leaves
     whole pages, each one exactly what a complete run would have written for
     it. A plan file has no such partial form: it names the images it covers,
-    so half of one is a file that claims a chapter it never read.
+    so half of one is a file that claims a chapter it never read. Pages
+    unpacked from a chapter file before it stopped are the exception that
+    proves it: they are copies of what is in the chapter, not a claim about
+    anything, and running it again continues from them.
+
+    **A chapter file is unpacked here**, after the font and the recogniser
+    and before anything else, which is where the command line does it too:
+    unpacking is the first thing this writes, and a run that was going to
+    fail for want of a font should fail before it has left a folder behind.
+    """
+
+    unpacked = Signal(int)
+    """How many pages came out of a chapter file, once they all have.
+
+    The dialog could not count them without reading the chapter on every
+    keystroke, so a run over one starts with no total — this is the panel's
+    cue to say what it is now reading.
     """
 
     def __init__(self, request: ExtractRequest, parent: QObject | None = None) -> None:
@@ -225,8 +246,22 @@ class ExtractJob(RunJob):
         face = resolve(request.font)
         recognizer = get_recognizer(request.config.ocr)
         log.info("OCR backend: %s", recognizer.name)
+
+        source = request.source
+        if is_container(source):
+            chapter = unpack(
+                source,
+                rar_tool=request.rar_tool,
+                progress=progress,
+                should_cancel=should_cancel,
+            )
+            if chapter.cancelled:
+                return ExtractReport(cancelled=True)
+            source = chapter.directory
+            self.unpacked.emit(len(chapter.pages))
+
         plan, report = extract(
-            request.source,
+            source,
             request.plan_path,
             recognizer,
             face.family,

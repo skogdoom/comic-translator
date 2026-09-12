@@ -29,7 +29,6 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -40,7 +39,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -54,8 +52,16 @@ from ..config import (
     OcrConfig,
 )
 from ..errors import ComictransError
-from ..extract import default_plan_path
+from ..extract import PLAN_NAME, default_plan_path
 from ..imaging import IMAGE_SUFFIXES, collect_inputs
+from ..sources import (
+    CONTAINER_SUFFIXES,
+    RAR,
+    chapter_kind,
+    check_readable,
+    default_unpack_dir,
+    is_container,
+)
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
@@ -71,6 +77,24 @@ ENGINE_CHOICES: tuple[tuple[str, str], ...] = (
 rather than a quiet downgrade, which is why ``auto`` is spelled out."""
 
 EXTRACT = QCoreApplication.translate("ExtractDialog", "Extract")
+
+RAR_IN_PREFERENCES = QCoreApplication.translate(
+    "ExtractDialog",
+    "Preferences, under “reading a .cbr”, is where to say where the tool is.",
+)
+"""Where the window's answer to a missing RAR tool lives. The pipeline's own
+message names an environment variable instead, which is the command line's
+answer to the same question."""
+
+
+def _patterns(suffixes: frozenset[str]) -> str:
+    """``*.cbr *.cbz *.pdf`` — a file panel's filter, from the list itself.
+
+    Written from the same constants the run reads, so a panel cannot come to
+    offer something the pass then refuses, or hide something it would have
+    taken.
+    """
+    return " ".join(f"*{suffix}" for suffix in sorted(suffixes))
 
 
 class ExtractDialog(QDialog):
@@ -95,54 +119,65 @@ class ExtractDialog(QDialog):
         someone typed is not a default to overwrite.
         """
 
-        # One button, because it answers one question — which pages? — and
-        # the two kinds of answer are the same decision made at two
-        # granularities. It is a menu rather than a single panel because Qt
-        # has no file dialog that accepts either: `Directory` mode refuses a
-        # file and `ExistingFile` refuses a directory, both measured. The one
-        # way to get a panel that takes both is to override `accept()`, which
-        # forces `DontUseNativeDialog` — a Qt-drawn Open panel on macOS, and
-        # the only non-native one in an application whose every other file
-        # dialog is the system's. The extra click is the cheaper cost.
-        # One question — which pages? — so one button. Which of the two kinds
-        # of answer it will ask for is a pair of radio buttons beside it,
-        # rather than a menu on the button: the mode is then visible without
-        # clicking anything, and browsing stays one click. Qt has no file
-        # dialog that accepts either kind (measured: `FileMode.Directory`
-        # refuses a file, `ExistingFile` refuses a directory), and the one
-        # route to a panel that does forces `DontUseNativeDialog` — a
-        # Qt-drawn Open panel on macOS, and the only non-native one in an
-        # application whose every other file dialog is the system's.
+        # One question — which pages? — so one button. Which kind of thing it
+        # will ask for is a pair of radio buttons beside it, rather than a
+        # menu on the button: the mode is then visible without clicking
+        # anything, and browsing stays one click. Qt has no file dialog that
+        # accepts either kind (measured: `FileMode.Directory` refuses a file,
+        # `ExistingFile` refuses a directory), and the one route to a panel
+        # that does forces `DontUseNativeDialog` — a Qt-drawn Open panel on
+        # macOS, and the only non-native one in an application whose every
+        # other file dialog is the system's.
+        #
+        # A folder or a file, and not a third for chapter files: a chapter
+        # file and a page are both one file to open, the panel offers both
+        # at once, and what a file turns out to be is read out of it rather
+        # than asked about here — see `sources.chapter_kind`. Asking twice
+        # would be asking a question the answer is already in.
         self._count = QLabel()
+        # One line, and left to ask for the width its text needs. Two things
+        # this has been through, both of them the layout being clever:
+        # wrapping it makes a QLabel report a height from a guess at its own
+        # shape rather than from the width it is given, so the row comes out
+        # a line short and the rest is drawn under the row below; and an
+        # Ignored width policy makes it report a width of *nought*, which on
+        # macOS — where a form's fields stay at their size hint rather than
+        # growing to the column — is exactly the width it then gets, so it
+        # says nothing at all. Plain, short, and one line is the whole
+        # answer; it is on a row of its own, where the only thing a long
+        # translation can cost is the dialog's width.
+        self._count.setWordWrap(False)
         self._quieten(self._count)
 
         self._source = QLineEdit()
-        self._folder_choice = QRadioButton(self.tr("a folder of pages"))
-        self._image_choice = QRadioButton(self.tr("a single image"))
-        self._folder_choice.setChecked(True)  # the usual case, by a long way
-        self._source_kind = QButtonGroup(self)
-        self._source_kind.addButton(self._folder_choice)
-        self._source_kind.addButton(self._image_choice)
-        choose_source = QPushButton(self.tr("Open…"))
-        choose_source.setAutoDefault(False)
-        choose_source.clicked.connect(self._on_choose_source)
+        # Two buttons rather than one and a pair of radio buttons saying
+        # which kind it will ask for. The radios never decided anything: what
+        # the field accepts has always been decided by looking at the path,
+        # so a file picked with "a folder" checked worked and looked like a
+        # bug. Qt still has no file dialog that takes both (measured:
+        # `FileMode.Directory` refuses a file, `ExistingFile` refuses a
+        # directory, and the one route to a panel that takes either forces
+        # `DontUseNativeDialog` — a Qt-drawn Open panel on macOS, in an
+        # application whose every other file dialog is the system's), so
+        # there are two panels. Two buttons say so, without a mode to get
+        # wrong, and browsing stays one click.
+        self._folder_button = QPushButton(self.tr("Folder…"))
+        self._folder_button.setAutoDefault(False)
+        self._folder_button.clicked.connect(self._on_choose_folder)
+        self._file_button = QPushButton(self.tr("File…"))
+        self._file_button.setAutoDefault(False)
+        self._file_button.setToolTip(
+            self.tr("One page, or a whole chapter as a .cbz, .cbr or .pdf.")
+        )
+        self._file_button.clicked.connect(self._on_choose_file)
 
         source_row = QHBoxLayout()
         source_row.setContentsMargins(0, 0, 0, 0)
         source_row.addWidget(self._source, 1)
-        source_row.addWidget(choose_source)
+        source_row.addWidget(self._folder_button)
+        source_row.addWidget(self._file_button)
         source_widget = QWidget()
         source_widget.setLayout(source_row)
-
-        kind_row = QHBoxLayout()
-        kind_row.setContentsMargins(0, 0, 0, 0)
-        kind_row.addWidget(self._folder_choice)
-        kind_row.addWidget(self._image_choice)
-        kind_row.addSpacing(12)
-        kind_row.addWidget(self._count)
-        kind_row.addStretch(1)
-        kind_widget = QWidget()
-        kind_widget.setLayout(kind_row)
 
         self._plan = QLineEdit()
         plan_button = QPushButton(self.tr("Choose…"))
@@ -152,15 +187,24 @@ class ExtractDialog(QDialog):
         plan_row.setContentsMargins(0, 0, 0, 0)
         plan_row.addWidget(self._plan, 1)
         plan_row.addWidget(plan_button)
+
+        # The buttons are different widths, so left alone the fields beside
+        # them end at different places. Matched off their own size hints
+        # rather than a number, so it holds in any language on any platform's
+        # font: the three buttons take the widest one's width, and the plan
+        # row is given the space the second source button takes so that both
+        # fields still end together.
+        buttons = (self._folder_button, self._file_button, plan_button)
+        button_width = max(button.sizeHint().width() for button in buttons)
+        for button in buttons:
+            button.setMinimumWidth(button_width)
+
         plan_widget = QWidget()
         plan_widget.setLayout(plan_row)
-
-        # "Open…" and "Choose…" are different widths, so left alone the two
-        # fields beside them end at different places. Matched off their own
-        # size hints rather than a number, so it holds on any platform's font.
-        button_width = max(choose_source.sizeHint().width(), plan_button.sizeHint().width())
-        choose_source.setMinimumWidth(button_width)
-        plan_button.setMinimumWidth(button_width)
+        # After the layout has a widget, and not before: until then its
+        # spacing is -1, meaning "whatever the style says", and adding that
+        # to the gap leaves the two fields seven pixels apart.
+        plan_row.addSpacing(button_width + plan_row.spacing())
 
         self._source_language = QLineEdit(preferences.source_language)
         self._target_language = QLineEdit(preferences.target_language)
@@ -191,7 +235,10 @@ class ExtractDialog(QDialog):
 
         form = QFormLayout()
         form.addRow(self.tr("read pages from"), source_widget)
-        form.addRow("", kind_widget)
+        # Always in the layout, empty or not: it is empty exactly when the
+        # refusal below has something to say instead, and a dialog that
+        # changes height as you type a path is worse than one line of space.
+        form.addRow("", self._count)
         form.addRow(self.tr("write the plan to"), plan_widget)
         form.addRow("", self._force)
         form.addRow(self.tr("pages are lettered in"), self._source_language)
@@ -232,21 +279,25 @@ class ExtractDialog(QDialog):
 
     # -- choosing paths --------------------------------------------------
 
-    def _on_choose_source(self) -> None:
-        """Open the system panel the radio buttons asked for.
+    def _on_choose_folder(self) -> None:
+        name = QFileDialog.getExistingDirectory(self, "Pages to Read", str(self._start_in))
+        if name:
+            self._source.setText(name)
 
-        The radios steer this button and nothing else. What the field will
-        accept is decided by looking at the path, not by which of them is
-        checked, so a folder typed in under "a single image" still works.
+    def _on_choose_file(self) -> None:
+        """One panel for a page and a chapter alike: both are one file.
+
+        "All files" stays on the end of it for the chapter saved under a name
+        nobody uses, which the run reads anyway — what a file is decides, and
+        a file panel can only filter on what it is called.
         """
-        start = str(self._start_in)
-        if self._folder_choice.isChecked():
-            name = QFileDialog.getExistingDirectory(self, "Pages to Read", start)
-        else:
-            suffixes = " ".join(f"*{suffix}" for suffix in sorted(IMAGE_SUFFIXES))
-            name, _filter = QFileDialog.getOpenFileName(
-                self, "Page to Read", start, f"Images ({suffixes});;All files (*)"
-            )
+        everything = _patterns(IMAGE_SUFFIXES | CONTAINER_SUFFIXES)
+        name, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Page or Chapter to Read",
+            str(self._start_in),
+            f"Pages and chapters ({everything});;All files (*)",
+        )
         if name:
             self._source.setText(name)
 
@@ -266,9 +317,27 @@ class ExtractDialog(QDialog):
 
     def _on_source_changed(self, text: str) -> None:
         if not self._plan_edited:
-            source = Path(text.strip()).expanduser()
-            self._plan.setText(str(default_plan_path(source)) if text.strip() else "")
+            self._plan.setText(str(self.suggested_plan()) if text.strip() else "")
         self._validate()
+
+    def suggested_plan(self) -> Path:
+        """Where the plan goes if nobody says otherwise.
+
+        A chapter file's plan belongs with the pages it describes, which are
+        not beside the chapter file but inside the folder it unpacks into —
+        so this answers for the folder, which is decided before it exists.
+        That is what ``comictrans extract chapter.cbz`` writes too: the two
+        must not put the same plan in two places.
+
+        Spelled out rather than handed to ``default_plan_path``, which
+        decides between a directory and a file by looking at the path: the
+        folder is not there yet, so it would be taken for a file and the plan
+        would land beside it under a name nothing else uses.
+        """
+        source = self.source()
+        if is_container(source):
+            return default_unpack_dir(source) / PLAN_NAME
+        return default_plan_path(source)
 
     # -- what it will read -----------------------------------------------
 
@@ -279,9 +348,16 @@ class ExtractDialog(QDialog):
         return Path(self._plan.text().strip()).expanduser()
 
     def pages(self) -> tuple[Path, ...]:
-        """The images this run would read, or empty if the input is unusable."""
+        """The images this run would read, or empty if the input is unusable.
+
+        A chapter file has none yet, and counting them would mean reading it:
+        an archive's member list on every keystroke, or worse, a RAR tool
+        started as a subprocess on each one. The pages are counted when they
+        are unpacked, and the panel is told the total then — see
+        :class:`ExtractJob`.
+        """
         text = self._source.text().strip()
-        if not text:
+        if not text or is_container(self.source()):
             return ()
         try:
             accepted, _skipped = collect_inputs(Path(text).expanduser())
@@ -299,18 +375,35 @@ class ExtractDialog(QDialog):
         run will read cannot disagree.
         """
         if not self._source.text().strip():
-            return self.tr("Choose a folder of pages, or one image.")
+            return self.tr("Choose a folder of pages, a chapter file, or one image.")
         source = self.source()
-        try:
-            # Raises on a path that does not exist, one that is neither file
-            # nor directory, an unsupported single file, and a directory with
-            # no images in it — every refusal the command line makes, in the
-            # words it makes them in.
-            collect_inputs(source)
-        except ComictransError as exc:
-            return f"{exc}"
-        except OSError as exc:
-            return self.tr("{0} cannot be read: {1}").format(source, exc)
+        if is_container(source):
+            try:
+                # Cheap on purpose: the kind of file it is, and whether the
+                # tool a .cbr needs is here — which is the refusal worth
+                # making now rather than after a wait. Nothing is read.
+                check_readable(source, self._preferences.rar_tool)
+            except ComictransError as exc:
+                if chapter_kind(source) == RAR:
+                    # The pipeline's own message names the environment
+                    # variable, which is the command line's answer and no use
+                    # to somebody reading this. The window's answer is a
+                    # preference, and this is the moment to say where.
+                    return f"{exc}\n{RAR_IN_PREFERENCES}"
+                return f"{exc}"
+            except OSError as exc:
+                return self.tr("{0} cannot be read: {1}").format(source, exc)
+        else:
+            try:
+                # Raises on a path that does not exist, one that is neither
+                # file nor directory, an unsupported single file, and a
+                # directory with no images in it — every refusal the command
+                # line makes, in the words it makes them in.
+                collect_inputs(source)
+            except ComictransError as exc:
+                return f"{exc}"
+            except OSError as exc:
+                return self.tr("{0} cannot be read: {1}").format(source, exc)
 
         plan = self._plan.text().strip()
         if not plan:
@@ -324,7 +417,14 @@ class ExtractDialog(QDialog):
 
     def _validate(self) -> None:
         pages = self.pages()
-        self._count.setText(self.tr("%n page(s)", None, len(pages)) if pages else "")
+        source = self.source()
+        if is_container(source):
+            # Said only once there is a chapter to say it about: a path
+            # half-typed is a refusal, and two answers at once about the same
+            # field is one too many.
+            self._count.setText(self.tr("counted when unpacked") if source.is_file() else "")
+        else:
+            self._count.setText(self.tr("%n page(s)", None, len(pages)) if pages else "")
         plan = self._plan.text().strip()
         # The overwrite box appears only when there is a file under the
         # cursor to overwrite, so it cannot be ticked in advance and then
@@ -366,6 +466,7 @@ class ExtractDialog(QDialog):
             font=self._preferences.font or None,
             force=self._force.isChecked(),
             pages=self.pages(),
+            rar_tool=self._preferences.rar_tool,
         )
 
 

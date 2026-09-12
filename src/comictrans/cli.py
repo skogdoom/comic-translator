@@ -42,6 +42,7 @@ from .fonts import FONT_PATH_ENV, resolve
 from .model import Plan, TextCase
 from .ocr import get_recognizer
 from .planfile import MergeReport, load_plan, merge_plans, write_plan
+from .sources import UnpackReport, default_unpack_dir, is_container, unpack
 from .util import is_within
 from .validate import ValidateReport, validate_plan
 
@@ -110,15 +111,25 @@ def _add_extract(
         parents=[verbosity],
         help="detect and OCR text regions, write a plan file (produces no images)",
         description=(
-            "Reads a single image or a directory of images (non-recursive, natural "
-            "filename order) and writes one plan file. Sources are opened read-only."
+            "Reads a single image, a directory of images (non-recursive, natural "
+            "filename order), or a chapter file — .cbz, .cbr or .pdf, which is "
+            "unpacked into a folder of pages beside it first — and writes one "
+            "plan file. Sources are opened read-only."
         ),
     )
-    extract_parser.add_argument("input", type=Path, help="source image or directory")
+    extract_parser.add_argument(
+        "input", type=Path, help="source image, directory, or chapter (.cbz, .cbr, .pdf)"
+    )
     extract_parser.add_argument(
         "--plan",
         type=Path,
         help="plan file path (default: <dir>/comic-plan.yaml or <stem>-plan.yaml)",
+    )
+    extract_parser.add_argument(
+        "--unpack-dir",
+        type=Path,
+        help="where to unpack a chapter file (default: <stem>-pages beside it). "
+        "Pages already there from an earlier run are left alone",
     )
     existing = extract_parser.add_mutually_exclusive_group()
     existing.add_argument(
@@ -446,17 +457,44 @@ def _report_summary(
         )
 
 
+def _unpack_summary(report: UnpackReport) -> None:
+    print(f"\nunpacked {report.source.name} into {report.directory}")
+    print(f"  pages:             {len(report.pages)}")
+    if report.reused:
+        print(f"  already there:     {report.reused}")
+    for name, reason in report.skipped:
+        print(f"  SKIPPED:           {name}: {reason}")
+    for name, reason in report.doubtful:
+        print(f"  LOOK AT:           {name}: {reason}")
+    if report.doubtful:
+        print(
+            f"\n{len(report.doubtful)} unpacked page(s) may not be a scan of the "
+            "page they came from. They are in the directory like any other; look "
+            "at them before translating them."
+        )
+
+
 def run_extract(args: argparse.Namespace) -> int:
     target: Path = args.input
-    plan_path: Path = args.plan or default_plan_path(target)
+    container = is_container(target)
+    if args.unpack_dir is not None and not container:
+        raise ComictransError(
+            f"--unpack-dir is for a chapter file (.cbz, .cbr, .pdf); {target} is not one."
+        )
 
-    if args.debug_dir is not None:
-        source_dir = target if target.is_dir() else target.parent
-        if is_within(args.debug_dir, source_dir):
-            raise ComictransError(
-                f"--debug-dir {args.debug_dir} is inside the source directory "
-                f"{source_dir}. Debug dumps are images; keep them away from sources."
-            )
+    # Where the pages will be, before there are any: a chapter file's pages
+    # end up in the directory it unpacks into, and that is the source tree
+    # --debug-dir has to stay out of.
+    source_dir = (
+        (args.unpack_dir or default_unpack_dir(target))
+        if container
+        else (target if target.is_dir() else target.parent)
+    )
+    if args.debug_dir is not None and is_within(args.debug_dir, source_dir):
+        raise ComictransError(
+            f"--debug-dir {args.debug_dir} is inside the source directory "
+            f"{source_dir}. Debug dumps are images; keep them away from sources."
+        )
 
     config = _build_config(args)
 
@@ -469,6 +507,15 @@ def run_extract(args: argparse.Namespace) -> int:
         ) from exc
     recognizer = get_recognizer(config.ocr)
     log.info("OCR backend: %s", recognizer.name)
+
+    # After the font and the recogniser, deliberately: unpacking is the first
+    # thing here that writes anything, and a run that was going to fail on a
+    # missing font should fail before it has left a directory behind.
+    if container:
+        unpacked = unpack(target, args.unpack_dir)
+        _unpack_summary(unpacked)
+        target = unpacked.directory
+    plan_path: Path = args.plan or default_plan_path(target)
 
     plan, report = extract(
         target,

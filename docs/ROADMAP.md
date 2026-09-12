@@ -47,7 +47,6 @@ one section can refer to another without ambiguity.
 | 4.26 | Extract text for one region | M |
 | 4.27 | Lock a region | M |
 | 4.28 | Region context menu | S |
-| 3 | CBZ, PDF and CBR input | L |
 | 8 | CBZ and CBR output | M |
 | 6 | PDF output | L |
 | 10 | Code quality review | M |
@@ -57,9 +56,9 @@ one section can refer to another without ambiguity.
 macOS pass that could only happen on a built application has been done.
 Everything in this table is what comes after a release.
 
-The 4.x numbering says these follow milestone 4, the review GUI. Milestone
-3 is older than all of them and independent of the GUI; it sits at the
-bottom because nothing else waits on it, not because it matters least.
+The 4.x numbering says these follow milestone 4, the review GUI. What is
+left below them is about the formats a chapter arrives and leaves in;
+reading them has shipped, writing them has not.
 
 Three things decide this order.
 
@@ -212,40 +211,6 @@ wrong place to find that out.
 same way a left-click chooses it, so the two cannot disagree about what was
 clicked.
 
-## 3 CBZ, PDF and CBR input
-
-Read pages from an archive or a PDF instead of a directory.
-
-Older than every 4.x milestone and independent of the GUI, with one
-exception that is worth settling before any of it is written.
-
-`PlanDocument.source_path` resolves an image as the plan's directory plus
-the image name, and `apply.source_for` does the same. Reading pages from
-inside an archive on demand breaks that assumption in `apply` and in
-`review` at once, and takes the plan's per-page hash check with it.
-
-**Unpack to a sidecar directory** and everything downstream keeps working
-unchanged, including the invariant that source images are never written to
-— unpacked pages are outputs of this stage, not sources being modified.
-Reading from the archive on demand means an abstraction across three
-modules for no gain that anyone has asked for.
-
-**CBR too.** Reading it needs `rarfile` plus an external `unrar` or
-`bsdtar` — the first dependency this tool has had that is not a Python
-package, so it cannot be declared in `pyproject.toml`.
-
-**It is never bundled — decided, not open.** The unrar licence is not
-OSI-free, and this is an MIT project; shipping the binary inside a `.app`
-would put someone else's terms on the whole thing. So the tool uses one the
-person running it already has: found on `PATH`, and when it is somewhere
-unusual, named in Preferences. That field is the same shape as the output
-directory already there, and it costs nothing when the binary is on `PATH`
-like everybody else's. Absent entirely, CBR input is unavailable and says
-so — it does not fail halfway through opening a chapter.
-
-Behind the sidecar decision above, a CBR reader is one more unpacker and
-nothing else. Writing one is a different matter, and 8 covers it.
-
 ## 8 CBZ and CBR output
 
 Write a chapter as a single archive rather than a directory of images.
@@ -261,10 +226,13 @@ thing that writes a `.rar` is the `rar` binary from WinRAR, which is paid
 and not redistributable. What that licence restricts is *redistributing*
 the compressor — it says nothing about someone driving the copy they have
 already licensed. So: `rar` is never bundled. It is looked for on `PATH`,
-and Preferences can name it where it lives somewhere unusual, which is the
-same field 3 needs for `unrar` and probably the same one. Present, CBR is
-offered; absent, it is not, and the reason says which binary would provide
-it rather than the option quietly not being there.
+and an environment variable names it where it lives somewhere unusual —
+`COMICTRANS_UNRAR` is the one reading CBR already added, and `COMICTRANS_RAR`
+is the shape to copy. Present, CBR is offered; absent, it is not, and the
+reason says which binary would provide it rather than the option quietly not
+being there. A Preferences field for either belongs with the window learning
+to open a chapter file at all, which is an idea below rather than part of
+this.
 
 That keeps this an MIT project and still gives anyone holding a licence
 the format they asked for. It also puts a configurable path to an

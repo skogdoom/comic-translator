@@ -123,6 +123,16 @@ def _quieten(label: QLabel) -> QLabel:
     return label
 
 
+RAR_NOTE = QCoreApplication.translate(
+    "PreferencesDialog",
+    "Only for opening a .cbr, and only needed when unrar is somewhere this "
+    "application cannot see — which is usual, since an application opened "
+    "from the Finder does not get the PATH a terminal has. unar, bsdtar and "
+    "7z do as well. None of them ships with Comic Translator: unrar's licence "
+    "is not one this project can pass on. CBZ and PDF need nothing.",
+)
+"""Why a field about somebody else's binary is in this dialog at all."""
+
 DONE_TEXT = QCoreApplication.translate("PreferencesDialog", "Done")
 """What dismisses this dialog, said as what it does.
 
@@ -201,6 +211,20 @@ class PreferencesDialog(QDialog):
             self._format.addItem(format_label, image_format or "")
         self._format.setCurrentIndex(self._format.findData(preferences.image_format))
 
+        self._rar_tool = QLineEdit(preferences.rar_tool)
+        self._rar_tool.setPlaceholderText(self.tr("found on PATH"))
+        choose_rar = QPushButton(self.tr("Choose…"))
+        choose_rar.setAutoDefault(False)
+        choose_rar.clicked.connect(self._on_choose_rar_tool)
+        rar_row = QHBoxLayout()
+        rar_row.setContentsMargins(0, 0, 0, 0)
+        rar_row.addWidget(self._rar_tool, 1)
+        rar_row.addWidget(choose_rar)
+        rar_widget = QWidget()
+        rar_widget.setLayout(rar_row)
+        self._rar_note = _quieten(QLabel(RAR_NOTE))
+        self._rar_note.setWordWrap(True)
+
         self._language = QComboBox()
         for label, code in self.language_choices():
             self._language.addItem(label, code)
@@ -222,6 +246,10 @@ class PreferencesDialog(QDialog):
         form.addRow(self.tr("OCR languages"), self._ocr_languages)
         form.addRow(self.tr("recogniser"), self._engine)
         form.addRow(self.tr("font"), self._font)
+        form.addRow(_spacer())
+        form.addRow(_section(self.tr("reading a .cbr")))
+        form.addRow(self.tr("unrar is at"), rar_widget)
+        form.addRow("", self._rar_note)
         form.addRow(_spacer())
         form.addRow(_section(self.tr("rendering pages")))
         form.addRow(self.tr("write pages to"), output_widget)
@@ -265,6 +293,7 @@ class PreferencesDialog(QDialog):
         self._engine.currentIndexChanged.connect(self._commit)
         self._font.currentTextChanged.connect(self._commit)
         self._output.textChanged.connect(self._commit)
+        self._rar_tool.textChanged.connect(self._commit)
         self._erase.currentIndexChanged.connect(self._commit)
         self._format.currentIndexChanged.connect(self._commit)
         self._language.currentIndexChanged.connect(self._commit)
@@ -285,10 +314,22 @@ class PreferencesDialog(QDialog):
             ocr_engine=str(self._engine.currentData()),
             font=self._font.value() or "",
             output_directory=self._output.text().strip(),
+            rar_tool=self._rar_tool.text().strip(),
             erase_strategy=str(self._erase.currentData()),
             image_format=str(self._format.currentData()),
             language=str(self._language.currentData()),
         )
+
+    def _on_choose_rar_tool(self) -> None:
+        """Pick the binary itself, not a folder: it is one file somewhere.
+
+        Starting where the field points, so somebody correcting a path does
+        not start over from the top of the disk.
+        """
+        start = self._rar_tool.text().strip() or "/usr/local/bin"
+        name, _filter = QFileDialog.getOpenFileName(self, self.tr("Where unrar Is"), start)
+        if name:
+            self._rar_tool.setText(name)
 
     def _language_index(self, code: str) -> int:
         """Where ``code`` sits in the field, or the machine's own answer.

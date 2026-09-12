@@ -41,9 +41,11 @@ def _filled() -> Preferences:
         ocr_languages="ja, en",
         ocr_engine="tesseract",
         font="Marker Felt",
+        rar_tool="/opt/homebrew/bin/unrar",
         output_directory="/tmp/rendered",
         erase_strategy="inpaint",
         image_format="tiff",
+        language="sv",
         last_directory="/tmp/pages",
     )
 
@@ -69,6 +71,24 @@ def test_every_field_round_trips() -> None:
     save_preferences(store, preferences)
 
     assert load_preferences(store) == preferences
+
+
+def test_the_round_trip_is_told_about_every_field_there_is() -> None:
+    """A field added without a value here would round-trip untested.
+
+    Which is how a preference comes to be stored but never read back: the
+    test above passes on the fields it was given, and says nothing about the
+    one that was not.
+    """
+    from dataclasses import fields
+
+    filled = _filled()
+    same = [
+        field.name
+        for field in fields(Preferences)
+        if getattr(filled, field.name) == getattr(DEFAULTS, field.name)
+    ]
+    assert same == [], "give these a non-default value in _filled()"
 
 
 def test_the_keys_are_namespaced_away_from_the_window_layout() -> None:

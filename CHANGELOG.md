@@ -59,6 +59,33 @@ for themselves. See **Build the application** in `README.md`.
   writes nothing. It checks what it checks by calling the same functions
   `apply` calls, so what it accepts is what `apply` accepts.
 
+- **A chapter can arrive as one file.** `comictrans extract chapter.cbz`
+  reads CBZ, CBR and PDF by unpacking them into a folder of pages beside the
+  file — `chapter-pages/` — and everything after that is an ordinary folder
+  of images, so the plan, the window and the per-page hash check all work
+  exactly as they did. Pages keep the order they had inside the container,
+  carried in the filenames. Unpacking the same chapter twice writes nothing
+  the second time, and a file already there holding something else stops the
+  run instead of being overwritten. A PDF gives up the image on each page
+  byte for byte rather than being rasterised, so nothing is resampled; a page
+  that is not one photograph is named and skipped. CBR needs a RAR tool that
+  is already on the machine — `unrar`, `unar`, `bsdtar` or `7z`, or
+  `COMICTRANS_UNRAR` pointing at one — because unrar's licence is not one an
+  MIT project can redistribute. The unpacked folder has to hold that chapter
+  and nothing else page-shaped, and the run stops rather than letting a
+  re-release leave its old pages in with the new ones. A page whose one image
+  cannot be a photograph of it — a logo on a born-digital page — is unpacked
+  and flagged for you to look at.
+- **The window opens a chapter file as well.** **Extract Pages** takes one
+  through **File…**, the same panel as a single page: it unpacks on the worker
+  thread, says what it is unpacking until it knows how many pages there are,
+  and can be stopped between pages like any other run. The plan goes in with the pages,
+  which is where the command line puts it too. Where `unrar` lives is in
+  Preferences, because an application opened from the Finder cannot see a
+  Homebrew one. Which of the three formats a chapter file is, its first bytes
+  decide rather than its name: a CBR that is really a zip, or a CBZ that is
+  really a RAR, is read as what it is.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings

@@ -67,10 +67,19 @@ class ExtractReport:
         return not self.cancelled and not self.failures and not self.empty_pages
 
 
+PLAN_NAME = "comic-plan.yaml"
+"""What a plan is called when it goes in a directory of pages.
+
+Named rather than spelled out twice: the extract dialog has to answer where
+a chapter file's plan will go before the directory it goes in exists, so it
+cannot ask :func:`default_plan_path`, which decides by looking.
+"""
+
+
 def default_plan_path(target: Path) -> Path:
     """``<dir>/comic-plan.yaml``, or ``<stem>-plan.yaml`` beside a single file."""
     if target.is_dir():
-        return target / "comic-plan.yaml"
+        return target / PLAN_NAME
     return target.with_name(f"{target.stem}-plan.yaml")
 
 
