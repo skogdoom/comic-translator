@@ -234,6 +234,37 @@ Planning before touching pixels is also what keeps the promise that a region
 which will not fit is left completely alone: it produces no layout, so it is
 never erased either.
 
+**An erase reads a window, not a page.** A balloon is a few per cent of a
+comic page, and the colour distance that finds its lettering used to be
+computed for every pixel of the page and thrown away everywhere but the
+balloon — 386MB and 1.3 seconds a region on an eleven-megapixel page, of
+which 3.4% was the region. `erase` now crops to the polygon's bounding box
+grown by `erase.reach`, and the numbers are 37MB and 0.083s, the 33MB being
+the copy of the page it returns.
+
+`reach` is the sum of every operation that looks at a neighbour rather than
+the largest of them, because they are applied one after another: the ink
+mask's dilation, the ground mask's closing counted twice over (a closing
+dilates and then erodes, and each pass gathers from a kernel radius away),
+and the inpaint radius. It is read off the same functions the operations use,
+so a ratio changed in `EraseConfig` moves the window with it. A few tens of
+pixels against a balloon a few hundred across: there is nothing to be won by
+shaving it and everything to lose by being wrong about it.
+
+The one thing cropping can get wrong is being too tight, and it fails
+quietly — a band just inside a region's own edge, on some pages and not
+others. So it is not reasoned about: the tests erase the same page twice,
+once with the real window and once with the reach stretched past the page so
+that nothing is cropped, and compare every pixel. On the fixtures as well as
+on drawn pages, because the two ask different questions of it — see
+"What a thread did not fix" under the review GUI for which.
+
+The fill strategies take the window too, and `page_height` with it. Every
+ratio in `EraseConfig` is a fraction of the page's height, so a radius worked
+out from the array it is handed would change with the size of the balloon —
+which is exactly what `InpaintFill` used to do, harmlessly, when the array it
+was handed was always the page.
+
 ## What apply does not do
 
 It does not re-run detection or OCR, so it cannot disagree with the plan file.
@@ -766,8 +797,12 @@ relying on by accident.
 
 Both hooks live in the erase loop, and that is measured. On an
 eleven-megapixel page with ten regions the three loops in `render_page` cost
-0.099s, 1.280s and 0.002s per region: erasing is 80% of the whole preview,
-and the other two are below the granularity anyone could see on a bar.
+0.099s, 0.083s and 0.002s per region. Erasing was 1.280s of that — 80% of the
+whole preview — until it stopped working on the page and started working on a
+window around each region; the hooks stayed where they are because the erase
+loop is still where a page spends most of its time, and because the planning
+loop above it is the one thing that cannot report progress usefully (it
+decides *how many* regions there are to report on).
 Cancelling is checked in the planning loop as well, which costs one call per
 region and takes the worst case from "the whole page" down to "the region
 being erased". Never *inside* an erase: a half-erased region would be a
@@ -855,7 +890,10 @@ and 13 seconds, and an edit still costs a render — which is the half worth
 checking, since a cache that swallowed an edit would be worse than no cache.
 
 **One entry, because a retained preview holds its image**: 33MB for a page
-that size, standing, under a render whose transient peak is already 540MB.
+that size, standing. That was measured against a render whose transient peak
+was 540MB, most of it inside `erase`; that peak is gone and the retained
+image is not, so the entry is now the larger of the two — which is an
+argument for one entry rather than for none.
 What one entry buys is the gesture that repeats. What more would buy is
 returning to a page previewed earlier and untouched since, which is rarer by
 a long way and costs 33MB a page to hold.
@@ -888,32 +926,51 @@ current would not. So the key is exact and dull — no heuristics, no
 `_show_preview` a fresh render does, because a cached page that went quiet
 about regions that do not fit would be worse than the render it saved.
 
-**What a thread does not fix, measured.** A preview of an 11 MP page
-(`tests/fixtures/11-complex_six_panel_page.png`, 2840x3880, ten regions)
-costs, from a 57MB baseline:
+**What a thread did not fix, and what did.** A preview of an 11 MP page
+(`tests/fixtures/11-complex_six_panel_page.png`, 2840x3880, ten regions) used
+to cost 540MB of process peak against a 57MB baseline — about sixteen copies
+of the page, where a back-of-envelope count of "source, erased, rendered"
+says three. A thread made the window answer while that happened; it did not
+make it less.
 
-| | |
+Stepping through the render found where it went. `load_page` peaked at 78MB
+and `render_page` took it to 467MB of traced allocations, of which the
+**first `erase` call alone accounted for 356MB**; the second added one page
+copy and calls three through ten added nothing at all, the allocator reusing
+what the first freed. Walking one of those calls line by line said the rest:
+
+| inside one `erase`, on that page | |
 | --- | --- |
-| retained after one preview | +116 MB |
-| process peak RSS | 540 MB |
-| one RGB copy of that page | 33 MB |
+| `rgb.astype(float32)` | 132 MB |
+| minus the colour, live at the same time | 132 MB |
+| `linalg.norm` over the colour axis | peaks 220 MB above those |
+| and again, for the ground mask | all of it, twice |
+| the region being erased | 3.4% of the page |
 
-So the peak is about sixteen copies of the page, not the three a
-back-of-envelope count of "source, erased, rendered" suggests. A thread makes
-the window answer while that happens; it does not make it less, and two
-previews at once would double it — which is the other reason only one runs.
+Which is the whole answer: a colour distance computed for every pixel of the
+page to decide a mask a balloon wide. `erase` now works inside a window
+around the region — the polygon's bounding box grown by `erase.reach`, which
+is how far the mask's own operations read outside themselves — and the same
+call peaks at 37MB, 33MB of which is the copy of the page it returns. The
+same ten regions took 13.10s and take 0.83s; the erase loop's contribution to
+process peak went from +240MB to nothing measurable.
 
-Where it goes is not evenly spread, and that is the useful part. Stepping
-through the render: `load_page` peaks at 78MB, and `render_page` takes it to
-467MB (traced allocations; RSS peaks higher still). Inside `render_page`, the
-**first `erase` call alone accounts for 356MB of that**; the second adds one
-page copy and calls three through ten add nothing at all, the allocator
-reusing what the first freed.
+The output is identical, which is the only thing that made the change worth
+making: every fixture, four regions on each, all four strategies, hashed
+before and after — 208 comparisons, no difference. A test in
+`test_fixtures.py` keeps it that way by erasing each fixture twice, once with
+the real window and once with the reach stretched past the page, and
+comparing pixels. It earns its half-second a page: drop the ground-closing
+term from the reach and two of the thirteen pages change, while every
+synthetic page in `test_erase.py` goes on passing, because a flat balloon
+drawn by a test never asks the ground mask anything.
 
-That is not a preview problem and not a GUI problem. `apply` calls the same
-`render_page` on every page of every chapter and pays exactly the same peak,
-on the command line, where nothing has ever measured it. It belongs to
-`erase.py` — see the roadmap.
+None of it was a preview problem or a GUI problem. `apply` calls the same
+`render_page` on every page of every chapter and paid exactly the same peak,
+on the command line, where nothing had ever measured it. What is left on that
+page is the decode: `load_page` is 77MB traced and about 230MB of process
+peak for an 11 MP PNG, which is now the largest single cost of rendering a
+page and belongs to Pillow rather than here.
 
 **Why `render_preview` calls `render_page` directly instead of its own
 rendering path.** So it cannot drift. If preview had its own drawing code, a

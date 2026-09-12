@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import pytest
 
-from comictrans.config import DetectConfig, OcrConfig
+from comictrans.config import DetectConfig, EraseConfig, OcrConfig
 from comictrans.detect import find_regions
 from comictrans.errors import OcrUnavailableError
 from comictrans.imaging import IMAGE_SUFFIXES, load_page
@@ -66,6 +66,79 @@ def _fixture_images() -> list[Path]:
     if not FIXTURES.is_dir():
         return []
     return sorted(p for p in FIXTURES.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES)
+
+
+def _a_region_over(rgb: np.ndarray, how: str) -> object:
+    """A balloon-sized region in the middle of the page, coloured off it.
+
+    Built here rather than detected, because this asks nothing about
+    detection and OCR is not always installed: what it needs is a polygon
+    over real pixels — a real balloon, its outline, screentone, artwork —
+    which is what makes the ground mask do something a synthetic page does
+    not ask of it.
+    """
+    from comictrans.model import Erase, Geometry, Region
+
+    height, width = rgb.shape[0], rgb.shape[1]
+    left, top = int(width * 0.30), int(height * 0.35)
+    right, bottom = int(width * 0.62), int(height * 0.52)
+    patch = rgb[top:bottom, left:right].reshape(-1, 3)
+    lightest = patch[patch.sum(axis=1).argmax()]
+    darkest = patch[patch.sum(axis=1).argmin()]
+    return Region(
+        id="r1",
+        image="page.png",
+        order=1,
+        geometry=Geometry.EXACT,
+        polygon=((left, top), (right, top), (right, bottom), (left, bottom)),
+        fill_color=Color(*(int(v) for v in lightest)),
+        text_color=Color(*(int(v) for v in darkest)),
+        confidence=0.9,
+        source_text="X",
+        translation="Y",
+        erase=Erase(how),
+    )
+
+
+@pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)
+def test_erasing_in_a_window_gives_the_whole_pages_answer(
+    path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The crop erase works in, held to the page it used to work on.
+
+    ``erase`` computes its mask inside a window around the region rather
+    than over the page, which is worth 386MB and 1.3s a region on an
+    eleven-megapixel page — and would be worth nothing if it changed what a
+    page renders as. The synthetic pages in ``test_erase.py`` ask the same
+    question, but a flat balloon drawn by a test is exactly the case where
+    the ground mask has nothing to do; a real scan has screentone, an
+    outline the polygon steps over, and artwork behind it.
+
+    The flat fill only, because what a real page exercises that a drawn one
+    does not is the *mask* — the ground, the outline, the fallback when the
+    ground cannot be read — and every strategy is handed the same one. The
+    reach each strategy needs of its own is asked in ``test_erase.py``,
+    where a page costs a millisecond rather than a second.
+
+    It earns its half-second a page, which was checked rather than assumed:
+    take the ground-closing term out of ``reach`` and two of these thirteen
+    pages come out different, while every synthetic page in ``test_erase.py``
+    goes on passing. A flat balloon drawn by a test never asks the ground
+    mask anything — the lettering is thicker than the closing kernel, the
+    constraint collapses, and the fallback hands back the unconstrained mask.
+    """
+    from comictrans import erase as erase_module
+
+    rgb = load_page(path).rgb
+    region = _a_region_over(rgb, "flat")
+    cfg = EraseConfig()
+
+    windowed = erase_module.erase(rgb, region, cfg, page_height=rgb.shape[0])
+
+    monkeypatch.setattr(erase_module, "reach", lambda _cfg, _height: max(rgb.shape))
+    whole_page = erase_module.erase(rgb, region, cfg, page_height=rgb.shape[0])
+
+    assert np.array_equal(windowed, whole_page)
 
 
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)

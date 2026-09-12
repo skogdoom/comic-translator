@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import tracemalloc
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
+from comictrans import erase as erase_module
 from comictrans.config import EraseConfig
 from comictrans.erase import STRATEGIES, erase, get_strategy, glyph_mask, polygon_mask
 from comictrans.model import Box, Color, Erase, Geometry, Region
@@ -156,6 +160,117 @@ def test_identical_fill_and_text_colors_mask_nothing() -> None:
     region = _region(Color(250, 250, 250), Color(250, 250, 250))
     mask = glyph_mask(page, region, EraseConfig(), page_height=PAGE)
     assert int(np.count_nonzero(mask)) == 0
+
+
+# -- the window, and that it cannot be too small -----------------------
+
+
+def _a_big_page() -> tuple[np.ndarray, Region]:
+    """A page with room around the balloon for a window to be wrong in."""
+    big = 1600
+    page = np.full((big, big, 3), (60, 160, 60), dtype=np.uint8)
+    page[600:900, 500:1000] = (20, 20, 20)  # the balloon's own outline
+    page[612:888, 512:988] = (250, 250, 250)  # its flat ground
+    page[700:760, 560:940] = (20, 20, 20)  # a bar of lettering
+    region = _region(
+        Color(250, 250, 250),
+        Color(20, 20, 20),
+        Box(600, 690, 900, 770).as_polygon(),
+    )
+    return page, region
+
+
+@pytest.mark.parametrize("strategy", sorted(STRATEGIES))
+def test_the_window_is_wide_enough_to_give_the_whole_pages_answer(
+    strategy: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one thing cropping can get wrong, asked directly.
+
+    Every operation in here reads pixels around the one it is deciding —
+    a dilation, a closing, an inpaint — so a window that is too tight would
+    change what a region renders as, in a band just inside its own edge,
+    on some pages and not others. Rather than reason about it: erase the
+    same page twice, once with the window the code works out and once with
+    that reach stretched past the page so no crop happens at all, and
+    compare every pixel.
+    """
+    page, region = _a_big_page()
+    region = replace(region, erase=Erase(strategy))
+    cfg = EraseConfig()
+
+    windowed = erase(page, region, cfg, page_height=page.shape[0])
+
+    monkeypatch.setattr(erase_module, "reach", lambda _cfg, _height: max(page.shape))
+    whole_page = erase(page, region, cfg, page_height=page.shape[0])
+
+    assert np.array_equal(windowed, whole_page), f"{strategy} differs when the window is cropped"
+
+
+def test_the_window_is_the_balloon_and_a_margin_rather_than_the_page() -> None:
+    """Which is the whole point: the work is the region, not the page.
+
+    Measured on an eleven-megapixel page with a region covering 3.4% of it:
+    one erase went from 386MB of traced peak to 37MB, of which 33MB is the
+    copy of the page it returns. The same ten regions took 13.10s and now
+    take 0.83s.
+    """
+    page, region = _a_big_page()
+    cfg = EraseConfig()
+
+    window = erase_module.window_for(region, cfg, page.shape, page.shape[0])
+
+    covered = (window.width * window.height) / (page.shape[0] * page.shape[1])
+    assert covered < 0.1, f"the window covers {covered:.0%} of the page"
+    # Big enough for every neighbour the mask's own operations read, which
+    # is what the test above holds it to; here, that it is there at all.
+    assert window.left < min(x for x, _ in region.polygon)
+    assert window.top < min(y for _, y in region.polygon)
+
+
+def test_a_window_is_clipped_to_the_page_rather_than_running_off_it() -> None:
+    """A balloon in the corner, where the margin has nowhere to go."""
+    page, _ = _a_big_page()
+    corner = _region(Color(250, 250, 250), Color(20, 20, 20), Box(0, 0, 120, 120).as_polygon())
+
+    window = erase_module.window_for(corner, EraseConfig(), page.shape, page.shape[0])
+
+    assert (window.left, window.top) == (0, 0)
+    assert window.right <= page.shape[1] and window.bottom <= page.shape[0]
+    assert not window.empty
+
+
+def test_a_polygon_off_the_page_erases_nothing_rather_than_raising() -> None:
+    """Nothing in a plan should put one there, so this is the belt and braces."""
+    page, _ = _a_big_page()
+    outside = _region(
+        Color(250, 250, 250),
+        Color(20, 20, 20),
+        Box(page.shape[1] + 50, 40, page.shape[1] + 200, 200).as_polygon(),
+    )
+
+    out = erase(page, outside, EraseConfig(), page_height=page.shape[0])
+
+    assert np.array_equal(out, page)
+
+
+def test_one_erase_costs_a_page_and_not_a_multiple_of_one() -> None:
+    """A guard against the colour distance going back to the whole page.
+
+    It was two float32 copies of the page, live at once, twice over — 24
+    bytes a pixel for a mask a balloon wide. Nothing here stops that coming
+    back except a number that notices.
+    """
+    page, region = _a_big_page()
+    erase(page, region, EraseConfig(), page_height=page.shape[0])  # warm numpy up
+
+    tracemalloc.start()
+    before, _ = tracemalloc.get_traced_memory()
+    out = erase(page, region, EraseConfig(), page_height=page.shape[0])
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    cost = (peak - before) / out.nbytes
+    assert cost < 1.5, f"one erase peaked at {cost:.1f} pages where it returns one"
 
 
 def test_every_strategy_is_reachable_by_name() -> None:
