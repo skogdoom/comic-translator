@@ -1951,15 +1951,32 @@ positional so it can be applied without judgement: the two checkboxes that
 had drifted into sentence case were the only places it was ambiguous, and
 they are lowercase now.
 
-**One undo history, and the text fields do not get their own.** The inspector's
-prose fields are `ProseEdit`, which keeps no history and — the part that is not
-obvious — does not *claim* Cmd+Z. `QPlainTextEdit` accepts the
-`ShortcutOverride` for Undo and Redo whether or not its own undo is enabled
-(measured, accepted in both cases), and accepting that event means "deliver
-this to me as an ordinary key press". With nothing to undo it then did
-nothing, and the window's action never fired: Cmd+Z inside a translation was
-swallowed on the way past. `ProseEdit` ignores that one override, and only
-that one — cut, copy, paste and select-all stay the field's.
+**A key the window has bound belongs to the window, not to the text field
+the caret happens to be in.** The inspector's prose fields are `ProseEdit`,
+which keeps no undo history — the document keeps one for everything — and
+which, the part that is not obvious, does not *claim* the window's
+shortcuts. `QPlainTextEdit` accepts the `ShortcutOverride` for keys it has a
+use for whether or not that use is switched on (measured: Undo is accepted
+with the widget's own undo disabled), and accepting that event means
+"deliver this to me as an ordinary key press". The window's action then
+never fires.
+
+It cost two rounds to find the rule. The first fix named Undo and Redo and
+stopped there, and the keys that walk between regions went the same way the
+moment the caret started landing in a translation: **Cmd+Up and Cmd+Down are
+Previous and Next Region here, and on macOS they are also a text field's "go
+to the start and the end of the document"** — where every other platform
+binds those to `Ctrl+Home` and `Ctrl+End`, which is why it could not be seen
+from here. Naming offenders one at a time means finding each by being bitten
+by it, so `ProseEdit` asks the window instead: any sequence bound to an
+action of its window is given back, everything else is the field's. Cut,
+copy, paste and select-all stay because nothing here binds them, and a
+shortcut added later cannot be quietly swallowed. The lookup is guarded by a
+modifier check, because `ShortcutOverride` arrives for ordinary typing too.
+
+Tab is the exception in the other direction and not a shortcut at all: a
+text field takes it as a character, which stopped it walking the panel.
+These fields hold two lines of prose, so they let it past.
 
 **Typing is undone a word at a time.** A run of edits collapses into one undo
 step, keyed by region and field, and it used to end only when the selection
@@ -1980,6 +1997,12 @@ are about to type into it. The canvas emits `region_selected` from its mouse
 press and nowhere else, so the distinction was already in the code, and
 `_on_region_clicked` is the only path that focuses. Escape gives the page
 back.
+
+**The caret goes to the end of each field whenever the panel is repopulated**,
+not to the start `setPlainText` leaves it at. Walking to the next region
+refills the fields under a caret that never moved, so without this the first
+thing typed after Next Region landed in front of the text rather than after
+it.
 
 **Nothing of ours is alive when the interpreter finalises.** `app.run` calls
 `close_down` on the window after `app.exec()` returns, and every dialog is

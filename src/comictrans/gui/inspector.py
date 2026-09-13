@@ -25,7 +25,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 
 from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QResizeEvent, QTextCursor
+from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -355,6 +355,12 @@ class RegionInspector(QWidget):
         self._source_text.setPlainText(region.source_text)
         self._translation.setPlainText(region.translation)
         self._notes.setPlainText(region.notes)
+        # The caret goes to the end of each, not the start ``setPlainText``
+        # leaves it at. Walking to the next region repopulates these under a
+        # caret that never moved, and the end is where somebody about to type
+        # wants it — the same place clicking a balloon puts it.
+        for prose in (self._source_text, self._translation, self._notes):
+            prose.put_the_caret_at_the_end()
         self._skip.setChecked(region.skip)
         self._erase.setCurrentIndex(_erase_index(region.erase))
         self._fill_color.set_color(region.fill_color)
@@ -374,9 +380,7 @@ class RegionInspector(QWidget):
         the one that says so.
         """
         self._translation.setFocus(Qt.FocusReason.OtherFocusReason)
-        cursor = self._translation.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self._translation.setTextCursor(cursor)
+        self._translation.put_the_caret_at_the_end()
 
     def _commit(self) -> None:
         if self._document is not None and self._region_id is not None:

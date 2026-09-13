@@ -155,6 +155,15 @@ for themselves. See **Build the application** in `README.md`.
   Preferences three times used to leave three of them behind, each holding
   its widgets, and a render dialog holding a whole plan.
 
+- **The text fields no longer swallow the window's keyboard shortcuts.** A
+  text field tells Qt it wants a key whether or not it has any use for it, so
+  with the caret in a translation, Ctrl+Z did nothing and — on a Mac, where
+  they are also "go to the start and end of the document" — Cmd+Up and
+  Cmd+Down stopped walking between regions. A key this window has bound now
+  belongs to the window wherever the caret is; everything a text field
+  actually uses, it keeps. **Tab** walks out of the prose fields instead of
+  being typed into them, and the caret lands at the end of the text rather
+  than in front of it.
 - **Ctrl+Z works inside the text fields.** It did not: the field claimed the
   key and, having no undo of its own, did nothing with it, so nothing
   happened at all until you clicked somewhere else first. It is the same undo

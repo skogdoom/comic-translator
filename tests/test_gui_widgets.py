@@ -5953,3 +5953,71 @@ def test_the_caret_lands_at_the_end_rather_than_over_the_text(
     field = window._inspector._translation
     assert not field.textCursor().hasSelection()
     assert field.textCursor().position() == len(field.toPlainText())
+
+
+def test_walking_the_regions_works_with_the_caret_in_a_translation(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Previous and Next Region are Cmd+Up and Cmd+Down, which on macOS are
+    also a text field's "go to the start and the end of the document" — so
+    the field claimed them and walking stopped working as soon as somebody
+    had clicked a balloon."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+    field = window._inspector._translation
+    assert QApplication.focusWidget() is field
+
+    for action in (window._previous_region_action, window._next_region_action):
+        claim = QKeyEvent(
+            QEvent.Type.ShortcutOverride,
+            Qt.Key(action.shortcut()[0].key()),
+            action.shortcut()[0].keyboardModifiers(),
+        )
+        QApplication.sendEvent(field, claim)
+        assert not claim.isAccepted(), f"{action.text()} never reaches the window"
+
+
+def test_walking_to_a_region_leaves_the_caret_where_typing_continues(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The panel repopulates under a caret that never moved, and
+    ``setPlainText`` puts it at the start — the wrong end of a translation
+    somebody is about to add to."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+
+    window._step_region(forward=True)
+    QApplication.processEvents()
+
+    for name, field in (
+        ("translation", window._inspector._translation),
+        ("source text", window._inspector._source_text),
+        ("notes", window._inspector._notes),
+    ):
+        assert field.textCursor().position() == len(field.toPlainText()), name
+
+
+def test_tab_walks_out_of_the_prose_fields(qapp: object, two_page_plan: Path) -> None:
+    """It used to be typed into them, which stopped Tab walking the panel."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    QApplication.processEvents()
+
+    for field in (
+        window._inspector._source_text,
+        window._inspector._translation,
+        window._inspector._notes,
+    ):
+        before = field.toPlainText()
+        field.setFocus()
+        QTest.keyClick(field, Qt.Key.Key_Tab)
+        QApplication.processEvents()
+        assert field.toPlainText() == before, "Tab was not typed into it"
+        assert QApplication.focusWidget() is not field, "and it moved on"
