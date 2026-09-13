@@ -44,6 +44,7 @@ import subprocess
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from .errors import InputError
 from .sources import RAR, ZIP
@@ -143,27 +144,55 @@ def _pack_zip(pages: Sequence[Path], names: Sequence[str], into: Path) -> None:
             archive.write(page, name)
 
 
+def _place(page: Path, under: Path) -> None:
+    """Put ``page`` where a compressor will find it under the name it needs.
+
+    A hard link first, because a chapter is hundreds of megabytes and a link
+    is free. It fails across filesystems and on filesystems that have no
+    links, and a copy is the answer to both.
+    """
+    try:
+        os.link(page, under)
+    except OSError:
+        shutil.copy2(page, under)
+
+
 def _pack_rar(pages: Sequence[Path], names: Sequence[str], into: Path, rar_tool: str) -> None:
     tool = rar_compressor(rar_tool)
-    folder = pages[0].parent
-    # Run where the pages are and name them bare, so the archive holds names
-    # rather than paths — with -ep as well, since a rar that disagrees about
-    # the default would otherwise put a temporary directory inside somebody's
-    # chapter. -o+ because the archive was already cleared or refused above.
-    command = [tool, "a", "-ep", "-o+", str(into.resolve()), *names]
-    log.info("packing %d page(s) with %s", len(names), tool)
-    try:
-        # The tool is the one the caller named, run with arguments this
-        # module built: no shell, and nothing from the plan file in them.
-        done = subprocess.run(command, cwd=folder, capture_output=True, text=True, check=False)
-    except OSError as exc:
-        raise InputError(f"{tool} could not be run: {exc}") from exc
-    if done.returncode != 0:
-        detail = (done.stderr or done.stdout).strip().splitlines()
-        raise InputError(
-            f"{Path(tool).name} could not write {into.name} "
-            f"(it stopped with {done.returncode}): {detail[-1] if detail else 'no reason given'}"
-        )
+    # **rar adds a file under the name it already has.** There is no flag for
+    # "add this one, call it that" — which is what ``ZipFile.write`` takes as
+    # its second argument and why the zip half of this module needs nothing
+    # like the staging below. The entry names are the whole point here, since
+    # they are what carries the reading order, so the pages are given those
+    # names before the compressor sees them.
+    #
+    # A directory of its own rather than renaming in place: the pages belong
+    # to the caller, they may not all be in one directory, and a render is
+    # free to have put two of them under the same filename in different
+    # folders. It is thrown away on the way out either way.
+    with TemporaryDirectory(prefix="comictrans-rar-") as staging:
+        folder = Path(staging)
+        for page, name in zip(pages, names, strict=True):
+            _place(page, folder / name)
+        # Run where those names are and pass them bare, so the archive holds
+        # names rather than paths — with -ep as well, since a rar that
+        # disagrees about the default would otherwise put a temporary
+        # directory inside somebody's chapter. -o+ because the archive was
+        # already cleared or refused above.
+        command = [tool, "a", "-ep", "-o+", str(into.resolve()), *names]
+        log.info("packing %d page(s) with %s", len(names), tool)
+        try:
+            # The tool is the one the caller named, run with arguments this
+            # module built: no shell, and nothing from the plan file in them.
+            done = subprocess.run(command, cwd=folder, capture_output=True, text=True, check=False)
+        except OSError as exc:
+            raise InputError(f"{tool} could not be run: {exc}") from exc
+        if done.returncode != 0:
+            detail = (done.stderr or done.stdout).strip().splitlines()
+            raise InputError(
+                f"{Path(tool).name} could not write {into.name} (it stopped "
+                f"with {done.returncode}): {detail[-1] if detail else 'no reason given'}"
+            )
 
 
 def pack(

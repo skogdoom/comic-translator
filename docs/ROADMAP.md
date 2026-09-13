@@ -45,7 +45,6 @@ one section can refer to another without ambiguity.
 | # | Milestone | Size |
 |---|-----------|------|
 | 13 | Why the review window crashed | S |
-| 25 | CBR output was never written correctly | S |
 | 14 | Undo and redo inside a text field | S |
 | 15 | The translation field takes focus with its region | S |
 | 4.28 | Region context menu | S |
@@ -70,8 +69,7 @@ Everything in this table is what comes after a release.
 The 4.x numbering says these follow milestone 4, the review GUI.
 
 **Why this order.** A crash outranks everything, so 13 is first whatever else
-is wanted, and 25 is behind it because a format this tool claims to write and
-has never once written is the same kind of thing.
+is wanted.
 
 Then the window irritations — 14, 15 and 4.28, each an S, with 4.27 behind
 them because it is the same corner of the same files even though it is
@@ -104,8 +102,10 @@ the render window alike — measured both ways, `001-page-001.jpg` and the rest,
 real JPEG bytes. It earns a regression test over the four combinations rather
 than a milestone.
 
-`.cbr` is the other half, and asking that question is what found milestone
-25: CBR output has never worked, for any format. Nothing to do with JPEG.
+`.cbr` is the other half, and asking that question found that no `.cbr` this
+tool had ever been asked for was written — `rar` was handed the entry names as
+the files to add. Fixed since, with a stub that reads what it is given so the
+next one of those cannot pass.
 
 Three things decide this order.
 
@@ -267,55 +267,6 @@ it waits for the other two, and a test closes a window with a read in flight
 and asserts the thread is finished before the event is accepted — the shape
 the other two already have. If it does not hold, the `.ips` says where to
 look instead, and this section is rewritten rather than guessed at twice.
-
-## 25 CBR output was never written correctly
-
-Shipped broken in milestone 8, found by asking whether JPEG worked from the
-window for `.cbr` as well as `.cbz`. It does not, and neither does anything
-else: **every `.cbr` this tool has been asked to write has failed.**
-
-`_pack_rar` hands `rar` the *entry names* as the *files to add*:
-
-```
-command = [tool, "a", "-ep", "-o+", str(into.resolve()), *names]
-```
-
-`names` is what each page should be called inside the archive —
-`001-page-001.jpg` — carrying the reading order. What is on disk in the
-workspace is `page-001.jpg`. Measured, with a stub standing in for the
-compressor and reporting what it was given:
-
-```
-cwd          : .../rendered
-files on disk: ['page-001.jpg', 'page-002.jpg']
-asked to add : ['001-page-001.jpg', '002-page-002.jpg']
-exist?       : {'001-page-001.jpg': False, '002-page-002.jpg': False}
-```
-
-The zip half is fine and hides the mistake: `ZipFile.write(source, arcname)`
-takes the file and the name it goes in under as two arguments, so naming an
-entry is free there. `rar a` has no equivalent — it adds files under the names
-they already have — so the order-carrying names were never going to arrive
-this way.
-
-**Why the tests missed it, which is the more useful half.** All three stubs
-that stand in for the compressor either record their arguments or `touch` the
-archive; not one of them opens a file it was told to add. A stub is therefore
-more forgiving than `rar`, and the test asserting the command shape —
-`test_the_compressor_is_run_where_the_pages_are_with_bare_names` — asserts a
-shape that is wrong. The fix is not only to the code: a stub here has to
-behave enough like an archiver to fail when handed a file that is not there,
-which is what would have caught this.
-
-The fix itself is small. `rar` cannot rename on add, so the pages have to
-exist under their entry names before it runs: a staging directory, hard-linked
-where the filesystem allows it and copied where it does not, thrown away
-afterwards. `pack` already owns a temporary workspace for the archive case, so
-this is somewhere to put the links rather than a new idea.
-
-Worth doing at the same time: an end-to-end test with a stub that really
-builds an archive from what it is handed, so the bytes that come out can be
-opened and checked, rather than the command being inspected and believed.
 
 ## 14 Undo and redo inside a text field
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import zipfile
 from pathlib import Path
@@ -28,6 +29,49 @@ def _pages(tmp_path: Path, *names: str) -> list[Path]:
         path.write_bytes(f"pixels of {name}".encode())
         made.append(path)
     return made
+
+
+def _refuse_to_link(source: object, target: object) -> None:
+    """``os.link`` on a filesystem that has none, or across two of them."""
+    raise OSError("cross-device link")
+
+
+def _archiver(path: Path, *, record: Path | None = None) -> Path:
+    """A stand-in for ``rar`` that behaves enough like one to be useful.
+
+    Nothing redistributable writes RAR, so the compressor has to be faked —
+    and the shape of the fake is what decides whether these tests can catch
+    anything. The three stubs that came before this one recorded their
+    arguments or touched the archive, and not one opened a file it was told
+    to add; a compressor asked for files that were not there therefore passed
+    every test and failed on the first real chapter.
+
+    So this one reads what it is given. It writes a zip, because a zip is
+    something a test can open, and it exits non-zero when a named file is
+    missing, because that is what ``rar`` does and what the bug needed.
+    """
+    note = (
+        "import json\n"
+        f"open({str(record)!r}, 'w').write(json.dumps("
+        "{'cwd': os.getcwd(), 'argv': sys.argv[1:], 'listing': sorted(os.listdir('.'))}))\n"
+        if record is not None
+        else ""
+    )
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys, zipfile\n"
+        "archive, names = sys.argv[4], sys.argv[5:]\n"
+        + note
+        + "missing = [n for n in names if not os.path.exists(n)]\n"
+        "if missing:\n"
+        "    print('cannot find: ' + ', '.join(missing), file=sys.stderr)\n"
+        "    sys.exit(10)\n"
+        "with zipfile.ZipFile(archive, 'a') as z:\n"
+        "    for n in names:\n"
+        "        z.write(n, n)\n"
+    )
+    path.chmod(0o755)
+    return path
 
 
 def test_what_an_output_is_called_decides_what_it_is() -> None:
@@ -145,31 +189,113 @@ def test_a_named_tool_that_is_not_a_program_says_so(
         rar_compressor(str(unreadable))
 
 
-def test_the_compressor_is_run_where_the_pages_are_with_bare_names(
+def test_the_pages_are_there_under_the_names_the_compressor_is_given(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A real rar cannot be had here — nothing redistributable writes RAR —
-    so this holds the command instead: what it is asked to do, and where.
+    """The defect this milestone is, stated as the thing that was not true.
 
-    Bare names run from the pages' own directory, because an archive that
-    holds a temporary directory's path inside it is one somebody unpacks
-    into a folder called comictrans-8fh2k.
+    ``rar a`` adds a file under the name it already has — there is no flag
+    for "add this one, call it that", which is what ``ZipFile.write`` takes
+    as a second argument and why the zip half needs no staging. So the entry
+    names, which carry the reading order, have to be the names on disk before
+    the compressor runs. They were not: it was handed ``001-b.png`` while
+    ``b.png`` sat in the directory it ran in, and every .cbr ever asked for
+    failed.
+
+    Bare names run from a directory of their own, because an archive holding
+    a temporary directory's path inside it is one somebody unpacks into a
+    folder called comictrans-8fh2k.
     """
-    recorder = tmp_path / "rar"
-    recorder.write_text(
-        f'#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" > "{tmp_path}/asked.txt"\nshift 3\ntouch "$1"\n'
-    )
-    recorder.chmod(0o755)
+    recorder = _archiver(tmp_path / "rar", record=tmp_path / "asked.txt")
     monkeypatch.setenv(RAR_ENV, str(recorder))
     pages = _pages(tmp_path, "b.png", "a.png")
 
     names = pack(pages, tmp_path / "chapter.cbr")
 
-    asked = (tmp_path / "asked.txt").read_text().splitlines()
-    assert asked[0] == str(pages[0].parent), "run where the pages are"
-    assert asked[1:4] == ["a", "-ep", "-o+"]
-    assert asked[4] == str((tmp_path / "chapter.cbr").resolve())
-    assert asked[5:] == list(names) == ["001-b.png", "002-a.png"]
+    asked = json.loads((tmp_path / "asked.txt").read_text())
+    command = asked["argv"]
+    assert command[:3] == ["a", "-ep", "-o+"]
+    assert command[3] == str((tmp_path / "chapter.cbr").resolve())
+    assert command[4:] == list(names) == ["001-b.png", "002-a.png"]
+    assert asked["listing"] == ["001-b.png", "002-a.png"], (
+        "the names it was given are the names that were there when it ran"
+    )
+    assert Path(asked["cwd"]) != pages[0].parent, "and not by renaming the caller's pages"
+    assert sorted(path.name for path in pages[0].parent.iterdir()) == ["a.png", "b.png"], (
+        "which are left exactly as they were"
+    )
+
+
+def test_the_staging_directory_does_not_outlive_the_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorder = _archiver(tmp_path / "rar", record=tmp_path / "asked.txt")
+    monkeypatch.setenv(RAR_ENV, str(recorder))
+
+    pack(_pages(tmp_path, "a.png"), tmp_path / "chapter.cbr")
+
+    staged = Path(json.loads((tmp_path / "asked.txt").read_text())["cwd"])
+    assert not staged.exists(), "thrown away on the way out"
+
+
+def test_the_pages_it_was_given_are_the_bytes_that_come_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end, through an archive that is opened rather than believed.
+
+    The command shape was asserted for a whole milestone while being wrong.
+    What settles it is reading back what the compressor actually wrote.
+    """
+    monkeypatch.setenv(RAR_ENV, str(_archiver(tmp_path / "rar")))
+    pages = _pages(tmp_path, "b.png", "a.png")
+    archive = tmp_path / "chapter.cbr"
+
+    names = pack(pages, archive)
+
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.namelist() == list(names) == ["001-b.png", "002-a.png"]
+        assert packed.read("001-b.png") == pages[0].read_bytes()
+        assert packed.read("002-a.png") == pages[1].read_bytes()
+
+
+def test_pages_from_two_directories_do_not_collide(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Staging settles this too: one filename, two folders, two entries.
+
+    The old shape ran the compressor in ``pages[0].parent`` and could not
+    have seen the second one at all.
+    """
+    monkeypatch.setenv(RAR_ENV, str(_archiver(tmp_path / "rar")))
+    pages = []
+    for folder in ("left", "right"):
+        (tmp_path / folder).mkdir()
+        page = tmp_path / folder / "page.png"
+        page.write_bytes(f"pixels from {folder}".encode())
+        pages.append(page)
+    archive = tmp_path / "chapter.cbr"
+
+    pack(pages, archive)
+
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.namelist() == ["001-page.png", "002-page.png"]
+        assert packed.read("001-page.png") == b"pixels from left"
+        assert packed.read("002-page.png") == b"pixels from right"
+
+
+def test_a_page_that_cannot_be_linked_is_copied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hard link is free and is not always available; a copy always is."""
+    monkeypatch.setattr("comictrans.pack.os.link", _refuse_to_link)
+    monkeypatch.setenv(RAR_ENV, str(_archiver(tmp_path / "rar")))
+    pages = _pages(tmp_path, "a.png")
+    archive = tmp_path / "chapter.cbr"
+
+    pack(pages, archive)
+
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.read("001-a.png") == pages[0].read_bytes()
 
 
 def test_the_old_archive_is_gone_before_the_compressor_is_asked(
@@ -179,21 +305,18 @@ def test_the_old_archive_is_gone_before_the_compressor_is_asked(
 
     A zip hides this — ``ZipFile(..., "w")`` truncates — so the promise that
     ``--force`` replaces a chapter rather than merging last week's pages into
-    it is only observable from the RAR side, which is where it is tested.
+    it is only observable from the RAR side, which is where it is tested. The
+    stub appends, as rar does, so an archive left in place would show.
     """
-    recorder = tmp_path / "rar"
+    monkeypatch.setenv(RAR_ENV, str(_archiver(tmp_path / "rar")))
     archive = tmp_path / "chapter.cbr"
-    recorder.write_text(
-        f'#!/bin/sh\ntest -e "{archive}" && echo still-there > "{tmp_path}/found.txt"\n'
-        f'shift 3\ntouch "$1"\n'
-    )
-    recorder.chmod(0o755)
-    monkeypatch.setenv(RAR_ENV, str(recorder))
-    archive.write_bytes(b"last week's chapter")
+    with zipfile.ZipFile(archive, "w") as stale:
+        stale.writestr("001-last-week.png", b"last week's chapter")
 
     pack(_pages(tmp_path, "a.png"), archive, force=True)
 
-    assert not (tmp_path / "found.txt").exists(), "it was cleared, not added to"
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.namelist() == ["001-a.png"], "cleared, not added to"
 
 
 def test_a_compressor_that_fails_says_what_it_said(
