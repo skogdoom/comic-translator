@@ -100,8 +100,8 @@ def rar_compressor(named: str = "") -> str:
         tool = Path(configured).expanduser()
         if not (tool.is_file() and os.access(tool, os.X_OK)):
             raise InputError(
-                f"{configured} is not a program this can run. {RAR_ENV} and the "
-                "preference name the rar binary itself, not the folder it is in."
+                f"{configured} is not a program this can run — name the rar "
+                "binary itself, not the folder it is in."
             )
         return str(tool)
     found = shutil.which("rar")

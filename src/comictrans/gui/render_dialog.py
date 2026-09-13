@@ -50,7 +50,7 @@ from ..apply import check_output_dir, source_for
 from ..config import EraseConfig
 from ..errors import ComictransError
 from ..model import Plan
-from ..pack import archive_kind
+from ..pack import RAR_MISSING, archive_kind
 from ..pack import check_writable as check_can_pack
 from ..sources import RAR, ZIP
 from .document import PlanDocument
@@ -124,16 +124,19 @@ because those are what a chapter is called; a path already ending in the
 plain ones is recognised and left as it is.
 """
 
-RAR_IN_PREFERENCES = QCoreApplication.translate(
+NO_RAR_HERE = QCoreApplication.translate(
     "RenderDialog",
-    "Preferences, under “chapter files”, is where to say where rar is.",
+    "Saving as .cbr needs the rar compressor, which is not on this Mac. Say "
+    "where it is in Preferences ▸ chapter files, or save as .cbz instead.",
 )
-"""The window's answer to a missing compressor, added to the pipeline's.
+"""The window's own answer to a missing compressor, in place of the
+pipeline's.
 
-``pack.RAR_MISSING`` names ``COMICTRANS_RAR``, which is the command line's
-answer and no use to somebody reading a dialog — there is a field for this,
-and this is the moment to say where. The same bargain the extract dialog
-strikes with the same message about unrar."""
+``pack.RAR_MISSING`` explains the licence and names ``COMICTRANS_RAR``, which
+is the command line's answer to this and no use to somebody reading a dialog:
+there is a field for it, and Preferences is where the licence is explained.
+What a refusal owes you is what to do next, in one sentence, and there are
+two things you can do."""
 
 RENDER = QCoreApplication.translate("RenderDialog", "Render")
 SAVE_AND_RENDER = QCoreApplication.translate("RenderDialog", "Save and Render")
@@ -417,8 +420,11 @@ class RenderDialog(QDialog):
                 check_output_dir(path.parent, self._sources)
                 check_can_pack(path, self._preferences.rar_tool)
         except ComictransError as exc:
-            if archive_kind(path) == RAR:
-                return f"{exc}\n{RAR_IN_PREFERENCES}"
+            if archive_kind(path) == RAR and str(exc) == RAR_MISSING:
+                # Only the one the window has a better answer to. A path that
+                # was given and does not work says which path, which is the
+                # useful half and is not this module's to reword.
+                return NO_RAR_HERE
             return f"{exc}"
         except OSError as exc:
             return self.tr("{0} cannot be used: {1}").format(path, exc)
@@ -477,7 +483,7 @@ class RenderDialog(QDialog):
 __all__ = [
     "CONTAINER_CHOICES",
     "FORMAT_CHOICES",
-    "RAR_IN_PREFERENCES",
+    "NO_RAR_HERE",
     "RENDER",
     "SAVE_AND_RENDER",
     "STRATEGY_CHOICES",

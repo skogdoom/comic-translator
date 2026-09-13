@@ -22,17 +22,20 @@ from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QLocale, QSignalBlocker, Signal
+from PySide6.QtCore import QCoreApplication, QLocale, QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -135,22 +138,28 @@ def language_name(code: str) -> str:
 
 UNRAR_NOTE = QCoreApplication.translate(
     "PreferencesDialog",
-    "Only for opening a .cbr, and only needed when unrar is somewhere this "
-    "application cannot see — which is usual, since an application opened "
-    "from the Finder does not get the PATH a terminal has. unar, bsdtar and "
-    "7z do as well. None of them ships with Comic Translator: unrar's licence "
-    "is not one this project can pass on. CBZ and PDF need nothing.",
+    "Only for opening a .cbr, and only when unrar is somewhere this "
+    "application cannot see. unar, bsdtar and 7z do as well. CBZ and PDF "
+    "need nothing.",
 )
-"""Why a field about somebody else's binary is in this dialog at all."""
+"""Why a field about somebody else's binary is in this dialog at all.
+
+Two sentences where there were five. What the long version added was the
+reason the PATH is short for an application opened from the Finder and the
+reason unrar cannot ship here — both true, neither of them anything you can
+act on while looking at this field, and together they were four lines of a
+window that had stopped fitting on a screen."""
 
 RAR_NOTE = QCoreApplication.translate(
     "PreferencesDialog",
-    "Only for saving a chapter as a .cbr. Writing a RAR archive needs rar "
-    "itself, which comes with WinRAR and which you need a licence for; unrar "
-    "cannot do it. Leave this empty unless you have one — saving as a .cbz "
-    "needs nothing and every reader opens it.",
+    "Only for saving a .cbr. That needs rar itself, which comes with WinRAR "
+    "and needs a licence; unrar cannot write. CBZ needs nothing.",
 )
 """Why the field above it is not the same field. See ``Preferences``."""
+
+MINIMUM_HEIGHT = 240
+"""A floor under the cap, so a screen reporting something absurd leaves a
+window you can still use rather than a title bar and a button."""
 
 DONE_TEXT = QCoreApplication.translate("PreferencesDialog", "Done")
 """What dismisses this dialog, said as what it does.
@@ -257,6 +266,15 @@ class PreferencesDialog(QDialog):
         # label columns separately, so "write pages to" and "pages are
         # lettered in" would put their fields at different places down the
         # same dialog. The group headings are spanning rows inside it.
+        #
+        # So are the notes, and for a reason worth knowing: a widget in the
+        # field column is given its *own* size hint's width under
+        # ``FieldsStayAtSizeHint``, which is macOS's default, and a wrapped
+        # label's hint width is a guess at a shape that depends on how much
+        # text it holds. Two notes in that column therefore wrapped at two
+        # different widths, one of them the whole window and the other half
+        # of it. Spanning the form, they all get the same width and wrap
+        # alike.
         form = QFormLayout()
         form.addRow(_section(self.tr("a new plan starts as")))
         form.addRow(self.tr("pages are lettered in"), self._source_language)
@@ -267,9 +285,9 @@ class PreferencesDialog(QDialog):
         form.addRow(_spacer())
         form.addRow(_section(self.tr("chapter files")))
         form.addRow(self.tr("unrar is at"), unrar_widget)
-        form.addRow("", self._unrar_note)
+        form.addRow(self._unrar_note)
         form.addRow(self.tr("rar is at"), rar_widget)
-        form.addRow("", self._rar_note)
+        form.addRow(self._rar_note)
         form.addRow(_spacer())
         form.addRow(_section(self.tr("rendering pages")))
         form.addRow(self.tr("write pages to"), output_widget)
@@ -278,7 +296,7 @@ class PreferencesDialog(QDialog):
         form.addRow(_spacer())
         form.addRow(_section(self.tr("this window")))
         form.addRow(self.tr("language"), self._language)
-        form.addRow("", self._language_note)
+        form.addRow(self._language_note)
 
         # "Done", not "Close". Every field here has written itself through
         # by the time this is pressed, so there is nothing being closed
@@ -299,11 +317,31 @@ class PreferencesDialog(QDialog):
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
 
+        # The form scrolls; the heading and Done do not. There are eleven
+        # settings here and each one's note is as tall as the width it is
+        # given, so the honest height of this window depends on the system
+        # font and the language it is in — neither of which this can know in
+        # advance, and one short screen is all it takes for Done to end up
+        # under the Dock. So the window is capped at the screen (see
+        # :meth:`cap_height`) and the middle gives way rather than the ends.
+        scrolled = QWidget()
+        scrolled.setLayout(form)
+        self._scroll = QScrollArea()
+        self._scroll.setWidget(scrolled)
+        self._scroll.setWidgetResizable(True)
+        # No frame and no ground of its own: a sunken panel around two thirds
+        # of a preferences window is Qt showing through, not a design.
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.viewport().setAutoFillBackground(False)
+        scrolled.setAutoFillBackground(False)
+        # Never sideways. The one thing in here with no width of its own is a
+        # note, and a note is supposed to rewrap rather than run off the edge.
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         layout = QVBoxLayout(self)
         layout.addWidget(heading)
         layout.addSpacing(10)
-        layout.addLayout(form)
-        layout.addStretch(1)
+        layout.addWidget(self._scroll, 1)
         layout.addWidget(buttons)
         self.setMinimumWidth(520)
 
@@ -318,6 +356,29 @@ class PreferencesDialog(QDialog):
         self._erase.currentIndexChanged.connect(self._commit)
         self._format.currentIndexChanged.connect(self._commit)
         self._language.currentIndexChanged.connect(self._commit)
+
+    # -- fitting on the screen -------------------------------------------
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt override
+        super().showEvent(event)
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            self.cap_height(screen.availableGeometry().height())
+
+    def cap_height(self, available: int) -> None:
+        """Never be taller than ``available``, and give way from the middle.
+
+        Takes the number rather than reading the screen so that the rule can
+        be tested against a short one; :meth:`showEvent` supplies the real
+        thing. ``availableGeometry`` already leaves out the menu bar and the
+        Dock, so what is left to subtract is this window's own frame, which
+        is outside the height a widget is asked to have.
+        """
+        overhead = max(0, self.frameGeometry().height() - self.height())
+        room = max(MINIMUM_HEIGHT, available - overhead)
+        self.setMaximumHeight(room)
+        if self.height() > room:
+            self.resize(self.width(), room)
 
     # -- the value -------------------------------------------------------
 

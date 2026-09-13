@@ -88,9 +88,13 @@ from comictrans.gui.main_window import (
 )
 from comictrans.gui.note import Note
 from comictrans.gui.preferences import Preferences
-from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
+from comictrans.gui.preferences_dialog import (
+    FONT_DEFAULT,
+    MINIMUM_HEIGHT,
+    PreferencesDialog,
+)
 from comictrans.gui.render_dialog import (
-    RAR_IN_PREFERENCES,
+    NO_RAR_HERE,
     RENDER,
     SAVE_AND_RENDER,
     RenderDialog,
@@ -4048,11 +4052,11 @@ def test_the_dialog_says_a_cbr_cannot_be_written_before_a_page_is_rendered(
 
     dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
 
-    assert "needs the rar compressor" in dialog.refusal()
-    assert "WinRAR" in dialog.refusal(), "and which binary would provide it"
-    assert RAR_IN_PREFERENCES in dialog.refusal(), (
-        "the pipeline names an environment variable; a window has a field"
+    assert dialog.refusal() == NO_RAR_HERE, (
+        "the window's own sentence, not the pipeline's: a dialog has a field "
+        "for this and no business naming an environment variable"
     )
+    assert "COMICTRANS_RAR" not in dialog.refusal()
     assert not ok.isEnabled()
 
     dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
@@ -4109,16 +4113,20 @@ def test_the_preferences_dialog_holds_its_notes_too(
     _set_growth_policy(dialog, policy)
     dialog.show()
 
+    notes = {
+        "unrar": dialog._unrar_note,
+        "rar": dialog._rar_note,
+        "language": dialog._language_note,
+    }
     for width in (520, 640, 900):
         dialog.resize(width, dialog.height())
         QApplication.processEvents()
-        _assert_nothing_is_clipped(
-            {
-                "unrar": dialog._unrar_note,
-                "rar": dialog._rar_note,
-                "language": dialog._language_note,
-            },
-            f"{policy.name} at {width}px",
+        _assert_nothing_is_clipped(notes, f"{policy.name} at {width}px")
+        widths = {name: note.width() for name, note in notes.items()}
+        assert len(set(widths.values())) == 1, (
+            f"the notes wrap at different widths ({widths}) — in the field "
+            f"column each is given its own size hint's width, and a wrapped "
+            f"label's hint width depends on how much text it holds"
         )
 
 
@@ -4169,6 +4177,32 @@ def test_a_dialog_somebody_has_made_taller_stays_that_way(
     QApplication.processEvents()
 
     assert dialog.height() == taller, "a message coming and going did not undo the drag"
+
+
+def test_a_rar_path_that_does_not_work_says_which_path(
+    qapp: object, two_page_plan: Path, tmp_path: Path
+) -> None:
+    """The window's own sentence replaces one message, not every message.
+
+    "there is no rar here" it can say better, because it knows about the
+    field. "the path you gave is a folder" it cannot: the useful half of that
+    is the path, and this is not the place to reword it.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    (tmp_path / "not-a-program").mkdir()
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=Preferences(rar_tool=str(tmp_path / "not-a-program")),
+    )
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+
+    assert "is not a program this can run" in dialog.refusal()
+    assert str(tmp_path / "not-a-program") in dialog.refusal(), "which path it was"
+    assert dialog.refusal() != NO_RAR_HERE, "a different problem, a different answer"
+    assert "COMICTRANS_RAR" not in dialog.refusal()
 
 
 def test_the_preferences_rar_tool_is_what_the_dialog_asks_about_and_hands_on(
@@ -5633,3 +5667,46 @@ def test_reading_waits_for_a_region_to_be_chosen(qapp: object, two_page_plan: Pa
 
     window._go_to_region("page-001-001")
     assert window._extract_text_action.isEnabled()
+
+
+def test_the_preferences_window_never_outgrows_the_screen(qapp: object) -> None:
+    """Eleven settings and a note under three of them; a short screen wins.
+
+    How tall this window honestly wants to be depends on the system font and
+    the language it is running in, so it cannot be settled by counting rows
+    here. It is capped instead, and the form gives way rather than Done.
+    """
+    dialog = PreferencesDialog(Preferences())
+    dialog.show()
+    QApplication.processEvents()
+    assert dialog.height() > 400, "it really is a tall window"
+
+    dialog.cap_height(400)
+    QApplication.processEvents()
+
+    assert dialog.height() <= 400
+    assert dialog.maximumHeight() <= 400, "and it cannot be dragged past it either"
+    assert dialog._scroll.verticalScrollBar().maximum() > 0, "the form scrolls instead"
+
+
+def test_a_screen_that_reports_nonsense_still_leaves_a_usable_window(qapp: object) -> None:
+    dialog = PreferencesDialog(Preferences())
+    dialog.show()
+
+    dialog.cap_height(1)
+
+    assert dialog.height() >= MINIMUM_HEIGHT
+    assert dialog.maximumHeight() >= MINIMUM_HEIGHT
+
+
+def test_the_ends_of_the_window_do_not_scroll_away(qapp: object) -> None:
+    """The heading and Done stay put; the middle is what gives."""
+    dialog = PreferencesDialog(Preferences())
+    dialog.show()
+    dialog.cap_height(400)
+    QApplication.processEvents()
+
+    inside = dialog._scroll.widget().findChildren(QWidget)
+    assert dialog._ocr_languages in inside, "the form is what scrolls"
+    buttons = dialog.findChildren(QDialogButtonBox)
+    assert buttons and buttons[0] not in inside, "Done is not in there with it"

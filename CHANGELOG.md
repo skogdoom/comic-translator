@@ -127,11 +127,19 @@ for themselves. See **Build the application** in `README.md`.
   The preferences dialog had it in three places and the render dialog in two.
   A field whose placeholder is longer than the box, `same as the sourc…`, is
   now wide enough to read as well.
-- **The render dialog says where to set the rar path.** The message about a
-  missing compressor is the pipeline's, and named `COMICTRANS_RAR` — the
-  command line's answer, and no use to somebody reading a window that has a
-  field for it. It now names the field too, as the extract dialog already did
-  for unrar.
+- **The render dialog says where to set the rar path, in one sentence.** The
+  message about a missing compressor was the pipeline's: a licence
+  explanation naming `COMICTRANS_RAR`, which is the command line's answer and
+  no use in a window that has a field for it. It now says what to do instead
+  — set it in Preferences, or save as .cbz — and the licence is explained
+  where the field is. A path that was set and does not work still says which
+  path, because that is the useful half.
+- **Preferences fits on the screen.** The notes under the two chapter-file
+  fields were five lines each and are two; all three notes now wrap at the
+  same width rather than one spanning the window and the next stopping half
+  way; and the settings scroll between a fixed heading and a fixed **Done**,
+  so the window is capped at the display however long the text runs in
+  whatever language.
 
 ### Known limitations
 

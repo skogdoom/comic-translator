@@ -1957,6 +1957,22 @@ metrics. A field that grows to fill the dialog fits its placeholder whether
 or not anyone asked; one held at `sizeHint` elides it to `same as the sourc…`,
 which is not a hint.
 
+**And it is why a note goes in a spanning row, not in the field column.**
+Under `FieldsStayAtSizeHint` a field widget is given *its own* size hint's
+width, and a wrapped label's hint width is a guess that depends on how much
+text it holds — so two notes in that column wrapped at two different widths,
+one the whole window and the other half of it. Spanning the form, every note
+gets the same width and they wrap alike.
+
+**A window whose height depends on its text is capped at the screen.**
+Preferences has eleven settings and a note under three of them, and how tall
+that honestly is depends on the system font and the language — neither of
+which can be known while writing it, and one short display is all it takes
+for `Done` to end up under the Dock. So the form sits in a `QScrollArea`
+between a fixed heading and fixed buttons, and `cap_height` holds the window
+to `availableGeometry` less its own frame. It takes the number rather than
+reading the screen, so the rule can be tested against a short one.
+
 **British in the window, American in the plan.** `colour`, `licence`,
 `recogniser`, `minimise`, `cancelling` — and `fill_color`, `text_color`,
 `ocr_engine`. One is prose and the other is a data format: a key cannot be
