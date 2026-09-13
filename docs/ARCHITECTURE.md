@@ -1834,13 +1834,25 @@ The header dialog edits *this* plan; preferences decide what a *new* one
 starts from.
 
 What keeps them apart is not vigilance but where the values can reach. Every
-field either seeds a new plan's header — the language pair, the OCR settings,
-the font `extract` records — or picks a run-wide setting that is not part of
-a plan at all: the erase strategy, which a region's own `erase` still beats,
-and the output directory and format, which no plan has ever held. There is no
-code path from `Preferences` to an open `PlanDocument`, and a test asserts
-the header, the dirty flag and the file on disk are all untouched by editing
-one.
+field does one of three things: seeds a new plan's header — the language
+pair, the OCR settings, the font `extract` records; picks a run-wide setting
+that is not part of a plan at all — the erase strategy, which a region's own
+`erase` still beats, and the output directory and format, which no plan has
+ever held; or says something about this application rather than about any
+comic, which is `language` and `experimental`. There is no code path from
+`Preferences` to an open `PlanDocument`, and a test asserts the header, the
+dirty flag and the file on disk are all untouched by editing one.
+
+**`experimental` is a flag with nothing behind it yet**, and that is
+deliberate. It is here so the first piece of unfinished work has a switch to
+hang off and a settled place in the window, rather than one being invented in
+a hurry alongside the feature it gates. It is also the only setting here that
+is a yes or a no, and it is stored as `""` or `"yes"` like everything else
+rather than as a boolean — `QSettings` booleans are the type-guessing trap
+this module's one-rule decision avoids, and "any non-empty string is on"
+would read a hand-edited `false` as true. `Preferences.experimental_on` is
+the question to ask; `SWITCHES` is what a stored value may be, and anything
+else is put back to off by `_validated` like any other unrecognised value.
 
 A preference also gets no more trust than anything typed by hand. A stored
 output directory inside the source tree is refused by `check_output_dir` on
@@ -1965,7 +1977,7 @@ one the whole window and the other half of it. Spanning the form, every note
 gets the same width and they wrap alike.
 
 **A window whose height depends on its text is capped at the screen.**
-Preferences has eleven settings and a note under three of them, and how tall
+Preferences has twelve settings and a note under four of them, and how tall
 that honestly is depends on the system font and the language — neither of
 which can be known while writing it, and one short display is all it takes
 for `Done` to end up under the Dock. So the form sits in a `QScrollArea`

@@ -25,6 +25,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QLocale, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -44,7 +45,7 @@ from . import translations
 from .extract_dialog import ENGINE_CHOICES
 from .font_box import FontBox
 from .note import Note
-from .preferences import Preferences
+from .preferences import ON, Preferences
 from .render_dialog import FORMAT_CHOICES, STRATEGY_CHOICES
 
 WHAT_IT_IS = QCoreApplication.translate(
@@ -157,6 +158,13 @@ RAR_NOTE = QCoreApplication.translate(
 )
 """Why the field above it is not the same field. See ``Preferences``."""
 
+EXPERIMENTAL_NOTE = QCoreApplication.translate("PreferencesDialog", "Nothing uses this yet.")
+"""Said because a switch that does nothing reads as a broken one.
+
+It is here ahead of the first thing that needs it — see ``Preferences`` —
+and this line is what stops somebody ticking it, seeing no change, and
+filing that as a bug. It goes when something is behind it."""
+
 MINIMUM_HEIGHT = 240
 """A floor under the cap, so a screen reporting something absurd leaves a
 window you can still use rather than a title bar and a button."""
@@ -259,6 +267,10 @@ class PreferencesDialog(QDialog):
         self._language.setCurrentIndex(self._language_index(preferences.language))
         self._language_note = Note(LANGUAGE_NOTE)
 
+        self._experimental = QCheckBox(self.tr("experimental features"))
+        self._experimental.setChecked(preferences.experimental_on)
+        self._experimental_note = Note(EXPERIMENTAL_NOTE)
+
         heading = QLabel(WHAT_IT_IS)
         heading.setWordWrap(True)
 
@@ -297,6 +309,8 @@ class PreferencesDialog(QDialog):
         form.addRow(_section(self.tr("this window")))
         form.addRow(self.tr("language"), self._language)
         form.addRow(self._language_note)
+        form.addRow("", self._experimental)
+        form.addRow(self._experimental_note)
 
         # "Done", not "Close". Every field here has written itself through
         # by the time this is pressed, so there is nothing being closed
@@ -356,6 +370,7 @@ class PreferencesDialog(QDialog):
         self._erase.currentIndexChanged.connect(self._commit)
         self._format.currentIndexChanged.connect(self._commit)
         self._language.currentIndexChanged.connect(self._commit)
+        self._experimental.toggled.connect(self._commit)
 
     # -- fitting on the screen -------------------------------------------
 
@@ -401,6 +416,11 @@ class PreferencesDialog(QDialog):
             erase_strategy=str(self._erase.currentData()),
             image_format=str(self._format.currentData()),
             language=str(self._language.currentData()),
+            # A string, like every other field — see ``preferences``. The
+            # checkbox is the only thing in this dialog that is a yes or a no,
+            # and it is stored as one of two words rather than as a bool so
+            # that a settings file holding "false" cannot read as true.
+            experimental=ON if self._experimental.isChecked() else "",
         )
 
     @staticmethod
@@ -470,6 +490,7 @@ class PreferencesDialog(QDialog):
                 self._erase,
                 self._format,
                 self._language,
+                self._experimental,
             ):
                 blockers.enter_context(QSignalBlocker(widget))
             self._source_language.setText(preferences.source_language)
@@ -483,6 +504,7 @@ class PreferencesDialog(QDialog):
             self._erase.setCurrentIndex(self._erase.findData(preferences.erase_strategy))
             self._format.setCurrentIndex(self._format.findData(preferences.image_format))
             self._language.setCurrentIndex(self._language_index(preferences.language))
+            self._experimental.setChecked(preferences.experimental_on)
 
 
 __all__ = [
