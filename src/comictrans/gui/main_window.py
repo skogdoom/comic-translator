@@ -13,6 +13,8 @@ at the others' state.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
@@ -141,6 +143,34 @@ def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
 RECENT_MENU_TITLE = QCoreApplication.translate("MainWindow", "Open &Recent")
 CLEAR_RECENT_TEXT = QCoreApplication.translate("MainWindow", "Clear Menu")
 """Named so the menu and its test cannot drift apart, as with the toolbar."""
+
+
+@contextmanager
+def transient[D: QDialog](dialog: D) -> Iterator[D]:
+    """A dialog that is finished with when this block is.
+
+    A dialog parented to a window belongs to Qt rather than to the Python
+    name it was built under, so letting that name go out of scope leaves it
+    alive as a child. Measured: opening Preferences three times leaves three
+    ``PreferencesDialog`` objects on the window, and they stay for as long as
+    the window does — a leak on its own account, and one that carries real
+    weight, since a ``RenderDialog`` holds a whole ``Plan``.
+
+    They are also the objects PySide's shutdown walk has to destroy, which is
+    where the segfault in :func:`comictrans.gui.app.close_down` came from. So
+    this is half of that fix and stands up without it.
+
+    ``deleteLater`` rather than destroying it outright: this runs inside the
+    event loop, which is where a deferred delete belongs, and everything the
+    caller wants off the dialog has been read by the time the block ends —
+    which is why ``WA_DeleteOnClose`` is not what is used here. That deletes
+    on close, and ``exec`` returns *after* the close, so the ``request()``
+    two of these callers ask for would be read off a dead object.
+    """
+    try:
+        yield dialog
+    finally:
+        dialog.deleteLater()
 
 
 class MainWindow(QMainWindow):
@@ -1674,20 +1704,20 @@ class MainWindow(QMainWindow):
         """Ask what to render and where, save the plan, then start the run."""
         if self.document is None:
             return
-        dialog = RenderDialog(self.document, self, preferences=self._preferences)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        # Saved first, always. ``apply_plan`` would happily render what is in
-        # this window, and the live preview does exactly that — but a preview
-        # is ephemeral and output files are not. Pages rendered from a plan
-        # that is not on disk are pages nobody can regenerate, which is the
-        # property the two passes exist to have.
-        if self.document.dirty:
-            self._on_save()
-            if self.document.dirty:  # the save failed, and said so itself
+        with transient(RenderDialog(self.document, self, preferences=self._preferences)) as dialog:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-        self._start_render(dialog.request())
+
+            # Saved first, always. ``apply_plan`` would happily render what is
+            # in this window, and the live preview does exactly that — but a
+            # preview is ephemeral and output files are not. Pages rendered
+            # from a plan that is not on disk are pages nobody can regenerate,
+            # which is the property the two passes exist to have.
+            if self.document.dirty:
+                self._on_save()
+                if self.document.dirty:  # the save failed, and said so itself
+                    return
+            self._start_render(dialog.request())
 
     def _start_render(self, request: RenderRequest) -> None:
         job = RenderJob(request, self)
@@ -1706,10 +1736,12 @@ class MainWindow(QMainWindow):
         is on disk and complete — which is also why a cancelled extract has
         nothing to show you.
         """
-        dialog = ExtractDialog(self._start_directory(), self, preferences=self._preferences)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        request = dialog.request()
+        with transient(
+            ExtractDialog(self._start_directory(), self, preferences=self._preferences)
+        ) as dialog:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            request = dialog.request()
         self._remember_directory(request.plan_path)
         job = ExtractJob(request, self)
         job.completed.connect(self._on_extract_finished)
@@ -1895,8 +1927,9 @@ class MainWindow(QMainWindow):
         except (OSError, ComictransError) as exc:  # its font box reads the disk
             self._report_failure(self.tr("opening the plan header"), exc)
             return
-        dialog.edited.connect(self._on_header_edited)
-        dialog.exec()
+        with transient(dialog):
+            dialog.edited.connect(self._on_header_edited)
+            dialog.exec()
 
     def _on_header_edited(self) -> None:
         """The header decides every region without an override of its own."""
@@ -1918,8 +1951,9 @@ class MainWindow(QMainWindow):
         except (OSError, ComictransError) as exc:  # its font box reads the disk
             self._report_failure(self.tr("opening preferences"), exc)
             return
-        dialog.changed.connect(lambda: self._on_preferences_changed(dialog.preferences()))
-        dialog.exec()
+        with transient(dialog):
+            dialog.changed.connect(lambda: self._on_preferences_changed(dialog.preferences()))
+            dialog.exec()
 
     def _on_preferences_changed(self, preferences: Preferences) -> None:
         was = self._preferences
@@ -2124,7 +2158,8 @@ class MainWindow(QMainWindow):
         self._help.activateWindow()
 
     def _on_about(self) -> None:
-        AboutDialog(self).exec()
+        with transient(AboutDialog(self)) as dialog:
+            dialog.exec()
 
     def _on_back_to_overlay(self) -> None:
         """Put the outlines back, on the region that was being looked at.
@@ -2161,6 +2196,12 @@ class MainWindow(QMainWindow):
             self._preview_job.cancel()
             self._preview_job.wait()
             self._preview_job = None
+        # The one dialog that is deliberately kept — see ``_on_help`` — and so
+        # the one that would still be here at shutdown. It goes with the
+        # window rather than waiting to be walked; the rest are transient.
+        if self._help is not None:
+            self._help.deleteLater()
+            self._help = None
         set_notifier(None)
         self._save_layout()
         event.accept()

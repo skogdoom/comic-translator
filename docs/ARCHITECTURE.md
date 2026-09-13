@@ -1951,6 +1951,47 @@ positional so it can be applied without judgement: the two checkboxes that
 had drifted into sentence case were the only places it was ambiguous, and
 they are lowercase now.
 
+**Nothing of ours is alive when the interpreter finalises.** `app.run` calls
+`close_down` on the window after `app.exec()` returns, and every dialog is
+opened inside `main_window.transient`, which `deleteLater`s it when the
+command that opened it is done.
+
+Both come from a crash report. A quit review session segfaulted, and the
+macOS `.ips` named the path exactly: `Py_FinalizeEx` runs the `atexit`
+handlers, PySide's is `runCleanupFunctions` → `destroyQCoreApplication`, and
+that walks every Python-wrapped `QObject` still alive and destroys it —
+`visitAllPyObjects(destructionVisitor)`. It reached a `QDialog`, destroyed
+it, and the dialog's destructor walked into a child that had already been
+freed: `EXC_BAD_ACCESS` at `0x39`. There was no Python frame on the stack
+because by then there was no Python left to be on it, which is the one thing
+the `faulthandler` log had said and the only thing it could.
+
+The order of that walk is not ours to choose; whether it finds anything is.
+So the window is destroyed while the interpreter is still running and Qt can
+order its own children — `shiboken6.delete`, because a window sits at the
+centre of enough reference cycles that it is collected by the cycle collector
+rather than by a refcount, and because `deleteLater` needs an event loop that
+has already returned.
+
+**A parented dialog belongs to Qt, not to the name it was built under**,
+which is the other half and stands up on its own. Letting the name go out of
+scope left the dialog alive as a child: measured, opening Preferences three
+times left three `PreferencesDialog` objects on the window for as long as the
+window lived, each holding its widgets and — for a render dialog — a whole
+`Plan`. `transient` is one line at each call site and it is `deleteLater`
+rather than `WA_DeleteOnClose`, because that attribute deletes on close and
+`exec` returns *after* the close, so the `request()` two of those callers ask
+for would be read off a dead object. `HelpDialog` is the exception that is
+kept — it is read beside the thing it describes — and `closeEvent` releases
+it with the window.
+
+Testing this needs one Qt detail: `deleteLater` posts a `DeferredDelete`
+event, and `processEvents` does not deliver one — it arrives when control
+returns to the event loop that was running when it was asked for, and a test
+has no event loop. `QApplication.sendPostedEvents(None, DeferredDelete)` is
+what flushes them, and without it the tests here measure three dialogs still
+alive and conclude the wrong thing.
+
 **A line of help under a control is a `Note`, never a wrapped `QLabel`.**
 `gui/note.py`, and the rule exists because the obvious thing is wrong in a
 way that only shows up on the platform this ships to. A `QLabel` with

@@ -5755,3 +5755,96 @@ def test_the_ends_of_the_window_do_not_scroll_away(qapp: object) -> None:
     assert dialog._ocr_languages in inside, "the form is what scrolls"
     buttons = dialog.findChildren(QDialogButtonBox)
     assert buttons and buttons[0] not in inside, "Done is not in there with it"
+
+
+# -- nothing of ours is left for the interpreter to tear down ------------
+
+
+def _flush_deferred_deletes() -> None:
+    """Deliver what ``deleteLater`` posted.
+
+    ``processEvents`` does not: a deferred delete is delivered when control
+    returns to the event loop that was running when it was asked for, and
+    there is no event loop in a test. Measured — three rounds of dialogs and
+    three still alive until this is called instead.
+    """
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_a_dialog_does_not_outlive_the_command_that_opened_it(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Qt owns a parented dialog, not the name it was built under.
+
+    So a dialog opened and forgotten stays a child of the window for as long
+    as the window lives, and opening Preferences three times leaves three of
+    them — each holding its widgets, and a render dialog holding a whole
+    plan. They are also what PySide's shutdown walk has to destroy, which is
+    the crash this milestone is.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+
+    for _ in range(3):
+        window._on_preferences()
+        window._on_about()
+        window._on_edit_header()
+        window._on_render()
+        window._on_extract()
+        _flush_deferred_deletes()
+
+    assert window.findChildren(QDialog) == [], "each was finished with when its command was"
+
+
+def test_the_guide_is_kept_while_the_window_lives_and_goes_with_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The one dialog held on purpose — it is read beside the thing it
+    describes, and asking twice should not open a second one."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+
+    window._on_help()
+    first = window._help
+    window._on_help()
+
+    assert window._help is first, "the same guide, not a second one"
+    assert first is not None
+
+    window.close()
+    _flush_deferred_deletes()
+
+    assert window._help is None
+    assert window.findChildren(type(first)) == [], "it went with the window"
+
+
+def test_closing_down_destroys_the_window_and_its_children(qapp: object) -> None:
+    """What the crash report asked for: nothing left for ``Py_FinalizeEx``.
+
+    PySide's atexit handler walks every Python-wrapped QObject still alive
+    and destroys it, in an order that is not ours to choose. What is ours is
+    whether it finds anything, so the window is destroyed here instead —
+    while the interpreter is running and Qt can order its own children.
+    """
+    import shiboken6
+
+    from comictrans.gui.app import close_down
+
+    window = MainWindow()
+    kept = QDialog(window)
+    assert shiboken6.isValid(window) and shiboken6.isValid(kept)
+
+    close_down(window)
+
+    assert not shiboken6.isValid(window)
+    assert not shiboken6.isValid(kept), "children go with it"
+
+
+def test_closing_down_twice_is_not_a_crash(qapp: object) -> None:
+    """It runs on the way out of a process that may have got there oddly."""
+    from comictrans.gui.app import close_down
+
+    window = MainWindow()
+    close_down(window)
+    close_down(window)
