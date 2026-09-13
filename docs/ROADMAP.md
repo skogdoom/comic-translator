@@ -74,7 +74,8 @@ is wanted, and 25 is behind it because a format this tool claims to write and
 has never once written is the same kind of thing.
 
 Then the window irritations — 14, 15 and 4.28, each an S, with 4.27 behind
-them because it is the same corner of the same files even though it is larger. They are met every few minutes by the one person using this, they are
+them because it is the same corner of the same files even though it is
+larger. They are met every few minutes by the one person using this, they are
 cheap, and doing them apart means reading the inspector and the canvas four
 times over. 15 makes 14 matter more rather than less, which is why 14 is
 first of the four.
