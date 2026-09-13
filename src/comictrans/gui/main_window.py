@@ -108,6 +108,15 @@ PREVIEW_WORKING = QCoreApplication.translate("MainWindow", "rendering preview…
 EXTRACTING_TEXT = QCoreApplication.translate("MainWindow", "extracting the text of {0}…")
 """Shown while a recogniser reads one region, and replaced by its result."""
 
+UNDO_IS_ELSEWHERE = QCoreApplication.translate(
+    "MainWindow",
+    "the next undo is not in this region — press Escape to undo anywhere in the plan",
+)
+"""Said when undo stops at the edge of the region being typed into.
+
+Rather than nothing at all, which is what refusing looks like from the
+keyboard: the key stops working and there is no way to find out why."""
+
 PREVIEW_TEXT = QCoreApplication.translate("MainWindow", "&Render Preview")
 OVERLAY_TEXT = QCoreApplication.translate("MainWindow", "Back to &Overlay")
 """The two halves of one action: what it does depends on what is on screen,
@@ -1542,13 +1551,44 @@ class MainWindow(QMainWindow):
         self._refresh_page_visuals()
         self._update_actions_enabled()
 
+    def _typing_in(self) -> str | None:
+        """The region whose text is being edited, or ``None``.
+
+        The caret being in one of the inspector's prose fields is the whole
+        test. It is what tells undo to stay inside this region — see
+        :meth:`PlanDocument.undo` — and it is false the moment Escape puts
+        the focus back on the page, which is how the whole plan's history is
+        reached again.
+        """
+        if self._current_region is None or not self._inspector.editing_text():
+            return None
+        return self._current_region
+
     def _on_undo(self) -> None:
-        if self.document is not None and self.document.undo():
+        if self.document is None:
+            return
+        within = self._typing_in()
+        if self.document.undo(within=within):
             self._reload_from_document()
+        elif within is not None and self.document.can_undo:
+            self._say_undo_is_elsewhere()
 
     def _on_redo(self) -> None:
-        if self.document is not None and self.document.redo():
+        if self.document is None:
+            return
+        within = self._typing_in()
+        if self.document.redo(within=within):
             self._reload_from_document()
+        elif within is not None and self.document.can_redo:
+            self._say_undo_is_elsewhere()
+
+    def _say_undo_is_elsewhere(self) -> None:
+        """Why nothing happened, rather than letting it look broken.
+
+        Refusing silently is the one thing worse than crossing the boundary:
+        the key would simply stop working and there would be nothing to read.
+        """
+        self.statusBar().showMessage(UNDO_IS_ELSEWHERE)
 
     def _reload_from_document(self) -> None:
         """After undo or redo, when the plan changed under everything at once.

@@ -1978,6 +1978,29 @@ Tab is the exception in the other direction and not a shortcut at all: a
 text field takes it as a character, which stopped it walking the panel.
 These fields hold two lines of prose, so they let it past.
 
+**While the caret is in a prose field, undo stays inside the region on
+screen.** One history over the whole plan is what makes a drag, a merge and a
+plugin rewriting every region one step each — and it is also how holding
+Ctrl+Z down in one balloon used to walk out of it, into an edit made to
+another region, a polygon dragged, two regions merged. None of that is on
+screen while the panel is showing this region, so none of it could be
+noticed.
+
+`PlanDocument.undo(within=...)` refuses a step that is about anything else,
+and `step_is_only_about` decides by comparing the two plans rather than by
+remembering what each step was for — the same question either way, and one
+of the two answers can go stale. A step that *adds or deletes* the selected
+region counts as being about it: a balloon just drawn is the balloon on
+screen, and Ctrl+Z after drawing one means that. What is refused is a step
+about something else.
+
+It refuses rather than searching the stack for one that qualifies, because
+reordering history is how an undo stack stops being trustworthy; and it says
+so in the status bar, because a key that silently stops working is worse
+than one that explains itself. Escape puts the focus back on the page, where
+undo is the whole plan as ever — so nothing is unreachable, only out of reach
+from inside a text box.
+
 **Typing is undone a word at a time.** A run of edits collapses into one undo
 step, keyed by region and field, and it used to end only when the selection
 moved — so one Cmd+Z threw away everything typed since the field was entered.

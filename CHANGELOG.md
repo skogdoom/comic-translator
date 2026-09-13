@@ -164,6 +164,11 @@ for themselves. See **Build the application** in `README.md`.
   actually uses, it keeps. **Tab** walks out of the prose fields instead of
   being typed into them, and the caret lands at the end of the text rather
   than in front of it.
+- **Undo stays in the region you are typing in.** Holding Ctrl+Z down in one
+  balloon used to carry on past your typing into an edit made somewhere else
+  — which you would not see happen, since the panel is showing this region.
+  It now stops at the edge and says so. Nothing is lost: press **Escape** to
+  put the keyboard back on the page and undo reaches the whole plan again.
 - **Ctrl+Z works inside the text fields.** It did not: the field claimed the
   key and, having no undo of its own, did nothing with it, so nothing
   happened at all until you clicked somewhere else first. It is the same undo

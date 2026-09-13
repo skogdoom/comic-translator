@@ -85,6 +85,7 @@ from comictrans.gui.main_window import (
     OVERLAY_TEXT,
     PREVIEW_TEXT,
     PREVIEW_WORKING,
+    UNDO_IS_ELSEWHERE,
     MainWindow,
 )
 from comictrans.gui.note import Note
@@ -6021,3 +6022,66 @@ def test_tab_walks_out_of_the_prose_fields(qapp: object, two_page_plan: Path) ->
         QApplication.processEvents()
         assert field.toPlainText() == before, "Tab was not typed into it"
         assert QApplication.focusWidget() is not field, "and it moved on"
+
+
+def test_undo_while_typing_does_not_walk_into_another_region(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The hazard: the panel shows one region, and undo was taking back
+    edits made to another one, which is not on screen to be noticed."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setFocus()
+    QApplication.processEvents()
+    window._inspector._translation.setPlainText("SECOND")
+    QApplication.processEvents()
+
+    window._on_undo()
+    assert window.document.region("page-001-002").translation != "SECOND"  # type: ignore[union-attr]
+
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation == "FIRST", (  # type: ignore[union-attr]
+        "the other region's edit was left alone"
+    )
+    assert UNDO_IS_ELSEWHERE in window.statusBar().currentMessage()
+    assert window.document.can_undo, "and it is still there"
+
+
+def test_escape_puts_the_whole_plan_s_history_back_within_reach(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setFocus()
+    QApplication.processEvents()
+    window._inspector._translation.setPlainText("SECOND")
+    window._on_undo()
+    assert not window.document.undo(within="page-001-002")  # type: ignore[union-attr]
+
+    QTest.keyClick(window._inspector._translation, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation != "FIRST"  # type: ignore[union-attr]
+
+
+def test_with_the_caret_on_the_page_undo_is_the_whole_plan(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setPlainText("SECOND")
+    window._canvas.setFocus()
+    QApplication.processEvents()
+
+    window._on_undo()
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation != "FIRST"  # type: ignore[union-attr]

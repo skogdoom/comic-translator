@@ -134,6 +134,35 @@ def overlapping_region_ids(regions: Sequence[Region]) -> frozenset[str]:
     return frozenset(hit)
 
 
+def step_is_only_about(before: Plan, after: Plan, region_id: str) -> bool:
+    """Whether the one thing this step changes is that region.
+
+    Asked of the two plans rather than remembered when the step was recorded,
+    because it is the same question either way and one of the two answers can
+    go stale.
+
+    **Added and deleted count as being about it.** A region drawn by hand is
+    the region on screen, selected, with its outline drawn: taking it back is
+    exactly what somebody pressing Ctrl+Z after drawing it means, and the
+    only reason to hold this to "the fields changed" would be the shape of
+    the comparison rather than anything a user could see. What is refused is
+    a step about *something else* — another region's text, a merge of two,
+    a page moved, the header — which is refused because the panel is showing
+    this region and none of that would be visible.
+    """
+    if before.header != after.header or before.images != after.images:
+        return False
+    was = {region.id: region for region in before.regions}
+    now = {region.id: region for region in after.regions}
+    touched = {key for key in was.keys() | now.keys() if was.get(key) != now.get(key)}
+    if touched != {region_id}:
+        return False
+    # Reordering changes no region and would slip past the comparison above.
+    return [region.id for region in before.regions if region.id != region_id] == [
+        region.id for region in after.regions if region.id != region_id
+    ]
+
+
 def inserted(was: str, now: str) -> str:
     """What an edit added, when it added it in one place.
 
@@ -425,22 +454,48 @@ class PlanDocument:
     def can_redo(self) -> bool:
         return bool(self._redo)
 
-    def undo(self) -> bool:
-        """Step back one edit. False when there is nothing left to undo."""
+    def undo(self, *, within: str | None = None) -> bool:
+        """Step back one edit. False when there is nothing left to take back.
+
+        ``within`` names a region the step has to be about, and is how typing
+        into a translation is kept from walking out of it. Hold Ctrl+Z down
+        in one balloon and, without it, undo carries on past the first
+        keystroke into whatever was done before — an edit to another region,
+        a polygon dragged, two regions merged — none of which is on screen,
+        because the panel is showing this region. The history is still one
+        history and still in order; this only refuses to cross a boundary
+        that the person pressing the key cannot see.
+
+        False, rather than searching for a step that does qualify: reordering
+        history is how an undo stack stops being trustworthy. Escape puts the
+        focus back on the page, and undo there is the whole plan as ever.
+        """
         if not self._undo:
+            return False
+        if within is not None and not step_is_only_about(self._undo[-1], self.plan, within):
             return False
         self._redo.append(self.plan)
         self.plan = self._undo.pop()
         self._run = None
         return True
 
-    def redo(self) -> bool:
+    def redo(self, *, within: str | None = None) -> bool:
+        """Step forward one edit, under the same rule as :meth:`undo`."""
         if not self._redo:
+            return False
+        if within is not None and not step_is_only_about(self.plan, self._redo[-1], within):
             return False
         self._undo.append(self.plan)
         self.plan = self._redo.pop()
         self._run = None
         return True
+
+    def can_undo_within(self, region_id: str) -> bool:
+        """Whether the next undo is one this region may take back."""
+        return bool(self._undo) and step_is_only_about(self._undo[-1], self.plan, region_id)
+
+    def can_redo_within(self, region_id: str) -> bool:
+        return bool(self._redo) and step_is_only_about(self.plan, self._redo[-1], region_id)
 
     def reorder_images(self, names: Sequence[str]) -> bool:
         """Put the pages in ``names`` order. False when that changes nothing.
