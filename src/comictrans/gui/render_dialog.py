@@ -52,8 +52,9 @@ from ..errors import ComictransError
 from ..model import Plan
 from ..pack import archive_kind
 from ..pack import check_writable as check_can_pack
-from ..sources import ZIP
+from ..sources import RAR, ZIP
 from .document import PlanDocument
+from .note import Note
 from .preferences import DEFAULTS, Preferences
 from .preview import apply_config_for
 from .run_job import RenderRequest
@@ -123,6 +124,17 @@ because those are what a chapter is called; a path already ending in the
 plain ones is recognised and left as it is.
 """
 
+RAR_IN_PREFERENCES = QCoreApplication.translate(
+    "RenderDialog",
+    "Preferences, under “chapter files”, is where to say where rar is.",
+)
+"""The window's answer to a missing compressor, added to the pipeline's.
+
+``pack.RAR_MISSING`` names ``COMICTRANS_RAR``, which is the command line's
+answer and no use to somebody reading a dialog — there is a field for this,
+and this is the moment to say where. The same bargain the extract dialog
+strikes with the same message about unrar."""
+
 RENDER = QCoreApplication.translate("RenderDialog", "Render")
 SAVE_AND_RENDER = QCoreApplication.translate("RenderDialog", "Save and Render")
 """The button names what pressing it will do, and an unsaved plan is saved
@@ -186,9 +198,7 @@ class RenderDialog(QDialog):
         for label, value, _description in STRATEGY_CHOICES:
             self._erase.addItem(label, value)
         self._erase.setCurrentIndex(self._erase.findData(preferences.erase_strategy))
-        self._erase_help = QLabel()
-        self._erase_help.setWordWrap(True)
-        self._quieten(self._erase_help)
+        self._erase_help = Note()
 
         self._container = QComboBox()
         for label, suffix in CONTAINER_CHOICES:
@@ -197,9 +207,10 @@ class RenderDialog(QDialog):
         self._force = QCheckBox()
 
         # Red rather than the usual grey: this is the one message here that
-        # is stopping something from happening.
-        self._problem = QLabel()
-        self._problem.setWordWrap(True)
+        # is stopping something from happening. A ``Note`` all the same —
+        # what that class is for is the height, and this is the longest and
+        # most variable thing the dialog ever says.
+        self._problem = Note()
         palette = self._problem.palette()
         palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.red)
         self._problem.setPalette(palette)
@@ -238,15 +249,6 @@ class RenderDialog(QDialog):
         self._validate()
 
     # -- appearance ------------------------------------------------------
-
-    @staticmethod
-    def _quieten(label: QLabel) -> None:
-        palette = label.palette()
-        palette.setColor(
-            QPalette.ColorRole.WindowText,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-        )
-        label.setPalette(palette)
 
     def _what_it_will_do(self) -> str:
         """What pressing the button will do, counted.
@@ -415,6 +417,8 @@ class RenderDialog(QDialog):
                 check_output_dir(path.parent, self._sources)
                 check_can_pack(path, self._preferences.rar_tool)
         except ComictransError as exc:
+            if archive_kind(path) == RAR:
+                return f"{exc}\n{RAR_IN_PREFERENCES}"
             return f"{exc}"
         except OSError as exc:
             return self.tr("{0} cannot be used: {1}").format(path, exc)
@@ -473,6 +477,7 @@ class RenderDialog(QDialog):
 __all__ = [
     "CONTAINER_CHOICES",
     "FORMAT_CHOICES",
+    "RAR_IN_PREFERENCES",
     "RENDER",
     "SAVE_AND_RENDER",
     "STRATEGY_CHOICES",

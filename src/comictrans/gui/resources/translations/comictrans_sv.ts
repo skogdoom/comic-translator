@@ -985,134 +985,134 @@
         <translation>(låt extract välja)</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="127"/>
+        <location filename="../../preferences_dialog.py" line="136"/>
         <source>Only for opening a .cbr, and only needed when unrar is somewhere this application cannot see — which is usual, since an application opened from the Finder does not get the PATH a terminal has. unar, bsdtar and 7z do as well. None of them ships with Comic Translator: unrar&apos;s licence is not one this project can pass on. CBZ and PDF need nothing.</source>
         <translation>Behövs bara för att öppna en .cbr, och bara när unrar ligger någonstans det här programmet inte ser — vilket är det vanliga, eftersom ett program som startas från Finder inte får den PATH en terminal har. unar, bsdtar och 7z duger också. Inget av dem följer med Comic Translator: unrars licens är inte en som det här projektet kan föra vidare. CBZ och PDF behöver ingenting.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="137"/>
+        <location filename="../../preferences_dialog.py" line="146"/>
         <source>Only for saving a chapter as a .cbr. Writing a RAR archive needs rar itself, which comes with WinRAR and which you need a licence for; unrar cannot do it. Leave this empty unless you have one — saving as a .cbz needs nothing and every reader opens it.</source>
         <translation>Bara för att spara ett kapitel som .cbr. Att skriva ett RAR-arkiv kräver rar självt, som följer med WinRAR och som du behöver en licens för; unrar klarar det inte. Lämna det här tomt om du inte har ett — att spara som .cbz kräver ingenting och alla läsare öppnar det.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="146"/>
+        <location filename="../../preferences_dialog.py" line="155"/>
         <source>Done</source>
         <translation>Klar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="181"/>
+        <location filename="../../preferences_dialog.py" line="190"/>
         <source>Preferences</source>
         <translation>Inställningar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="187"/>
+        <location filename="../../preferences_dialog.py" line="196"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="200"/>
+        <location filename="../../preferences_dialog.py" line="210"/>
         <source>beside the pages</source>
         <translation>bredvid sidorna</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="201"/>
-        <location filename="../../preferences_dialog.py" line="338"/>
+        <location filename="../../preferences_dialog.py" line="212"/>
+        <location filename="../../preferences_dialog.py" line="348"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="225"/>
-        <location filename="../../preferences_dialog.py" line="231"/>
+        <location filename="../../preferences_dialog.py" line="236"/>
+        <location filename="../../preferences_dialog.py" line="242"/>
         <source>found on PATH</source>
         <translation>hittas via PATH</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="251"/>
+        <location filename="../../preferences_dialog.py" line="261"/>
         <source>a new plan starts as</source>
         <translation>en ny plan börjar som</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="252"/>
+        <location filename="../../preferences_dialog.py" line="262"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="253"/>
+        <location filename="../../preferences_dialog.py" line="263"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="254"/>
+        <location filename="../../preferences_dialog.py" line="264"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="255"/>
+        <location filename="../../preferences_dialog.py" line="265"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="256"/>
+        <location filename="../../preferences_dialog.py" line="266"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="258"/>
+        <location filename="../../preferences_dialog.py" line="268"/>
         <source>chapter files</source>
         <translation>kapitelfiler</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="259"/>
+        <location filename="../../preferences_dialog.py" line="269"/>
         <source>unrar is at</source>
         <translation>unrar finns i</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="261"/>
+        <location filename="../../preferences_dialog.py" line="271"/>
         <source>rar is at</source>
         <translation>rar finns i</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="264"/>
+        <location filename="../../preferences_dialog.py" line="274"/>
         <source>rendering pages</source>
         <translation>rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="265"/>
+        <location filename="../../preferences_dialog.py" line="275"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="266"/>
+        <location filename="../../preferences_dialog.py" line="276"/>
         <source>erase</source>
         <translation>radera</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="267"/>
+        <location filename="../../preferences_dialog.py" line="277"/>
         <source>format</source>
         <translation>format</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="269"/>
+        <location filename="../../preferences_dialog.py" line="279"/>
         <source>this window</source>
         <translation>det här fönstret</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="270"/>
+        <location filename="../../preferences_dialog.py" line="280"/>
         <source>language</source>
         <translation>språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="350"/>
+        <location filename="../../preferences_dialog.py" line="360"/>
         <source>Where unrar Is</source>
         <translation>Var unrar Finns</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="353"/>
+        <location filename="../../preferences_dialog.py" line="363"/>
         <source>Where rar Is</source>
         <translation>Var rar Finns</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="382"/>
+        <location filename="../../preferences_dialog.py" line="392"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>
@@ -1283,117 +1283,122 @@
 <context>
     <name>RenderDialog</name>
     <message>
-        <location filename="../../render_dialog.py" line="68"/>
+        <location filename="../../render_dialog.py" line="69"/>
         <source>same as the source</source>
         <translation>samma som källan</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="78"/>
+        <location filename="../../render_dialog.py" line="79"/>
         <source>the lettering</source>
         <translation>texten</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="80"/>
+        <location filename="../../render_dialog.py" line="81"/>
         <source>repaint the original lettering in the fill colour</source>
         <translation>måla över originaltexten med fyllnadsfärgen</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="85"/>
+        <location filename="../../render_dialog.py" line="86"/>
         <source>the whole region</source>
         <translation>hela regionen</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="87"/>
+        <location filename="../../render_dialog.py" line="88"/>
         <source>flood the whole outline with the fill colour</source>
         <translation>fyll hela konturen med fyllnadsfärgen</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="90"/>
+        <location filename="../../render_dialog.py" line="91"/>
         <source>reconstruct</source>
         <translation>rekonstruera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="92"/>
+        <location filename="../../render_dialog.py" line="93"/>
         <source>rebuild the lettering&apos;s pixels from the ones around them</source>
         <translation>bygg upp textens pixlar från dem runt omkring</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="97"/>
+        <location filename="../../render_dialog.py" line="98"/>
         <source>nothing</source>
         <translation>ingenting</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="99"/>
+        <location filename="../../render_dialog.py" line="100"/>
         <source>paint nothing; letter straight onto the page as it is</source>
         <translation>måla ingenting; texta direkt på sidan som den är</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="114"/>
+        <location filename="../../render_dialog.py" line="115"/>
         <source>one .cbz file</source>
         <translation>en .cbz-fil</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="115"/>
+        <location filename="../../render_dialog.py" line="116"/>
         <source>one .cbr file</source>
         <translation>en .cbr-fil</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="126"/>
+        <location filename="../../render_dialog.py" line="127"/>
+        <source>Preferences, under “chapter files”, is where to say where rar is.</source>
+        <translation>Inställningar, under ”kapitelfiler”, är där du anger var rar finns.</translation>
+    </message>
+    <message>
+        <location filename="../../render_dialog.py" line="138"/>
         <source>Render</source>
         <translation>Rendera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="127"/>
+        <location filename="../../render_dialog.py" line="139"/>
         <source>Save and Render</source>
         <translation>Spara och rendera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="165"/>
+        <location filename="../../render_dialog.py" line="177"/>
         <source>Render Pages</source>
         <translation>Rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="168"/>
+        <location filename="../../render_dialog.py" line="180"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="209"/>
+        <location filename="../../render_dialog.py" line="220"/>
         <source>as</source>
         <translation>som</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="290"/>
+        <location filename="../../render_dialog.py" line="292"/>
         <source>overwrite the chapter file if it is already there</source>
         <translation>skriv över kapitelfilen om den redan finns</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="292"/>
+        <location filename="../../render_dialog.py" line="294"/>
         <source>overwrite pages already in that directory</source>
         <translation>skriv över sidor som redan finns i katalogen</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="208"/>
+        <location filename="../../render_dialog.py" line="219"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="113"/>
+        <location filename="../../render_dialog.py" line="114"/>
         <source>a folder</source>
         <translation>en katalog</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="210"/>
+        <location filename="../../render_dialog.py" line="221"/>
         <source>format</source>
         <translation>format</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="211"/>
+        <location filename="../../render_dialog.py" line="222"/>
         <source>erase</source>
         <translation>radera</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="261"/>
+        <location filename="../../render_dialog.py" line="263"/>
         <source>%n region(s)</source>
         <translation>
             <numerusform>%n region</numerusform>
@@ -1401,7 +1406,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="263"/>
+        <location filename="../../render_dialog.py" line="265"/>
         <source>Saves the plan, then renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Sparar planen och renderar sedan %n sida och {0}.</numerusform>
@@ -1409,7 +1414,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="266"/>
+        <location filename="../../render_dialog.py" line="268"/>
         <source>Renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Renderar %n sida och {0}.</numerusform>
@@ -1417,42 +1422,42 @@
         </translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="364"/>
+        <location filename="../../render_dialog.py" line="366"/>
         <source>Save Chapter As</source>
         <translation>Spara kapitel som</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="366"/>
+        <location filename="../../render_dialog.py" line="368"/>
         <source>Chapter file (*{0})</source>
         <translation>Kapitelfil (*{0})</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="369"/>
+        <location filename="../../render_dialog.py" line="371"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="402"/>
+        <location filename="../../render_dialog.py" line="404"/>
         <source>Name the chapter file to write.</source>
         <translation>Ange kapitelfilen som ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="404"/>
+        <location filename="../../render_dialog.py" line="406"/>
         <source>Choose a directory to write the pages into.</source>
         <translation>Välj en katalog att skriva sidorna till.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="410"/>
+        <location filename="../../render_dialog.py" line="412"/>
         <source>{0} is a file, not a directory.</source>
         <translation>{0} är en fil, inte en katalog.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="414"/>
+        <location filename="../../render_dialog.py" line="416"/>
         <source>{0} is a directory, not a file.</source>
         <translation>{0} är en katalog, inte en fil.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="420"/>
+        <location filename="../../render_dialog.py" line="424"/>
         <source>{0} cannot be used: {1}</source>
         <translation>{0} kan inte användas: {1}</translation>
     </message>

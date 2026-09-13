@@ -23,7 +23,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QLocale, QSignalBlocker, Signal
-from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -41,6 +40,7 @@ from PySide6.QtWidgets import (
 from . import translations
 from .extract_dialog import ENGINE_CHOICES
 from .font_box import FontBox
+from .note import Note
 from .preferences import Preferences
 from .render_dialog import FORMAT_CHOICES, STRATEGY_CHOICES
 
@@ -76,6 +76,28 @@ this dialog, and what happens instead is that ``extract`` walks its own
 fallback chain and records whichever family it found."""
 
 
+_FIELD_PADDING = 16
+"""The frame and text margins a placeholder sits inside. Qt has no public
+number for this; sixteen is what the two default styles leave."""
+
+
+def _wide_enough_for_its_placeholder(field: QLineEdit) -> QLineEdit:
+    """Let a field be at least as wide as the hint written inside it.
+
+    A ``QLineEdit`` asks for a width off its own metrics — about seventeen
+    characters — and knows nothing about the placeholder, so a hint longer
+    than that is elided to "same as the sourc…", which is not a hint. On
+    macOS the field is then held at that width, because ``QFormLayout``
+    defaults to ``FieldsStayAtSizeHint`` there and nowhere else.
+
+    A minimum rather than a fixed width: a form that has room gives it more,
+    and this only stops it being given less than its own text needs.
+    """
+    room = field.fontMetrics().horizontalAdvance(field.placeholderText())
+    field.setMinimumWidth(room + _FIELD_PADDING)
+    return field
+
+
 def _section(title: str) -> QLabel:
     """A group heading: bold, so it does not read as another field label."""
     label = QLabel(title)
@@ -109,19 +131,6 @@ def language_name(code: str) -> str:
     if native.endswith(plain) and native != plain:
         native = plain
     return native[:1].upper() + native[1:] if native else code
-
-
-def _quieten(label: QLabel) -> QLabel:
-    """A line of help rather than a field: the placeholder colour, as the
-    render dialog's erase note uses. A palette, not a stylesheet, so it
-    follows a light window and a dark one."""
-    palette = label.palette()
-    palette.setColor(
-        QPalette.ColorRole.WindowText,
-        palette.color(QPalette.ColorRole.PlaceholderText),
-    )
-    label.setPalette(palette)
-    return label
 
 
 UNRAR_NOTE = QCoreApplication.translate(
@@ -185,6 +194,7 @@ class PreferencesDialog(QDialog):
         self._target_language = QLineEdit(preferences.target_language)
         self._ocr_languages = QLineEdit(preferences.ocr_languages)
         self._ocr_languages.setPlaceholderText(self.tr("same as the source language"))
+        _wide_enough_for_its_placeholder(self._ocr_languages)
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:
             self._engine.addItem(label, value)
@@ -198,6 +208,7 @@ class PreferencesDialog(QDialog):
 
         self._output = QLineEdit(preferences.output_directory)
         self._output.setPlaceholderText(self.tr("beside the pages"))
+        _wide_enough_for_its_placeholder(self._output)
         choose = QPushButton(self.tr("Choose…"))
         choose.setAutoDefault(False)
         choose.clicked.connect(self._on_choose_output)
@@ -223,22 +234,21 @@ class PreferencesDialog(QDialog):
 
         self._unrar_tool = QLineEdit(preferences.unrar_tool)
         self._unrar_tool.setPlaceholderText(self.tr("found on PATH"))
+        _wide_enough_for_its_placeholder(self._unrar_tool)
         unrar_widget = self._tool_row(self._unrar_tool, self._on_choose_unrar_tool)
-        self._unrar_note = _quieten(QLabel(UNRAR_NOTE))
-        self._unrar_note.setWordWrap(True)
+        self._unrar_note = Note(UNRAR_NOTE)
 
         self._rar_tool = QLineEdit(preferences.rar_tool)
         self._rar_tool.setPlaceholderText(self.tr("found on PATH"))
+        _wide_enough_for_its_placeholder(self._rar_tool)
         rar_widget = self._tool_row(self._rar_tool, self._on_choose_rar_tool)
-        self._rar_note = _quieten(QLabel(RAR_NOTE))
-        self._rar_note.setWordWrap(True)
+        self._rar_note = Note(RAR_NOTE)
 
         self._language = QComboBox()
         for label, code in self.language_choices():
             self._language.addItem(label, code)
         self._language.setCurrentIndex(self._language_index(preferences.language))
-        self._language_note = _quieten(QLabel(LANGUAGE_NOTE))
-        self._language_note.setWordWrap(True)
+        self._language_note = Note(LANGUAGE_NOTE)
 
         heading = QLabel(WHAT_IT_IS)
         heading.setWordWrap(True)

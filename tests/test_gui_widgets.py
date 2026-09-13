@@ -58,7 +58,9 @@ from PySide6.QtGui import QAction, QDesktopServices, QKeyEvent, QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -84,9 +86,11 @@ from comictrans.gui.main_window import (
     PREVIEW_WORKING,
     MainWindow,
 )
+from comictrans.gui.note import Note
 from comictrans.gui.preferences import Preferences
 from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
 from comictrans.gui.render_dialog import (
+    RAR_IN_PREFERENCES,
     RENDER,
     SAVE_AND_RENDER,
     RenderDialog,
@@ -3934,6 +3938,27 @@ def test_a_run_that_cannot_start_says_so_in_the_panel(
     assert window._render_action.isEnabled(), "and the window is usable again"
 
 
+GROWTH_POLICIES = [
+    QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint,
+    QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+]
+"""macOS uses the first and every other platform the second, so a form tested
+under one of them is a form tested in half the arrangements it ships in."""
+
+
+def _set_growth_policy(dialog: QDialog, policy: QFormLayout.FieldGrowthPolicy) -> None:
+    """Stand this dialog's form up the way another platform's style would."""
+    for form in dialog.findChildren(QFormLayout):
+        form.setFieldGrowthPolicy(policy)
+
+
+def _assert_nothing_is_clipped(labels: dict[str, Note], where: str) -> None:
+    for name, label in labels.items():
+        if not label.isVisible() or not label.text():
+            continue
+        assert label.height() >= label.needed_height(label.width()), f"{name} is cut off ({where})"
+
+
 # -- a chapter written as one file ---------------------------------------
 
 
@@ -4025,39 +4050,104 @@ def test_the_dialog_says_a_cbr_cannot_be_written_before_a_page_is_rendered(
 
     assert "needs the rar compressor" in dialog.refusal()
     assert "WinRAR" in dialog.refusal(), "and which binary would provide it"
+    assert RAR_IN_PREFERENCES in dialog.refusal(), (
+        "the pipeline names an environment variable; a window has a field"
+    )
     assert not ok.isEnabled()
 
     dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
     assert dialog.refusal() == "", "the format that needs nothing"
 
 
+@pytest.mark.parametrize("policy", GROWTH_POLICIES)
 def test_the_dialog_grows_to_hold_what_it_has_to_say(
-    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+    qapp: object,
+    two_page_plan: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: QFormLayout.FieldGrowthPolicy,
 ) -> None:
     """Every wrapped message gets the height it needs, in every state.
 
     A dialog that stays the height it opened at does not refuse to show a
     refusal — it takes the height out of the other wrapped labels, and they
     come out clipped with their last lines missing.
+
+    Both growth policies, and that is the point rather than thoroughness:
+    ``FieldsStayAtSizeHint`` is what ``QMacStyle`` uses and nothing else
+    does, so the first version of this test passed on the one arrangement
+    where the bug was not.
     """
     monkeypatch.delenv("COMICTRANS_RAR", raising=False)
     monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
     window = MainWindow()
     window.open_plan(two_page_plan)
     dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    _set_growth_policy(dialog, policy)
     dialog.show()
 
     for suffix in (None, ".cbz", ".cbr", None):
         dialog._container.setCurrentIndex(dialog._container.findData(suffix))
-        for path in (two_page_plan.parent, two_page_plan.parent.parent / "out"):
-            dialog._output.setText(str(path))
-            QApplication.processEvents()
-            for name, label in (("erase", dialog._erase_help), ("refusal", dialog._problem)):
-                if not label.isVisible() or not label.text():
-                    continue
-                assert label.height() >= label.heightForWidth(label.width()), (
-                    f"{name} is clipped with {suffix} chosen and {path.name} typed"
-                )
+        for strategy in ("flat", "inpaint"):
+            dialog._erase.setCurrentIndex(dialog._erase.findData(strategy))
+            for path in (two_page_plan.parent, two_page_plan.parent.parent / "out"):
+                dialog._output.setText(str(path))
+                for width in (420, 520, 760):
+                    dialog.resize(width, dialog.height())
+                    QApplication.processEvents()
+                    _assert_nothing_is_clipped(
+                        {"erase": dialog._erase_help, "refusal": dialog._problem},
+                        f"{policy.name}, {suffix}, {strategy}, {path.name}, {width}px",
+                    )
+
+
+@pytest.mark.parametrize("policy", GROWTH_POLICIES)
+def test_the_preferences_dialog_holds_its_notes_too(
+    qapp: object, policy: QFormLayout.FieldGrowthPolicy
+) -> None:
+    """Three wrapped notes down one form, and the same trap under each."""
+    dialog = PreferencesDialog(Preferences())
+    _set_growth_policy(dialog, policy)
+    dialog.show()
+
+    for width in (520, 640, 900):
+        dialog.resize(width, dialog.height())
+        QApplication.processEvents()
+        _assert_nothing_is_clipped(
+            {
+                "unrar": dialog._unrar_note,
+                "rar": dialog._rar_note,
+                "language": dialog._language_note,
+            },
+            f"{policy.name} at {width}px",
+        )
+
+
+@pytest.mark.parametrize("policy", GROWTH_POLICIES)
+def test_a_field_is_at_least_as_wide_as_the_hint_written_in_it(
+    qapp: object, policy: QFormLayout.FieldGrowthPolicy
+) -> None:
+    """ "same as the sourc…" is not a hint, and it is what a default width gives.
+
+    Under both policies and at the narrowest the window goes: a field that
+    grows to fill a wide dialog fits its placeholder whether or not anything
+    asked it to, which is exactly the arrangement macOS does not use.
+    """
+    dialog = PreferencesDialog(Preferences())
+    _set_growth_policy(dialog, policy)
+    dialog.show()
+    dialog.resize(dialog.minimumWidth(), dialog.height())
+    QApplication.processEvents()
+
+    for name, field in (
+        ("OCR languages", dialog._ocr_languages),
+        ("output", dialog._output),
+        ("unrar", dialog._unrar_tool),
+        ("rar", dialog._rar_tool),
+    ):
+        placeholder = field.placeholderText()
+        assert placeholder, name
+        needed = field.fontMetrics().horizontalAdvance(placeholder)
+        assert field.width() >= needed, f"{name} elides its own placeholder"
 
 
 def test_a_dialog_somebody_has_made_taller_stays_that_way(

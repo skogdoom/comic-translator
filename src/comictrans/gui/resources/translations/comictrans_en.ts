@@ -137,7 +137,7 @@
 <context>
     <name>RenderDialog</name>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="261"/>
+        <location filename="../../render_dialog.py" line="263"/>
         <source>%n region(s)</source>
         <translation>
             <numerusform>%n region</numerusform>
@@ -145,7 +145,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="263"/>
+        <location filename="../../render_dialog.py" line="265"/>
         <source>Saves the plan, then renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Saves the plan, then renders %n page and {0}.</numerusform>
@@ -153,7 +153,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="266"/>
+        <location filename="../../render_dialog.py" line="268"/>
         <source>Renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Renders %n page and {0}.</numerusform>

@@ -118,6 +118,21 @@ for themselves. See **Build the application** in `README.md`.
   than after the chapter. Nothing else goes into the file: no ComicInfo.xml,
   because a plan knows the language pair and nothing else about your chapter.
 
+- **Help text under a field is no longer cut off.** The grey line under a
+  control, and the red one that says why a render cannot start, were being
+  allocated the height they asked for rather than the height they turned out
+  to need at the width the form gave them — so the last line went missing and
+  the row below was drawn over what was left. It showed on macOS and nowhere
+  else, because the form column is narrower there and the system font wider.
+  The preferences dialog had it in three places and the render dialog in two.
+  A field whose placeholder is longer than the box, `same as the sourc…`, is
+  now wide enough to read as well.
+- **The render dialog says where to set the rar path.** The message about a
+  missing compressor is the pipeline's, and named `COMICTRANS_RAR` — the
+  command line's answer, and no use to somebody reading a window that has a
+  field for it. It now names the field too, as the extract dialog already did
+  for unrar.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings

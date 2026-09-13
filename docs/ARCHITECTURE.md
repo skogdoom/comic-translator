@@ -1921,6 +1921,42 @@ positional so it can be applied without judgement: the two checkboxes that
 had drifted into sentence case were the only places it was ambiguous, and
 they are lowercase now.
 
+**A line of help under a control is a `Note`, never a wrapped `QLabel`.**
+`gui/note.py`, and the rule exists because the obvious thing is wrong in a
+way that only shows up on the platform this ships to. A `QLabel` with
+`setWordWrap(True)` reports a height for a width it picked itself — Qt looks
+for one that makes the text a pleasant shape — not for the width the layout
+is about to hand it. In a `QFormLayout` field, where the column width is
+settled by the widest field in the whole form, the two disagree: the label is
+laid out narrower than it guessed, needs another line, and is given the
+height it asked for. The last line is cut off and the row below is drawn over
+what is left.
+
+It appears on macOS and not in the suite's own environment, which is what
+made it expensive to find three separate times. `QMacStyle` defaults
+`QFormLayout` to `FieldsStayAtSizeHint` where every other style uses
+`AllNonFixedFieldsGrow`, and the system font is wider — so the field column
+is narrower and the text is longer at once. **A widget test over a form must
+therefore run under both growth policies**; `GROWTH_POLICIES` in
+`tests/test_gui_widgets.py` is there for that, and a test that runs under one
+of them has been run in the arrangement the bug is not in.
+
+`Note` measures its text against the width it was actually given and makes
+that its minimum height, which a layout cannot trim — `QLayout` raises the
+window's own minimum to cover it, so the row holds and the window grows. The
+measurement is taken off `QFontMetrics` rather than from `heightForWidth`,
+which would look like the natural question to ask and is not: Qt clamps
+`QLabel.heightForWidth` to the widget's own `minimumHeight`, so using it here
+latches — the first narrow width sets a minimum and every width afterwards
+answers with that minimum. Measured: a note needing 112px at 160 wide and
+28px at 600 answered 112 at both once its minimum was set.
+
+The same platform difference is why a `QLineEdit` whose placeholder is longer
+than about seventeen characters is given a minimum width from its own font
+metrics. A field that grows to fill the dialog fits its placeholder whether
+or not anyone asked; one held at `sizeHint` elides it to `same as the sourc…`,
+which is not a hint.
+
 **British in the window, American in the plan.** `colour`, `licence`,
 `recogniser`, `minimise`, `cancelling` — and `fill_color`, `text_color`,
 `ocr_engine`. One is prose and the other is a data format: a key cannot be
