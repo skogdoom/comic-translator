@@ -65,7 +65,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from comictrans.gui import about, extract_dialog, logfile, main_window, run_job
+from comictrans.gui import about, extract_dialog, logfile, main_window, render_dialog, run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -87,6 +87,7 @@ from comictrans.gui.main_window import (
 from comictrans.gui.preferences import Preferences
 from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
 from comictrans.gui.render_dialog import (
+    CBR_NOTE,
     RENDER,
     SAVE_AND_RENDER,
     RenderDialog,
@@ -3934,6 +3935,269 @@ def test_a_run_that_cannot_start_says_so_in_the_panel(
     assert window._render_action.isEnabled(), "and the window is usable again"
 
 
+# -- a chapter written as one file ---------------------------------------
+
+
+def test_choosing_a_chapter_file_renames_the_output_and_typing_one_moves_the_box(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Two views of one fact; neither can be left saying the other thing."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    folder = dialog.output()
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    assert dialog.output() == folder.with_name(folder.name + ".cbz")
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+    assert dialog.output() == folder.with_name(folder.name + ".cbr")
+
+    dialog._container.setCurrentIndex(dialog._container.findData(None))
+    assert dialog.output() == folder, "and back, with the name it started with"
+
+    dialog._output.setText(str(folder.parent / "chapter-01.cbz"))
+    assert dialog._container.currentData() == ".cbz"
+    assert dialog.output() == folder.parent / "chapter-01.cbz", "typing it does not rename it"
+
+    dialog._output.setText(str(folder.parent / "chapter-01.zip"))
+    assert dialog._container.currentData() == ".cbz", "a chapter saved under the plain name"
+    assert dialog.output().suffix == ".zip", "which is left exactly as it was typed"
+
+
+def test_a_folder_whose_name_has_a_dot_in_it_keeps_all_of_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """``with_suffix`` would make ``vol.2-translated`` into ``vol.cbz``."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._output.setText(str(two_page_plan.parent.parent / "vol.2-translated"))
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    assert dialog.output().name == "vol.2-translated.cbz"
+
+    dialog._container.setCurrentIndex(dialog._container.findData(None))
+    assert dialog.output().name == "vol.2-translated"
+
+
+def test_a_chapter_file_is_asked_the_same_question_about_the_folder_it_goes_in(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    ok = dialog._buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    dialog._output.setText(str(two_page_plan.parent / "chapter.cbz"))
+    assert "inside the source directory" in dialog.refusal()
+    assert not ok.isEnabled(), "the one refusal with no way past it, file or folder"
+
+    dialog._output.setText(str(two_page_plan.parent.parent / "chapter.cbz"))
+    assert dialog.refusal() == ""
+    assert ok.isEnabled()
+
+
+def test_a_chapter_file_that_is_really_a_directory_is_refused(
+    qapp: object, two_page_plan: Path, tmp_path: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    (tmp_path / "chapter.cbz").mkdir()
+
+    dialog._output.setText(str(tmp_path / "chapter.cbz"))
+
+    assert "is a directory, not a file" in dialog.refusal()
+
+
+def test_the_dialog_says_a_cbr_cannot_be_written_before_a_page_is_rendered(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chapter is minutes of work; this answer costs a keystroke."""
+    monkeypatch.delenv("COMICTRANS_RAR", raising=False)
+    monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    ok = dialog._buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+
+    assert "needs the rar compressor" in dialog.refusal()
+    assert not ok.isEnabled()
+    assert CBR_NOTE in dialog._container_help.text(), "and why it is not here to install"
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    assert dialog.refusal() == "", "the format that needs nothing"
+    assert dialog._container_help.text() == ""
+
+
+def test_the_preferences_rar_tool_is_what_the_dialog_asks_about_and_hands_on(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+    monkeypatch.setattr("comictrans.pack.rar_compressor", lambda named="": asked.append(named))
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=Preferences(rar_tool="/opt/bin/rar"),
+    )
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+
+    assert asked == ["/opt/bin/rar"], "the same tool it is about to render with"
+    assert dialog.request().rar_tool == "/opt/bin/rar"
+
+
+def test_the_overwrite_checkbox_says_what_it_would_overwrite(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    assert "directory" in dialog._force.text()
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+
+    assert "chapter file" in dialog._force.text()
+    assert "directory" not in dialog._force.text()
+
+
+def test_an_empty_field_with_a_chapter_file_chosen_asks_for_a_name(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The one case where there is nothing to rename.
+
+    ``Path("")`` is ``Path(".")``, whose ``name`` is empty, and ``with_name``
+    raises on it — so choosing a container with the field cleared has to leave
+    it cleared rather than filling it with a dot or falling over.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._output.setText("   ")
+    assert "Choose a directory" in dialog.refusal(), "cleared, it is a folder again"
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+
+    assert dialog._output.text().strip() == "", "nothing was invented to rename"
+    assert "Name the chapter file" in dialog.refusal()
+    assert not dialog._buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+    dialog._output.setText(str(two_page_plan.parent.parent / "chapter.cbz"))
+    assert dialog.refusal() == ""
+
+
+@pytest.mark.parametrize("nameless", ["", ".", "/"])
+def test_a_path_with_no_name_of_its_own_is_handed_back_unchanged(nameless: str) -> None:
+    """``with_name`` raises on all three, and every one is typeable.
+
+    The renaming helper directly, not through the box: an exception inside a
+    Qt slot is printed and swallowed, so the widget would look the same
+    either way and the test would prove nothing.
+    """
+    assert RenderDialog._renamed(Path(nameless), ".cbz") == Path(nameless)
+    assert RenderDialog._renamed(Path(nameless), None) == Path(nameless)
+
+
+def test_the_choose_button_opens_a_save_panel_for_a_chapter_file(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A folder panel cannot name a file that does not exist yet."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    opened: list[str] = []
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            render_dialog.QFileDialog,
+            "getExistingDirectory",
+            lambda *args, **kwargs: (opened.append("directory"), "")[1],
+        )
+        patch.setattr(
+            render_dialog.QFileDialog,
+            "getSaveFileName",
+            lambda *args, **kwargs: (opened.append("save"), ("", ""))[1],
+        )
+        dialog._choose_button.click()
+        dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+        dialog._choose_button.click()
+
+    assert opened == ["directory", "save"]
+
+
+def test_rendering_into_a_cbz_from_the_window_writes_one_file(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    import zipfile
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    request = dialog.request()
+
+    _run_render(window, request)
+
+    assert request.output.is_file()
+    with zipfile.ZipFile(request.output) as packed:
+        assert packed.namelist() == ["001-page-001.png", "002-page-002.png"]
+    assert "packed" in window.statusBar().currentMessage()
+    assert str(request.output) in window._run_panel._headline.text()
+
+
+def test_the_compressor_the_dialog_was_given_is_the_one_the_run_uses(
+    qapp: object, two_page_plan: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    """All the way through: preference, request, job, ``pack``.
+
+    Nothing redistributable writes RAR, so a shell script stands in for the
+    compressor and records that it was the one asked. What is being tested is
+    the path the setting travels, not the archive that comes out.
+    """
+    stub = tmp_path / "rar"
+    stub.write_text(f'#!/bin/sh\necho used > "{tmp_path}/ran.txt"\nshift 3\ntouch "$1"\n')
+    stub.chmod(0o755)
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=Preferences(rar_tool=str(stub)),
+    )
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+    request = dialog.request()
+
+    _run_render(window, request)
+
+    assert (tmp_path / "ran.txt").exists(), "the preference reached the compressor"
+    assert request.output.is_file()
+
+
+def test_a_cancelled_chapter_run_says_nothing_was_written_rather_than_none(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """Zero pages is true and unhelpful: the promise is what needs saying."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    request = dialog.request()
+
+    window._start_render(request)
+    assert window._job is not None
+    window._job.cancel()
+    _await_run(window)
+
+    assert not request.output.exists()
+    assert "nothing written" in window._run_panel._headline.text()
+    assert "nothing written" in window.statusBar().currentMessage()
+
+
 # -- extracting pages from the window ------------------------------------
 
 
@@ -4304,13 +4568,13 @@ def test_where_unrar_is_can_be_said_here_and_is_said_nowhere_else(qapp: object) 
     from comictrans.gui.preferences_dialog import RAR_NOTE
 
     dialog = PreferencesDialog(Preferences(), None)
-    assert dialog._rar_tool.text() == ""
-    assert "PATH" in dialog._rar_tool.placeholderText() or dialog._rar_tool.placeholderText()
+    assert dialog._unrar_tool.text() == ""
+    assert "PATH" in dialog._unrar_tool.placeholderText() or dialog._unrar_tool.placeholderText()
     assert "licence" in RAR_NOTE, "why nothing ships is the part worth saying"
 
-    dialog._rar_tool.setText("  /opt/homebrew/bin/unrar  ")
+    dialog._unrar_tool.setText("  /opt/homebrew/bin/unrar  ")
 
-    assert dialog.preferences().rar_tool == "/opt/homebrew/bin/unrar"
+    assert dialog.preferences().unrar_tool == "/opt/homebrew/bin/unrar"
 
 
 def test_an_unset_font_is_not_called_the_plan_default_here(qapp: object) -> None:
@@ -4762,7 +5026,7 @@ def test_a_cbr_with_nothing_to_open_it_is_refused_before_the_run(
     def no_tool(named: str = "") -> None:
         raise InputError("CBR needs a RAR tool and none was found")
 
-    monkeypatch.setattr("comictrans.sources._rar_tool", no_tool)
+    monkeypatch.setattr("comictrans.sources._unrar_tool", no_tool)
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
     dialog = ExtractDialog(None, None)
@@ -4777,14 +5041,14 @@ def test_a_cbr_with_nothing_to_open_it_is_refused_before_the_run(
     )
 
 
-def test_the_preferences_rar_tool_reaches_the_run(qapp: object, tmp_path: Path) -> None:
+def test_the_preferences_unrar_tool_reaches_the_run(qapp: object, tmp_path: Path) -> None:
     archive = tmp_path / "chapter.cbz"
     archive.write_bytes(b"not read by this test")
-    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog = ExtractDialog(None, None, preferences=Preferences(unrar_tool="/opt/bin/unrar"))
 
     dialog._source.setText(str(archive))
 
-    assert dialog.request().rar_tool == "/opt/bin/unrar"
+    assert dialog.request().unrar_tool == "/opt/bin/unrar"
 
 
 def test_the_panel_says_it_is_unpacking_until_the_pages_are_counted(qapp: object) -> None:
@@ -4813,11 +5077,11 @@ def test_where_unrar_is_reaches_the_unpacking(
     seen: list[str] = []
 
     def recorded(source: Path, into: Path | None = None, **kwargs: object) -> UnpackReport:
-        seen.append(str(kwargs["rar_tool"]))
+        seen.append(str(kwargs["unrar_tool"]))
         return unpack(source, into, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(run_job, "unpack", recorded)
-    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog = ExtractDialog(None, None, preferences=Preferences(unrar_tool="/opt/bin/unrar"))
     dialog._source.setText(str(chapter_file))
     job = ExtractJob(dialog.request(), None)
 
@@ -4826,15 +5090,15 @@ def test_where_unrar_is_reaches_the_unpacking(
     assert seen == ["/opt/bin/unrar"]
 
 
-def test_the_dialog_asks_about_the_rar_tool_it_would_hand_to_the_run(
+def test_the_dialog_asks_about_the_unrar_tool_it_would_hand_to_the_run(
     qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Asked about before the run, with the same answer the run would use."""
     asked: list[str] = []
-    monkeypatch.setattr("comictrans.sources._rar_tool", lambda named="": asked.append(named))
+    monkeypatch.setattr("comictrans.sources._unrar_tool", lambda named="": asked.append(named))
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
-    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog = ExtractDialog(None, None, preferences=Preferences(unrar_tool="/opt/bin/unrar"))
 
     dialog._source.setText(str(archive))
 

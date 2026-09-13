@@ -48,6 +48,10 @@ regions they do have, and the plan is a version 2 one from then on.
   other way round. The one exception is a function-local import inside
   `collect_inputs`, so that a `.cbz` handed to a pass that reads folders is
   told what to do with it rather than shown a list of extensions.
+- `pack` turns images back into a container and is `sources`' mirror. It
+  imports `sources` for the two names `ZIP` and `RAR` and nothing else — the
+  two modules share what a kind *is* and agree on nothing about how to decide
+  it, which is the point: see "Chapters written as one file".
 
 That is not tidiness for its own sake. It means the review GUI's
 `gui.document` — the module that loads a plan, tracks edits, and saves —
@@ -331,7 +335,8 @@ never a reason to leave a region unrendered.
 ## Output files
 
 Filenames are mirrored flat into `--output`, which must be outside the source
-tree. Format matches the source, except JPEG becomes PNG: re-encoding a lossy
+tree — or, when it is named `.cbz` or `.cbr`, into one archive; see "Chapters
+written as one file". Format matches the source, except JPEG becomes PNG: re-encoding a lossy
 source after repainting part of it would add a second generation of artefacts
 to artwork that is not being changed at all.
 
@@ -576,10 +581,10 @@ already has; `COMICTRANS_UNRAR` names one that is somewhere unusual, and the
 window passes its own preference down the same way, since it cannot rely on
 the environment it was launched in. The
 check happens before the output directory is made, so a machine without one
-gets a refusal and no half-unpacked chapter. It is the only external binary
-this tool has ever needed, and the only one it is ever likely to: milestone 8
-needs the same kind of decision for writing RAR, where the tool that can do
-it is paid rather than merely unfree.
+gets a refusal and no half-unpacked chapter. It is one of the two external
+binaries this tool has ever needed, and the other is its twin: writing RAR
+needs `rar`, which is paid rather than merely unfree — see "Chapters written
+as one file".
 
 **The window reads one too, and the sidecar decision is why that was small.**
 `ExtractJob` unpacks on the worker thread, after the font and the recogniser
@@ -606,6 +611,76 @@ Where that tool is, is a **preference** rather than a field in the run
 dialog, and for a reason that is about macOS rather than about comics: an
 application opened from the Finder does not inherit a shell's `PATH`, so a
 Homebrew `unrar` that works on the command line is invisible to the window.
+The same is true of `rar` on the writing side, which is a second preference
+and not the same one.
+
+## Chapters written as one file
+
+`apply --output chapter.cbz` renders the chapter and packs it; `pack.pack` is
+the whole of the writing side and `apply_plan` is where the two paths part.
+The mirror of the section above, and not its reflection — three things are
+different, each for a reason.
+
+**The name decides, and only the name.** `sources.chapter_kind` reads bytes
+because the file is there and what it is called is only a claim.
+`pack.archive_kind` reads the extension because the file does not exist yet,
+so there is nothing to read. The two functions look like a pair and must not
+be merged: they answer different questions.
+
+**Entry names carry reading order.** A reader sorts entries by name, so the
+order the plan holds — which the review window lets you set by dragging rows —
+has to survive as a name or it is lost. `pack.entry_names` puts a zero-padded
+index in front of each page's own filename: `001-page-004.png`. Keeping the
+source name after the index is not decoration; it is what lets somebody match
+an entry back to the page it came from, and what stops two pages called
+`01.png` from different folders colliding.
+
+**A cancelled run leaves no archive at all**, which is a different promise
+from the directory case and had to be chosen rather than fallen into. Cancel
+a render into a directory and the pages already written are whole pages, each
+one exactly what a complete run would have written; running it again finishes
+the rest. An archive has no such partial form — a reader opening half a
+chapter is not getting half the value — and appending to one as pages arrive
+would mean either a truncated file on cancel or a rewrite at the end anyway.
+So `apply_plan` renders into a `TemporaryDirectory` and packs once, at the
+end: nothing is written until everything is. Both promises are stated in
+`pack`'s module docstring, `ApplyReport.pages_written`, the README and the
+in-app guide, so neither is left to whichever one the code happens to do.
+
+`ApplyReport` says which happened. `archive` is the file that was written, or
+`None`; `pages_written` holds the entry names inside it rather than paths on
+disk, because the paths it rendered to are in a temporary directory that is
+already gone. A cancelled archive run clears `pages_written` rather than
+reporting pages nobody can open.
+
+**CBR output needs a different binary from CBR input, and neither ships.**
+`unrar` reads and cannot be made to write — its licence forbids using it to
+create archives, and the tool has no such mode regardless. Writing needs
+`rar`, from WinRAR, which is paid. What the licence restricts is
+*redistributing* the compressor, not driving a copy somebody has already
+licensed, so `pack.rar_compressor` looks at the caller's path, then
+`COMICTRANS_RAR`, then `PATH`, and raises `pack.RAR_MISSING` naming the
+binary rather than leaving the format quietly absent. Two binaries mean two
+preferences — `Preferences.unrar_tool` and `Preferences.rar_tool` — and they
+are deliberately not one field used both ways.
+
+**It is asked before a page is rendered.** `pack.check_writable` writes
+nothing and answers only "could this be packed at all", so `apply_plan` calls
+it first and the render dialog calls it on every keystroke. A chapter is
+minutes of work and the answer costs nothing to give up front.
+
+That configured path is an executable this code then runs, with arguments
+built in `_pack_rar` and no shell. It is validated as far as "something
+executable is there" and no further, which is the one thing in this project
+worth a second look when a security audit comes.
+
+**No ComicInfo.xml, and no metadata of any kind.** It was considered and
+refused. The plan header knows the source and target languages and nothing
+else about the chapter — not the series, not the volume, not the number, not
+the year — so anything written into such a file would be either those two
+fields alone or invented. A chapter file that carries metadata a reader will
+believe is worse than one that carries none, and the tooling people already
+use for tagging does the job properly.
 
 ## Re-running extract
 
@@ -1770,6 +1845,12 @@ one.
 A preference also gets no more trust than anything typed by hand. A stored
 output directory inside the source tree is refused by `check_output_dir` on
 the way through the render dialog, the same as one typed there.
+
+Two of the fields name somebody else's binary, and they are two rather than
+one: `unrar_tool` opens a `.cbr` and `rar_tool` writes one, and no setting of
+the first will do the second's job — `unrar` has no write mode. A single
+"where is your RAR tool" field would have been the friendlier-looking form
+and would have failed at the end of a rendered chapter.
 
 **`preferences.py` imports no Qt**, because `QSettings` satisfies its store
 protocol structurally: `value` and `setValue` and nothing else. The tests

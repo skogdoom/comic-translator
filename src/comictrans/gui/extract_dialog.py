@@ -80,7 +80,7 @@ EXTRACT = QCoreApplication.translate("ExtractDialog", "Extract")
 
 RAR_IN_PREFERENCES = QCoreApplication.translate(
     "ExtractDialog",
-    "Preferences, under “reading a .cbr”, is where to say where the tool is.",
+    "Preferences, under “chapter files”, is where to say where the tool is.",
 )
 """Where the window's answer to a missing RAR tool lives. The pipeline's own
 message names an environment variable instead, which is the command line's
@@ -382,7 +382,7 @@ class ExtractDialog(QDialog):
                 # Cheap on purpose: the kind of file it is, and whether the
                 # tool a .cbr needs is here — which is the refusal worth
                 # making now rather than after a wait. Nothing is read.
-                check_readable(source, self._preferences.rar_tool)
+                check_readable(source, self._preferences.unrar_tool)
             except ComictransError as exc:
                 if chapter_kind(source) == RAR:
                     # The pipeline's own message names the environment
@@ -466,7 +466,7 @@ class ExtractDialog(QDialog):
             font=self._preferences.font or None,
             force=self._force.isChecked(),
             pages=self.pages(),
-            rar_tool=self._preferences.rar_tool,
+            unrar_tool=self._preferences.unrar_tool,
         )
 
 

@@ -1,12 +1,20 @@
 """What one render run is going to do, settled before it starts.
 
-Four decisions, and one refusal that is not a decision at all.
+Five decisions, and one refusal that is not a decision at all.
 
-The three decisions the command line offers as flags are here as fields:
-where to write, what format, and how to remove the original lettering. The
-fourth, overwriting files that are already there, is ``--force`` turned back
-into what it is in a window — a checkbox you tick, rather than a refusal you
-rerun the command to get past.
+The decisions the command line offers as flags are here as fields: where to
+write, what each page is encoded as, and how to remove the original
+lettering. Overwriting what is already there is ``--force`` turned back into
+what it is in a window — a checkbox you tick, rather than a refusal you rerun
+the command to get past.
+
+**What holds the pages is the same decision as where they go**, shown twice.
+``apply`` decides it from the output's name and nothing else, because an
+output file does not exist to be inspected; a window that made you discover
+that by typing ``.cbz`` would be hiding the feature behind a guess. So the
+box and the path are two views of one fact and each sets the other: choosing
+a ``.cbz`` renames the path, and typing one moves the box. There is no third
+state for them to disagree in.
 
 The refusal is the output directory. ``check_output_dir`` is where the
 invariant that source images are never written to is actually enforced, and
@@ -21,7 +29,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -42,6 +50,9 @@ from ..apply import check_output_dir, source_for
 from ..config import EraseConfig
 from ..errors import ComictransError
 from ..model import Plan
+from ..pack import archive_kind
+from ..pack import check_writable as check_can_pack
+from ..sources import ZIP
 from .document import PlanDocument
 from .preferences import DEFAULTS, Preferences
 from .preview import apply_config_for
@@ -98,6 +109,29 @@ A region's own ``erase`` still wins over whichever of these is chosen: this
 is the fallback for the regions that do not name one, exactly as ``--erase``
 is on the command line."""
 
+CONTAINER_CHOICES: tuple[tuple[str, str | None], ...] = (
+    (QCoreApplication.translate("RenderDialog", "a folder"), None),
+    (QCoreApplication.translate("RenderDialog", "one .cbz file"), ".cbz"),
+    (QCoreApplication.translate("RenderDialog", "one .cbr file"), ".cbr"),
+)
+"""What the pages end up in, and the suffix that says so.
+
+The suffix is the value because it is what the decision *is*: ``apply``
+reads the output's name and nothing else, so choosing a row here is choosing
+an extension. ``.cbz`` and ``.cbr`` rather than ``.zip`` and ``.rar``
+because those are what a chapter is called; a path already ending in the
+plain ones is recognised and left as it is.
+"""
+
+CBR_NOTE = QCoreApplication.translate(
+    "RenderDialog",
+    "A .cbr needs the rar compressor, which comes with WinRAR and which you "
+    "need a licence for — it cannot ship with this. A .cbz needs nothing and "
+    "every reader opens it.",
+)
+"""Shown under the box when .cbr is chosen, whether or not one is installed:
+the refusal below says what is missing, this says why it is not here."""
+
 RENDER = QCoreApplication.translate("RenderDialog", "Render")
 SAVE_AND_RENDER = QCoreApplication.translate("RenderDialog", "Save and Render")
 """The button names what pressing it will do, and an unsaved plan is saved
@@ -135,17 +169,18 @@ class RenderDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self._document = document
+        self._preferences = preferences
         self._sources = source_dirs(document.plan, document.path)
         self.setWindowTitle(self.tr("Render Pages"))
 
         self._output = QLineEdit(str(suggested_output(document.path, preferences)))
-        choose = QPushButton(self.tr("Choose…"))
-        choose.setAutoDefault(False)
-        choose.clicked.connect(self._on_choose)
+        self._choose_button = QPushButton(self.tr("Choose…"))
+        self._choose_button.setAutoDefault(False)
+        self._choose_button.clicked.connect(self._on_choose)
         where = QHBoxLayout()
         where.setContentsMargins(0, 0, 0, 0)
         where.addWidget(self._output, 1)
-        where.addWidget(choose)
+        where.addWidget(self._choose_button)
         where_widget = QWidget()
         where_widget.setLayout(where)
 
@@ -164,7 +199,15 @@ class RenderDialog(QDialog):
         self._erase_help.setWordWrap(True)
         self._quieten(self._erase_help)
 
-        self._force = QCheckBox(self.tr("overwrite pages already in that directory"))
+        self._container = QComboBox()
+        for label, suffix in CONTAINER_CHOICES:
+            self._container.addItem(label, suffix)
+        self._container.setCurrentIndex(self._container.findData(self._suffix_of(self.output())))
+        self._container_help = QLabel()
+        self._container_help.setWordWrap(True)
+        self._quieten(self._container_help)
+
+        self._force = QCheckBox()
 
         # Red rather than the usual grey: this is the one message here that
         # is stopping something from happening.
@@ -176,6 +219,8 @@ class RenderDialog(QDialog):
 
         form = QFormLayout()
         form.addRow(self.tr("write pages to"), where_widget)
+        form.addRow(self.tr("as"), self._container)
+        form.addRow("", self._container_help)
         form.addRow(self.tr("format"), self._format)
         form.addRow(self.tr("erase"), self._erase)
         form.addRow("", self._erase_help)
@@ -199,9 +244,11 @@ class RenderDialog(QDialog):
         layout.addWidget(self._buttons)
         self.setMinimumWidth(520)
 
-        self._output.textChanged.connect(self._validate)
+        self._output.textChanged.connect(self._on_output_typed)
+        self._container.currentIndexChanged.connect(self._on_container_chosen)
         self._erase.currentIndexChanged.connect(self._describe_erase)
         self._describe_erase()
+        self._describe_container()
         self._validate()
 
     # -- appearance ------------------------------------------------------
@@ -240,32 +287,145 @@ class RenderDialog(QDialog):
                 return
         self._erase_help.setText("")
 
-    # -- the output directory --------------------------------------------
+    def _describe_container(self) -> None:
+        """The note under the box, and what overwriting would mean.
+
+        Two sentences that both change with the same choice: a directory is
+        overwritten page by page, a chapter file all at once, and saying
+        "pages already in that directory" over a ``.cbz`` would be describing
+        something that is not going to happen.
+        """
+        archive = self.output_is_archive()
+        self._container_help.setText(CBR_NOTE if self._container.currentData() == ".cbr" else "")
+        self._container_help.setVisible(bool(self._container_help.text()))
+        self._force.setText(
+            self.tr("overwrite the chapter file if it is already there")
+            if archive
+            else self.tr("overwrite pages already in that directory")
+        )
+
+    # -- where the pages go ----------------------------------------------
+
+    @staticmethod
+    def _suffix_of(output: Path) -> str | None:
+        """The row in the box that this path already is.
+
+        ``archive_kind`` decides, so ``chapter.zip`` and ``chapter.cbz`` both
+        land on the CBZ row — the path keeps the name it was given and only
+        the box moves, because renaming what somebody typed is not this
+        dialog's business.
+        """
+        kind = archive_kind(output)
+        if kind is None:
+            return None
+        return ".cbz" if kind == ZIP else ".cbr"
+
+    @staticmethod
+    def _renamed(output: Path, suffix: str | None) -> Path:
+        """The same output, held in the thing ``suffix`` names.
+
+        ``with_suffix`` only where there is an archive suffix to replace: a
+        folder called ``vol.2-translated`` has a suffix as far as
+        :class:`Path` is concerned, and ``with_suffix`` would turn it into
+        ``vol.cbz``.
+        """
+        if archive_kind(output) is not None:
+            return output.with_suffix(suffix) if suffix else output.with_suffix("")
+        if not suffix or not output.name:
+            # ``with_name`` raises on a path with no name of its own — "/",
+            # or the "." an empty field comes back as. There is nothing to
+            # rename, so the field stays as it is and the refusal below asks
+            # for a name instead.
+            return output
+        return output.with_name(output.name + suffix)
+
+    def _on_container_chosen(self) -> None:
+        """Choosing a container renames the output; see the module docstring.
+
+        An empty field is the one case with nothing to rename, and it is left
+        empty rather than filled with the "." a blank path parses as.
+        """
+        if self._output.text().strip():
+            renamed = self._renamed(self.output(), self._container.currentData())
+            with QSignalBlocker(self._output):
+                self._output.setText(str(renamed))
+        self._describe_container()
+        self._validate()
+
+    def _on_output_typed(self) -> None:
+        """And naming one moves the box, which is the same fact from the
+        other end. Blocked, or it would rename the path back mid-keystroke."""
+        with QSignalBlocker(self._container):
+            self._container.setCurrentIndex(
+                self._container.findData(self._suffix_of(self.output()))
+            )
+        self._describe_container()
+        self._validate()
 
     def _on_choose(self) -> None:
+        """A folder panel or a save panel, whichever the output is.
+
+        An archive is one file that does not exist yet, and the panel that
+        asks for a folder cannot name one.
+        """
         start = self._output.text().strip() or str(self._document.path.parent)
-        name = QFileDialog.getExistingDirectory(self, "Render Into", start)
+        if self.output_is_archive():
+            suffix = self._container.currentData()
+            name, _filter = QFileDialog.getSaveFileName(
+                self,
+                self.tr("Save Chapter As"),
+                start,
+                self.tr("Chapter file (*{0})").format(suffix),
+            )
+        else:
+            name = QFileDialog.getExistingDirectory(self, self.tr("Render Into"), start)
         if name:
             self._output.setText(name)
 
-    def output_dir(self) -> Path:
+    def output(self) -> Path:
+        """Where the run will write: a directory, or one chapter file."""
         return Path(self._output.text().strip()).expanduser()
 
+    def output_dir(self) -> Path:
+        """Kept under its old name, which is still what it is most of the
+        time. :meth:`output` is the honest one now that it can be a file."""
+        return self.output()
+
+    def output_is_archive(self) -> bool:
+        """Whether this run writes one file, asked of the box rather than the
+        path: the two agree except when the path is empty, and an empty path
+        still has a kind chosen for it."""
+        return self._container.currentData() is not None
+
     def refusal(self) -> str:
-        """Why this output directory cannot be used, or an empty string.
+        """Why this output cannot be used, or an empty string.
 
         Public because it is the whole point of the dialog and the thing
         worth testing: the judgement is ``check_output_dir``'s, made here on
-        every keystroke instead of once the dialog has closed.
+        every keystroke instead of once the dialog has closed. An archive is
+        asked the same question about the folder it would go in, plus one of
+        its own — whether there is anything on this machine to write it with,
+        which is worth knowing before a chapter is rendered rather than
+        after.
         """
         text = self._output.text().strip()
         if not text:
-            return self.tr("Choose a directory to write the pages into.")
+            return (
+                self.tr("Name the chapter file to write.")
+                if self._container.currentData()
+                else self.tr("Choose a directory to write the pages into.")
+            )
         path = Path(text).expanduser()
         try:
-            if path.exists() and not path.is_dir():
-                return self.tr("{0} is a file, not a directory.").format(path)
-            check_output_dir(path, self._sources)
+            if archive_kind(path) is None:
+                if path.exists() and not path.is_dir():
+                    return self.tr("{0} is a file, not a directory.").format(path)
+                check_output_dir(path, self._sources)
+            else:
+                if path.is_dir():
+                    return self.tr("{0} is a directory, not a file.").format(path)
+                check_output_dir(path.parent, self._sources)
+                check_can_pack(path, self._preferences.rar_tool)
         except ComictransError as exc:
             return f"{exc}"
         except OSError as exc:
@@ -296,14 +456,17 @@ class RenderDialog(QDialog):
         return RenderRequest(
             plan=self._document.plan,
             plan_path=self._document.path,
-            output=self.output_dir(),
+            output=self.output(),
             config=config,
             image_format=self._format.currentData(),
+            rar_tool=self._preferences.rar_tool,
             force=self._force.isChecked(),
         )
 
 
 __all__ = [
+    "CBR_NOTE",
+    "CONTAINER_CHOICES",
     "FORMAT_CHOICES",
     "RENDER",
     "SAVE_AND_RENDER",

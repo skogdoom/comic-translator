@@ -99,6 +99,25 @@ for themselves. See **Build the application** in `README.md`.
   both, the way a whole extract seeds them; one that already has text is asked
   about first.
 
+- **A chapter can leave as one file too.** `comictrans apply plan.yaml
+  --output chapter.cbz` renders the chapter and writes it as one archive
+  instead of a folder of pages; `.cbr` does the same as a RAR, and any other
+  name is a directory exactly as before. Pages are numbered inside the file in
+  the order the plan holds them — `001-page-004.png` — so a reader shows them
+  in the order you set rather than the order they were scanned. **Render
+  Pages** in the window asks the same thing as a box beside the path: pick
+  `.cbz` and the path is renamed, type a `.cbz` path and the box follows.
+  Cancelling differs from a folder run and deliberately: a stopped folder run
+  leaves the pages it finished, a stopped chapter run leaves nothing at all,
+  because the file is packed once every page is drawn rather than grown as
+  they arrive. CBZ needs nothing. CBR needs the `rar` compressor that comes
+  with WinRAR — `unrar` cannot write archives, and rar is paid and not
+  redistributable — so it is looked for on `PATH`, `COMICTRANS_RAR` names one
+  elsewhere, and Preferences has a field for it beside the one for `unrar`.
+  You are told a `.cbr` cannot be written before a page is rendered rather
+  than after the chapter. Nothing else goes into the file: no ComicInfo.xml,
+  because a plan knows the language pair and nothing else about your chapter.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings

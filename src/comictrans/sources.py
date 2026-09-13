@@ -250,7 +250,7 @@ def _zip_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
         yield from _archive_pages(archive, notes, _zip_is_regular)
 
 
-def _rar_tool(named: str = "") -> None:
+def _unrar_tool(named: str = "") -> None:
     """Point ``rarfile`` at a tool, or say which ones would have done.
 
     Called before the directory is made, so a machine with no RAR tool gets
@@ -442,7 +442,7 @@ def chapter_kind(source: Path) -> str | None:
     return kind
 
 
-def _reader_for(source: Path, rar_tool: str = "") -> _Reader:
+def _reader_for(source: Path, unrar_tool: str = "") -> _Reader:
     """The reader for what this file is. Callers check it exists first."""
     kind = chapter_kind(source)
     if kind is None:
@@ -459,7 +459,7 @@ def _reader_for(source: Path, rar_tool: str = "") -> _Reader:
             "a download that did not finish."
         )
     if kind is RAR:
-        _rar_tool(rar_tool)
+        _unrar_tool(unrar_tool)
     return _READERS[kind]
 
 
@@ -488,7 +488,7 @@ def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
     )
 
 
-def check_readable(source: Path, rar_tool: str = "") -> None:
+def check_readable(source: Path, unrar_tool: str = "") -> None:
     """Raise unless :func:`unpack` could read this, reading nothing itself.
 
     For asking before a run rather than during one — the window asks on every
@@ -500,14 +500,14 @@ def check_readable(source: Path, rar_tool: str = "") -> None:
     """
     if not source.is_file():
         raise InputError(f"input path does not exist: {source}")
-    _reader_for(source, rar_tool)
+    _reader_for(source, unrar_tool)
 
 
 def unpack(
     source: Path,
     into: Path | None = None,
     *,
-    rar_tool: str = "",
+    unrar_tool: str = "",
     progress: ProgressCallback | None = None,
     should_cancel: CancelCheck | None = None,
 ) -> UnpackReport:
@@ -534,7 +534,7 @@ def unpack(
     """
     if not source.is_file():
         raise InputError(f"input path does not exist: {source}")
-    reader = _reader_for(source, rar_tool)
+    reader = _reader_for(source, unrar_tool)
 
     directory = into if into is not None else default_unpack_dir(source)
     notes = _Notes()

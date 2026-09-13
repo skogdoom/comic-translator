@@ -14,12 +14,18 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from .config import ApplyConfig
 from .errors import ComictransError, FontError, InputError
 from .fonts import FontFace, resolve
 from .imaging import check_writable, load_page, output_path, save_page
 from .model import Plan, Region
+
+# Aliased: imaging.check_writable asks whether a source page can be written
+# back out at all, which is a different question about a different file.
+from .pack import archive_kind, pack
+from .pack import check_writable as check_can_pack
 from .progress import CancelCheck, PageProgress, ProgressCallback
 from .render import RegionOutcome, RegionStyle, render_page
 from .util import is_within
@@ -32,10 +38,17 @@ class ApplyReport:
     """What happened, for the end-of-run summary and the exit code."""
 
     pages_written: list[Path] = field(default_factory=list)
+    """The pages this run put on disk: files in the output directory, or —
+    when the output was an archive — what each page is called inside it.
+    Empty after a cancelled archive run, because nothing survives it."""
+
     outcomes: list[tuple[str, RegionOutcome]] = field(default_factory=list)
     page_failures: list[tuple[str, str]] = field(default_factory=list)
     cancelled: bool = False
     """Whether the run was stopped part-way rather than reaching the last page."""
+
+    archive: Path | None = None
+    """The one file the pages were packed into, when the output was one."""
 
     def _count(self, status: str) -> int:
         return sum(1 for _, outcome in self.outcomes if outcome.status == status)
@@ -145,11 +158,92 @@ def apply_plan(
     *,
     font: str | None = None,
     image_format: str | None = None,
+    rar_tool: str = "",
     force: bool = False,
     progress: ProgressCallback | None = None,
     should_cancel: CancelCheck | None = None,
 ) -> ApplyReport:
-    """Render every page the plan refers to into ``output``.
+    """Render every page the plan refers to, into a directory or an archive.
+
+    ``output`` named ``chapter.cbz`` or ``chapter.cbr`` is a chapter written
+    as one file; anything else is a directory of pages. One entry point for
+    both, so that neither caller has to decide which loop to run — see
+    :mod:`comictrans.pack` for what the name decides and why it is the name
+    that decides it.
+
+    **An archive is packed only once every page is rendered.** The pages go
+    somewhere temporary and are packed at the end, so cancelling leaves no
+    archive at all rather than a truncated one — and nothing to re-run
+    *from*, which is the difference from a directory, where a cancelled run
+    leaves whole pages and running it again finishes the job. Both promises
+    are worth knowing, so both are written down.
+    """
+    if archive_kind(output) is None:
+        return _render_pages(
+            plan,
+            plan_path,
+            output,
+            config,
+            font=font,
+            image_format=image_format,
+            force=force,
+            progress=progress,
+            should_cancel=should_cancel,
+        )
+
+    # Asked before a page is rendered rather than after the last one: a
+    # chapter is minutes of work, and "there is nothing here to write a CBR
+    # with" is an answer that costs nothing to give first.
+    check_can_pack(output, rar_tool)
+    sources = sorted({source_for(plan_path, image).parent for image in plan.image_names()})
+    check_output_dir(output.parent, sources)
+    if output.exists() and not force:
+        raise InputError(f"{output} already exists; pass --force to overwrite it")
+
+    with TemporaryDirectory(prefix="comictrans-") as workspace:
+        report = _render_pages(
+            plan,
+            plan_path,
+            Path(workspace),
+            config,
+            font=font,
+            image_format=image_format,
+            # Not ``force``: that answered whether to replace the archive,
+            # and was settled above. Nothing pre-exists a directory made a
+            # moment ago, so the only thing this can refuse is the run
+            # colliding with itself — two plan entries whose filenames are
+            # the same, in different folders, flattened onto one name. The
+            # directory path reports the second as a page failure; without
+            # this the archive would quietly hold the same page twice.
+            force=False,
+            progress=progress,
+            should_cancel=should_cancel,
+        )
+        if report.cancelled or not report.pages_written:
+            # Nothing survives the workspace, so the report must not claim
+            # pages were written: what is on disk is what was there before.
+            report.pages_written.clear()
+            return report
+        report.pages_written = [
+            Path(name) for name in pack(report.pages_written, output, rar_tool=rar_tool, force=True)
+        ]
+        report.archive = output
+        return report
+
+
+def _render_pages(
+    plan: Plan,
+    plan_path: Path,
+    output: Path,
+    config: ApplyConfig,
+    *,
+    font: str | None = None,
+    image_format: str | None = None,
+    force: bool = False,
+    progress: ProgressCallback | None = None,
+    should_cancel: CancelCheck | None = None,
+) -> ApplyReport:
+    """Render every page the plan refers to into the directory ``output``.
 
     ``progress`` is called once per page, before it is rendered, so a caller
     driving this from a window can say where it has got to. ``should_cancel``
