@@ -123,15 +123,6 @@ because those are what a chapter is called; a path already ending in the
 plain ones is recognised and left as it is.
 """
 
-CBR_NOTE = QCoreApplication.translate(
-    "RenderDialog",
-    "A .cbr needs the rar compressor, which comes with WinRAR and which you "
-    "need a licence for — it cannot ship with this. A .cbz needs nothing and "
-    "every reader opens it.",
-)
-"""Shown under the box when .cbr is chosen, whether or not one is installed:
-the refusal below says what is missing, this says why it is not here."""
-
 RENDER = QCoreApplication.translate("RenderDialog", "Render")
 SAVE_AND_RENDER = QCoreApplication.translate("RenderDialog", "Save and Render")
 """The button names what pressing it will do, and an unsaved plan is saved
@@ -203,10 +194,6 @@ class RenderDialog(QDialog):
         for label, suffix in CONTAINER_CHOICES:
             self._container.addItem(label, suffix)
         self._container.setCurrentIndex(self._container.findData(self._suffix_of(self.output())))
-        self._container_help = QLabel()
-        self._container_help.setWordWrap(True)
-        self._quieten(self._container_help)
-
         self._force = QCheckBox()
 
         # Red rather than the usual grey: this is the one message here that
@@ -220,7 +207,6 @@ class RenderDialog(QDialog):
         form = QFormLayout()
         form.addRow(self.tr("write pages to"), where_widget)
         form.addRow(self.tr("as"), self._container)
-        form.addRow("", self._container_help)
         form.addRow(self.tr("format"), self._format)
         form.addRow(self.tr("erase"), self._erase)
         form.addRow("", self._erase_help)
@@ -288,19 +274,21 @@ class RenderDialog(QDialog):
         self._erase_help.setText("")
 
     def _describe_container(self) -> None:
-        """The note under the box, and what overwriting would mean.
+        """What overwriting would mean, which is not the same for the two.
 
-        Two sentences that both change with the same choice: a directory is
-        overwritten page by page, a chapter file all at once, and saying
-        "pages already in that directory" over a ``.cbz`` would be describing
-        something that is not going to happen.
+        A directory is overwritten page by page and a chapter file all at
+        once, so "pages already in that directory" over a ``.cbz`` would be
+        describing something that is not going to happen.
+
+        There is deliberately no second line here saying what a .cbr needs.
+        That sentence is the refusal's, below, which says it in full and says
+        it only when it is true — a grey note repeating a red one above it is
+        the same text twice, and the two of them together grew this dialog
+        past what it had room for.
         """
-        archive = self.output_is_archive()
-        self._container_help.setText(CBR_NOTE if self._container.currentData() == ".cbr" else "")
-        self._container_help.setVisible(bool(self._container_help.text()))
         self._force.setText(
             self.tr("overwrite the chapter file if it is already there")
-            if archive
+            if self.output_is_archive()
             else self.tr("overwrite pages already in that directory")
         )
 
@@ -437,6 +425,24 @@ class RenderDialog(QDialog):
         self._problem.setText(problem)
         self._problem.setVisible(bool(problem))
         self._ok.setEnabled(not problem)
+        self._fit()
+
+    def _fit(self) -> None:
+        """Grow to hold what is now being said, and never shrink below it.
+
+        A refusal is several lines of wrapped text that appears and goes as a
+        path is typed, and a dialog that stays the height it opened at does
+        not refuse to show it — it takes the height out of whatever else can
+        give, which is the other wrapped labels, and they come out clipped.
+        Measured: the form wanting 303px in a window holding 247 left the
+        erase note 14px of the 28 it had.
+
+        Grow only. ``adjustSize`` would also shrink, which would undo a size
+        somebody had dragged out for themselves every time a message came and
+        went; a window left taller than it needs has a stretch in it and
+        looks like nothing at all.
+        """
+        self.resize(self.width(), max(self.height(), self.sizeHint().height()))
 
     # -- the result ------------------------------------------------------
 
@@ -465,7 +471,6 @@ class RenderDialog(QDialog):
 
 
 __all__ = [
-    "CBR_NOTE",
     "CONTAINER_CHOICES",
     "FORMAT_CHOICES",
     "RENDER",

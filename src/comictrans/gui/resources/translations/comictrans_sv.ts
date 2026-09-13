@@ -1339,46 +1339,41 @@
     </message>
     <message>
         <location filename="../../render_dialog.py" line="126"/>
-        <source>A .cbr needs the rar compressor, which comes with WinRAR and which you need a licence for — it cannot ship with this. A .cbz needs nothing and every reader opens it.</source>
-        <translation>En .cbr kräver komprimeraren rar, som följer med WinRAR och som du behöver en licens för — den kan inte följa med det här programmet. En .cbz kräver ingenting och alla läsare öppnar den.</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="135"/>
         <source>Render</source>
         <translation>Rendera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="136"/>
+        <location filename="../../render_dialog.py" line="127"/>
         <source>Save and Render</source>
         <translation>Spara och rendera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="174"/>
+        <location filename="../../render_dialog.py" line="165"/>
         <source>Render Pages</source>
         <translation>Rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="177"/>
+        <location filename="../../render_dialog.py" line="168"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="222"/>
+        <location filename="../../render_dialog.py" line="209"/>
         <source>as</source>
         <translation>som</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="302"/>
+        <location filename="../../render_dialog.py" line="290"/>
         <source>overwrite the chapter file if it is already there</source>
         <translation>skriv över kapitelfilen om den redan finns</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="304"/>
+        <location filename="../../render_dialog.py" line="292"/>
         <source>overwrite pages already in that directory</source>
         <translation>skriv över sidor som redan finns i katalogen</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="221"/>
+        <location filename="../../render_dialog.py" line="208"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
@@ -1388,17 +1383,17 @@
         <translation>en katalog</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="224"/>
+        <location filename="../../render_dialog.py" line="210"/>
         <source>format</source>
         <translation>format</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="225"/>
+        <location filename="../../render_dialog.py" line="211"/>
         <source>erase</source>
         <translation>radera</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="275"/>
+        <location filename="../../render_dialog.py" line="261"/>
         <source>%n region(s)</source>
         <translation>
             <numerusform>%n region</numerusform>
@@ -1406,7 +1401,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="277"/>
+        <location filename="../../render_dialog.py" line="263"/>
         <source>Saves the plan, then renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Sparar planen och renderar sedan %n sida och {0}.</numerusform>
@@ -1414,7 +1409,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="280"/>
+        <location filename="../../render_dialog.py" line="266"/>
         <source>Renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Renderar %n sida och {0}.</numerusform>
@@ -1422,42 +1417,42 @@
         </translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="376"/>
+        <location filename="../../render_dialog.py" line="364"/>
         <source>Save Chapter As</source>
         <translation>Spara kapitel som</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="378"/>
+        <location filename="../../render_dialog.py" line="366"/>
         <source>Chapter file (*{0})</source>
         <translation>Kapitelfil (*{0})</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="381"/>
+        <location filename="../../render_dialog.py" line="369"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="414"/>
+        <location filename="../../render_dialog.py" line="402"/>
         <source>Name the chapter file to write.</source>
         <translation>Ange kapitelfilen som ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="416"/>
+        <location filename="../../render_dialog.py" line="404"/>
         <source>Choose a directory to write the pages into.</source>
         <translation>Välj en katalog att skriva sidorna till.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="422"/>
+        <location filename="../../render_dialog.py" line="410"/>
         <source>{0} is a file, not a directory.</source>
         <translation>{0} är en fil, inte en katalog.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="426"/>
+        <location filename="../../render_dialog.py" line="414"/>
         <source>{0} is a directory, not a file.</source>
         <translation>{0} är en katalog, inte en fil.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="432"/>
+        <location filename="../../render_dialog.py" line="420"/>
         <source>{0} cannot be used: {1}</source>
         <translation>{0} kan inte användas: {1}</translation>
     </message>

@@ -87,7 +87,6 @@ from comictrans.gui.main_window import (
 from comictrans.gui.preferences import Preferences
 from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
 from comictrans.gui.render_dialog import (
-    CBR_NOTE,
     RENDER,
     SAVE_AND_RENDER,
     RenderDialog,
@@ -4025,12 +4024,61 @@ def test_the_dialog_says_a_cbr_cannot_be_written_before_a_page_is_rendered(
     dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
 
     assert "needs the rar compressor" in dialog.refusal()
+    assert "WinRAR" in dialog.refusal(), "and which binary would provide it"
     assert not ok.isEnabled()
-    assert CBR_NOTE in dialog._container_help.text(), "and why it is not here to install"
 
     dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
     assert dialog.refusal() == "", "the format that needs nothing"
-    assert dialog._container_help.text() == ""
+
+
+def test_the_dialog_grows_to_hold_what_it_has_to_say(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every wrapped message gets the height it needs, in every state.
+
+    A dialog that stays the height it opened at does not refuse to show a
+    refusal — it takes the height out of the other wrapped labels, and they
+    come out clipped with their last lines missing.
+    """
+    monkeypatch.delenv("COMICTRANS_RAR", raising=False)
+    monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog.show()
+
+    for suffix in (None, ".cbz", ".cbr", None):
+        dialog._container.setCurrentIndex(dialog._container.findData(suffix))
+        for path in (two_page_plan.parent, two_page_plan.parent.parent / "out"):
+            dialog._output.setText(str(path))
+            QApplication.processEvents()
+            for name, label in (("erase", dialog._erase_help), ("refusal", dialog._problem)):
+                if not label.isVisible() or not label.text():
+                    continue
+                assert label.height() >= label.heightForWidth(label.width()), (
+                    f"{name} is clipped with {suffix} chosen and {path.name} typed"
+                )
+
+
+def test_a_dialog_somebody_has_made_taller_stays_that_way(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Growing to fit must not turn into resizing on every keystroke."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog.show()
+    QApplication.processEvents()
+    dialog.resize(dialog.width(), dialog.height() + 120)
+    QApplication.processEvents()
+    taller = dialog.height()
+
+    dialog._output.setText(str(two_page_plan.parent))  # refused: the message appears
+    QApplication.processEvents()
+    dialog._output.setText(str(two_page_plan.parent.parent / "out"))  # and goes again
+    QApplication.processEvents()
+
+    assert dialog.height() == taller, "a message coming and going did not undo the drag"
 
 
 def test_the_preferences_rar_tool_is_what_the_dialog_asks_about_and_hands_on(
