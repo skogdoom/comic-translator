@@ -146,6 +146,15 @@ for themselves. See **Build the application** in `README.md`.
   hang off and a settled place in the window rather than one being added in a
   hurry beside the feature it gates.
 
+- **Quitting the review window no longer crashes.** It segfaulted on the way
+  out, after the window had gone, while Python was shutting down — PySide
+  destroys whatever Qt objects are still alive at that point, and one of them
+  was a dialog whose child had already been freed. The window is now taken
+  down deliberately when the application ends, and a dialog is disposed of
+  when you are finished with it rather than kept on the window: opening
+  Preferences three times used to leave three of them behind, each holding
+  its widgets, and a render dialog holding a whole plan.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings

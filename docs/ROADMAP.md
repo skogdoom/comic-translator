@@ -44,7 +44,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 13 | Why the review window crashed | S |
 | 14 | Undo and redo inside a text field | S |
 | 15 | The translation field takes focus with its region | S |
 | 4.28 | Region context menu | S |
@@ -68,12 +67,9 @@ Everything in this table is what comes after a release.
 
 The 4.x numbering says these follow milestone 4, the review GUI.
 
-**Why this order.** A crash outranks everything, so 13 is first whatever else
-is wanted.
-
-Then the window irritations — 14, 15 and 4.28, each an S, with 4.27 behind
-them because it is the same corner of the same files even though it is
-larger. They are met every few minutes by the one person using this, they are
+**Why this order.** The window irritations first — 14, 15 and 4.28, each an S,
+with 4.27 behind them because it is the same corner of the same files even
+though it is larger. They are met every few minutes by the one person using this, they are
 cheap, and doing them apart means reading the inspector and the canvas four
 times over. 15 makes 14 matter more rather than less, which is why 14 is
 first of the four.
@@ -185,88 +181,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 13 Why the review window crashed
-
-A segmentation fault, caught by `gui/crash.py` and written to
-`review-crash.log`:
-
-```
---- comictrans 1.1.0.dev0 review started 2026-09-13T17:07:33Z ---
-Fatal Python error: Segmentation fault
-
-Current thread 0x0000000204c8a2c0 (most recent call first):
-  <no Python frame>
-
-Extension modules: PIL._imaging, PIL._imagingft, numpy._core._multiarray_umath,
-numpy.linalg._umath_linalg, shiboken6.Shiboken, PySide6.QtCore, PySide6.QtGui,
-PySide6.QtWidgets (total: 8)
-```
-
-The diagnostics did their job: this is exactly the file that module exists to
-leave behind, and without it there would be nothing at all. What follows is
-what the file does and does not support, measured rather than assumed,
-because the wrong reading of it is the easier one to reach.
-
-**The extension module list is not evidence about what had run.** The
-tempting inference is that OpenCV and Vision are missing from it, so nothing
-had been rendered or recognised, so the crash is in the startup path. That
-inference is wrong. `faulthandler` lists a module only when the module object
-itself came from an extension loader, and `cv2` is a Python package wrapping
-its own `.so`, so it never appears. Measured here: a process that had imported
-`cv2`, numpy and Pillow and then crashed listed four modules and `cv2` was not
-among them. `gui/preferences` imports `..erase`, which imports `cv2`, so
-OpenCV is loaded in **every** window this tool has ever opened. The list tells
-us Qt was up and FreeType was in use, and nothing else.
-
-**`<no Python frame>` is the evidence.** `faulthandler` prints the Python
-stack of the crashing thread, and prints frames whenever there are any —
-measured, a crash inside a `ctypes` call from Python shows the `ctypes` frame
-and its caller. An empty stack on the main thread therefore means the main
-thread was not running Python at all: either before the interpreter had got
-going, or **after it had finished** — after `app.exec()` returned and the
-process was tearing down. The second is far the more likely, because Qt and
-FreeType were both already loaded.
-
-**The leading candidate, and where to look first.** `MainWindow.closeEvent`
-stops and waits for two of the three worker threads it can have running:
-
-```
-self._job          cancel(), wait()   ✓
-self._preview_job  cancel(), wait()   ✓
-self._read_job     —                  ✗
-```
-
-`_read_job` is the `RegionTextJob` added by milestone 4.26, and it is the one
-with nothing to cancel — a recogniser is handed a crop and either comes back
-or does not, which on Apple Vision is seconds. Close the window while one is
-in flight and a running `QThread` is destroyed, which the comments beside the
-other two say aborts the process — and, from the other end, the interpreter
-finalises while a worker thread is still executing Python bytecode, which is
-a segfault with no Python frame left on the main thread to print. Both halves
-of that match this log.
-
-It is a candidate and not a conclusion. Against it: a `QThread` destroyed
-while running raises `qFatal`, which is `SIGABRT`, and this was `SIGSEGV`.
-For it: the finalisation race is a segfault, it was introduced by the most
-recent window change, and it is the only worker this window does not wait
-for.
-
-**What would settle it is the half this log cannot hold.** `faulthandler`
-writes the *Python* stack; the crash was in native code, so the native stack
-is the answer and macOS already wrote it down. It is in
-`~/Library/Logs/DiagnosticReports/`, named for the application and the time,
-ending `.ips`, and its crashing-thread backtrace names the frames — Qt,
-Python, or something else entirely. **Ask for that file before changing
-anything.** Worth knowing alongside it: whether the window was being quit or
-closed at the time, and whether **Extract Text from Region** had been used in
-that session.
-
-Where it lands if the candidate holds: `closeEvent` waits for `_read_job` as
-it waits for the other two, and a test closes a window with a read in flight
-and asserts the thread is finished before the event is accepted — the shape
-the other two already have. If it does not hold, the `.ips` says where to
-look instead, and this section is rewritten rather than guessed at twice.
 
 ## 14 Undo and redo inside a text field
 

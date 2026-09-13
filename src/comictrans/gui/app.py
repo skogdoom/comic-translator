@@ -20,8 +20,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..errors import GuiUnavailableError
+
+if TYPE_CHECKING:  # this module has to import without PySide6 — see ``available``
+    from PySide6.QtWidgets import QWidget
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +61,36 @@ def available() -> bool:
 
 def unavailable_reason() -> str:
     return _IMPORT_ERROR or "PySide6 is not installed"
+
+
+def close_down(window: QWidget) -> None:
+    """Destroy the window now, rather than leaving it to the interpreter.
+
+    **This is what a crash report asked for.** A review session that had been
+    quit segfaulted on the way out, and the macOS report named the path
+    exactly: ``Py_FinalizeEx`` runs the ``atexit`` handlers, PySide's is
+    ``runCleanupFunctions`` → ``destroyQCoreApplication``, and that walks
+    every Python-wrapped ``QObject`` still alive and destroys it —
+    ``visitAllPyObjects(destructionVisitor)``. It reached a ``QDialog``,
+    destroyed it, and the dialog's own destructor walked into a child that
+    had already been freed: ``EXC_BAD_ACCESS`` at ``0x39``, with no Python
+    frame on the stack because by then there was no Python left to be on it.
+
+    The order that walk destroys things in is not ours to choose. What is
+    ours is whether anything is left for it to walk, so the window goes
+    here, deterministically, while the interpreter is still running and Qt
+    can tear its children down in the order it knows. ``shiboken6.delete``
+    rather than ``del`` or ``deleteLater``: the first cannot work, because a
+    window is the centre of a knot of reference cycles and is collected by
+    the cycle collector rather than by a refcount reaching zero; the second
+    only posts an event, and the event loop it needs has already returned.
+
+    Safe to call twice, and safe on a window whose C++ half is already gone.
+    """
+    import shiboken6
+
+    if shiboken6.isValid(window):
+        shiboken6.delete(window)
 
 
 def run(plan_path: Path | None = None) -> int:
@@ -179,4 +213,6 @@ def run(plan_path: Path | None = None) -> int:
     window = MainWindow(plan_path, settings=settings)
     window.show()
     log.debug("window open in %s", language)
-    return app.exec()
+    code = app.exec()
+    close_down(window)
+    return code
