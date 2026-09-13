@@ -155,6 +155,16 @@ for themselves. See **Build the application** in `README.md`.
   Preferences three times used to leave three of them behind, each holding
   its widgets, and a render dialog holding a whole plan.
 
+- **Ctrl+Z works inside the text fields.** It did not: the field claimed the
+  key and, having no undo of its own, did nothing with it, so nothing
+  happened at all until you clicked somewhere else first. It is the same undo
+  as everywhere else in the window — one history over the whole plan — and
+  typing is now taken back a word at a time rather than everything since you
+  entered the field.
+- **Click a balloon and start typing.** Clicking a region puts the caret in
+  its translation. Getting there any other way leaves the keyboard on the
+  page, where the arrow keys nudge the region; **Escape** hands the page back.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings

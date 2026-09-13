@@ -1951,6 +1951,36 @@ positional so it can be applied without judgement: the two checkboxes that
 had drifted into sentence case were the only places it was ambiguous, and
 they are lowercase now.
 
+**One undo history, and the text fields do not get their own.** The inspector's
+prose fields are `ProseEdit`, which keeps no history and — the part that is not
+obvious — does not *claim* Cmd+Z. `QPlainTextEdit` accepts the
+`ShortcutOverride` for Undo and Redo whether or not its own undo is enabled
+(measured, accepted in both cases), and accepting that event means "deliver
+this to me as an ordinary key press". With nothing to undo it then did
+nothing, and the window's action never fired: Cmd+Z inside a translation was
+swallowed on the way past. `ProseEdit` ignores that one override, and only
+that one — cut, copy, paste and select-all stay the field's.
+
+**Typing is undone a word at a time.** A run of edits collapses into one undo
+step, keyed by region and field, and it used to end only when the selection
+moved — so one Cmd+Z threw away everything typed since the field was entered.
+`document.finished_a_word` closes the step when an edit puts whitespace into a
+piece of text, which makes each word its own step and a pasted sentence one of
+its own. A word rather than a pause, which was the other candidate: a timer
+makes what Cmd+Z does depend on how fast you type, which nobody can predict
+while typing and no test can pin down.
+
+**Focus follows a click, and nothing else.** Clicking a region on the page
+puts the caret in its translation; arriving by Next Region, Next Flagged
+Region or the Pages panel does not. That is not a nicety — the arrow keys
+nudge the selected region a pixel, twenty with Shift, and a focused text
+field takes all four away. Walking the flagged regions from the keyboard is
+exactly when somebody is nudging polygons; clicking a balloon is when they
+are about to type into it. The canvas emits `region_selected` from its mouse
+press and nowhere else, so the distinction was already in the code, and
+`_on_region_clicked` is the only path that focuses. Escape gives the page
+back.
+
 **Nothing of ours is alive when the interpreter finalises.** `app.run` calls
 `close_down` on the window after `app.exec()` returns, and every dialog is
 opened inside `main_window.transient`, which `deleteLater`s it when the

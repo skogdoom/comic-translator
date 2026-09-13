@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
 
         self._pages.image_selected.connect(self._on_image_selected)
         self._pages.order_changed.connect(self._on_pages_reordered)
-        self._canvas.region_selected.connect(self._on_region_selected)
+        self._canvas.region_selected.connect(self._on_region_clicked)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._canvas.polygon_edited.connect(self._on_polygon_edited)
         self._canvas.polygon_nudged.connect(self._on_polygon_nudged)
@@ -305,6 +305,7 @@ class MainWindow(QMainWindow):
         self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
+        self._inspector.escaped.connect(self._on_inspector_escaped)
         self._run_panel.row_activated.connect(self._on_run_row_activated)
         self._run_panel.cancel_requested.connect(self._on_run_cancel)
 
@@ -1026,6 +1027,37 @@ class MainWindow(QMainWindow):
         self._canvas.set_selected(region_id)
         self._inspector.set_region(self.document, region_id)
         self._update_actions_enabled()
+
+    def _on_inspector_escaped(self) -> None:
+        """Escape in a prose field puts focus back on the page.
+
+        The one key that undoes what clicking a balloon does. Without it the
+        arrow keys stay inside a translation for as long as the caret does,
+        and nudging a polygon means reaching for the mouse to click somewhere
+        else first.
+        """
+        self._canvas.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _on_region_clicked(self, region_id: str) -> None:
+        """A region chosen on the page, which means "I am about to write".
+
+        So the translation takes focus. **Only from a click**: the canvas
+        emits ``region_selected`` from its mouse press and nowhere else, and
+        every other way of arriving at a region — the page list, Tab, Next
+        Flagged Region, an extract finishing — calls
+        :meth:`_on_region_selected` instead and leaves focus where it was.
+
+        That distinction is the whole design, and it is there because the
+        arrow keys already mean something on the page: they nudge the
+        selected region a pixel, twenty with Shift, accelerating while held.
+        Focusing a text field takes all four away, and walking the flagged
+        regions with the keyboard is exactly when somebody is nudging
+        polygons. Clicking a balloon is when they are about to type into it.
+
+        Escape comes back — see :attr:`RegionInspector.escaped`.
+        """
+        self._on_region_selected(region_id)
+        self._inspector.focus_translation()
 
     def _go_to_region(self, region_id: str) -> None:
         """Select a region anywhere in the plan, changing page if it is on another.

@@ -9,6 +9,8 @@ from comictrans.gui.document import (
     MANUAL_CONFIDENCE,
     UNDO_LIMIT,
     PlanDocument,
+    finished_a_word,
+    inserted,
     overlapping_region_ids,
     region_flags,
 )
@@ -975,3 +977,139 @@ def test_a_merge_can_be_handed_colours_read_from_the_merged_shape() -> None:
     )
 
     assert (merged.fill_color, merged.text_color) == (Color(1, 2, 3), Color(250, 251, 252))
+
+
+# -- typing is undone a word at a time ------------------------------------
+
+
+def _typing_into_an_empty_field() -> PlanDocument:
+    """A document whose translation is empty and whose run has been broken.
+
+    The fixture regions carry a translation already, and starting mid-text
+    would measure the rule against a first edit that shortens the field —
+    which is a deletion, and deliberately does not close a step.
+    """
+    doc = _document(_apart(1))
+    doc.set_translation("r1", "")
+    doc.end_edit_run()
+    return doc
+
+
+def _type(doc: PlanDocument, region_id: str, text: str) -> None:
+    """A keystroke at a time, which is how the inspector writes."""
+    for length in range(1, len(text) + 1):
+        doc.set_translation(region_id, text[:length])
+
+
+def test_undo_takes_back_a_word_rather_than_everything_typed() -> None:
+    """A run used to end only when the selection moved.
+
+    So one Ctrl+Z in the middle of a translation threw away everything typed
+    since the field was entered — right for a drag, much too coarse for
+    prose, and newly visible now that Ctrl+Z reaches the document from
+    inside a text field at all.
+    """
+    doc = _typing_into_an_empty_field()
+    _type(doc, "r1", "HELLO THERE FRIEND")
+
+    doc.undo()
+    assert doc.region("r1").translation == "HELLO THERE "
+
+    doc.undo()
+    assert doc.region("r1").translation == "HELLO "
+
+    doc.undo()
+    assert doc.region("r1").translation == ""
+
+
+def test_redo_walks_back_up_the_same_words() -> None:
+    doc = _typing_into_an_empty_field()
+    _type(doc, "r1", "ONE TWO")
+    doc.undo()
+    assert doc.region("r1").translation == "ONE "
+
+    doc.redo()
+
+    assert doc.region("r1").translation == "ONE TWO"
+
+
+def test_a_pasted_sentence_is_one_step() -> None:
+    """It arrives as a single edit, so it is a single thing to take back."""
+    doc = _typing_into_an_empty_field()
+    doc.set_translation("r1", "A WHOLE SENTENCE AT ONCE")
+
+    doc.undo()
+
+    assert doc.region("r1").translation == ""
+
+
+def test_deleting_does_not_break_the_run() -> None:
+    """Backspacing over a word and typing another is one correction."""
+    doc = _typing_into_an_empty_field()
+    _type(doc, "r1", "HELO")
+    for length in (3, 2):
+        doc.set_translation("r1", "HELO"[:length])
+    for length in range(3, 6):
+        doc.set_translation("r1", "HELLO"[:length])
+    assert doc.region("r1").translation == "HELLO"
+
+    doc.undo()
+
+    assert doc.region("r1").translation == "", "one run, from the first keystroke"
+
+
+def test_the_notes_and_the_source_text_are_the_same_bargain() -> None:
+    doc = _document(_apart(1))
+    for write, read in (
+        (doc.set_notes, lambda: doc.region("r1").notes),
+        (doc.set_source_text, lambda: doc.region("r1").source_text),
+    ):
+        write("r1", "")
+        doc.end_edit_run()
+        write("r1", "ONE ")
+        write("r1", "ONE TWO")
+
+        doc.undo()
+
+        assert read() == "ONE "
+
+
+def test_a_word_boundary_is_the_text_that_arrived_not_the_end_of_the_field() -> None:
+    """Typing a space in the middle closes the step as much as at the end."""
+    doc = _typing_into_an_empty_field()
+    doc.set_translation("r1", "HELLOTHERE")
+    doc.set_translation("r1", "HELLO THERE")  # a space typed into the middle
+    doc.set_translation("r1", "HELLO THERE!")
+
+    doc.undo()
+
+    assert doc.region("r1").translation == "HELLO THERE"
+
+
+def test_a_field_that_is_not_prose_is_untouched_by_any_of_this() -> None:
+    doc = _document(_apart(1))
+    doc.set_font_size("r1", 20)
+    doc.set_font_size("r1", 21)
+
+    doc.undo()
+
+    assert doc.region("r1").font_size is None, "one run, as before"
+
+
+def test_what_an_edit_added() -> None:
+    """The small thing the rule is built on, on its own."""
+    assert inserted("HELLO", "HELLO ") == " "
+    assert inserted("HELLO THERE", "HELLO X THERE") == "X "
+    assert inserted("", "A") == "A"
+    assert inserted("HELLO", "HELL") == "", "an edit that only took text away"
+    assert inserted("HELLO", "HELLO") == ""
+
+
+def test_which_edits_finish_a_word() -> None:
+    assert finished_a_word("HELLO", "HELLO ")
+    assert finished_a_word("HELLO", "HELLO\n")
+    assert finished_a_word("", "A WHOLE SENTENCE")
+    assert not finished_a_word("HELL", "HELLO")
+    assert not finished_a_word("HELLO ", "HELLO"), "taking a space away is not typing one"
+    assert not finished_a_word(None, "HELLO "), "a field that is not text"
+    assert not finished_a_word(12, 20), "nor a number"

@@ -5848,3 +5848,108 @@ def test_closing_down_twice_is_not_a_crash(qapp: object) -> None:
     window = MainWindow()
     close_down(window)
     close_down(window)
+
+
+# -- typing into a region, and getting back out --------------------------
+
+
+def _undo_key() -> tuple[Qt.Key, Qt.KeyboardModifier]:
+    sequence = QKeySequence(QKeySequence.StandardKey.Undo)
+    return Qt.Key(sequence[0].key()), sequence[0].keyboardModifiers()
+
+
+def test_undo_reaches_the_document_from_inside_a_translation(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """It did not. The field claimed Cmd+Z and, having no undo of its own,
+    did nothing with it — so the window's action never fired and typing
+    could not be taken back without first clicking somewhere else."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._go_to_region("page-001-001")
+    field = window._inspector._translation
+    field.setFocus()
+    QApplication.processEvents()
+    field.setPlainText("ONE TWO")
+    QApplication.processEvents()
+    assert window.document.region("page-001-001").translation == "ONE TWO"  # type: ignore[union-attr]
+
+    QTest.keyClick(field, *_undo_key())
+    QApplication.processEvents()
+
+    assert window.document.region("page-001-001").translation != "ONE TWO"  # type: ignore[union-attr]
+    assert field.toPlainText() == window.document.region("page-001-001").translation  # type: ignore[union-attr]
+
+
+def test_clicking_a_region_puts_the_caret_in_its_translation(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Clicking a balloon means "I am about to write"."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    QApplication.processEvents()
+
+    window._canvas.region_selected.emit("page-001-002")
+    QApplication.processEvents()
+
+    assert window._current_region == "page-001-002"
+    assert QApplication.focusWidget() is window._inspector._translation
+
+
+def test_walking_to_a_region_leaves_the_arrow_keys_where_they_were(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The conflict this design exists for.
+
+    Arrow keys nudge the selected region a pixel, twenty with Shift. Focusing
+    a text field takes all four away, and walking the flagged regions from
+    the keyboard is exactly when somebody is nudging polygons — so only a
+    click moves the caret.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.setFocus()
+    QApplication.processEvents()
+
+    for walk in (
+        lambda: window._go_to_region("page-001-002"),
+        lambda: window._step_region(forward=True),
+        lambda: window._pages.select_image("page-002.png"),
+    ):
+        walk()
+        QApplication.processEvents()
+        assert QApplication.focusWidget() is not window._inspector._translation, walk
+
+
+def test_escape_hands_the_page_back(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is window._inspector._translation
+
+    QTest.keyClick(window._inspector._translation, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+
+    assert QApplication.focusWidget() is window._canvas
+
+
+def test_the_caret_lands_at_the_end_rather_than_over_the_text(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Nothing is selected: the same gesture on a translation somebody has
+    written would otherwise put one keystroke between them and losing it."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+
+    field = window._inspector._translation
+    assert not field.textCursor().hasSelection()
+    assert field.textCursor().position() == len(field.toPlainText())

@@ -44,8 +44,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 14 | Undo and redo inside a text field | S |
-| 15 | The translation field takes focus with its region | S |
 | 4.28 | Region context menu | S |
 | 4.27 | Lock a region | M |
 | 16 | Languages by name, not by code | M |
@@ -67,12 +65,10 @@ Everything in this table is what comes after a release.
 
 The 4.x numbering says these follow milestone 4, the review GUI.
 
-**Why this order.** The window irritations first — 14, 15 and 4.28, each an S,
-with 4.27 behind them because it is the same corner of the same files even
-though it is larger. They are met every few minutes by the one person using this, they are
-cheap, and doing them apart means reading the inspector and the canvas four
-times over. 15 makes 14 matter more rather than less, which is why 14 is
-first of the four.
+**Why this order.** The window irritations first — 4.28, with 4.27 behind it
+because it is the same corner of the same files even though it is larger.
+They are met every few minutes by the one person using this, they are cheap,
+and doing them apart means reading the inspector and the canvas twice over.
 
 18 is the one piece of sequencing worth insisting on. **19 and 20 both need
 the plan to know what chapter it is**, and neither can be done without adding
@@ -88,8 +84,7 @@ switched it on — the one milestone here that cannot destabilise what already
 works. It is last in the table only because it is the largest.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 14, 15, 4.27, 4.28, 16 and 17 land would mean checking it
-twice. Each of those milestones still updates the guide for its own change,
+checking it before 4.27, 4.28, 16 and 17 land would mean checking it twice. Each of those milestones still updates the guide for its own change,
 as every milestone here does; 24 is the sweep for what that misses.
 
 **Asked for, and half of it was already there.** Rendering a chapter as JPEG
@@ -181,67 +176,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 14 Undo and redo inside a text field
-
-**Not a bug, which is why it needs a decision rather than a patch.** The
-inspector switches the text widgets' own undo off on purpose —
-`setUndoRedoEnabled(False)`, with the reason written beside it: every
-keystroke is already a document edit, so a per-widget stack would be a second,
-invisible history that disagrees with the visible one about what the last
-change was. Undo everywhere in this window means one history over the whole
-plan, and that is what makes a plugin rewriting every region one step, and a
-drag one step.
-
-What is actually wrong is the **granularity**, not the ownership. Typing is
-coalesced into a run, so `Cmd+Z` in the middle of a translation throws away
-everything typed since the field was entered. That is right for a drag and
-much too coarse for prose.
-
-Three ways out, and the middle one is the recommendation:
-
-- **Turn the widget histories back on.** Cheap, and it reintroduces exactly
-  the disagreement the comment describes: undo in the field and undo in the
-  menu would be two different stacks over the same text, and a document-level
-  undo would put back text the widget never saw.
-- **Keep one history and break the run up.** A run ends at a word boundary,
-  or after a pause, rather than only when focus leaves — so `Cmd+Z` while
-  typing behaves the way typing expects, and it is still the plan's history
-  doing it. `document.end_edit_run` is already the seam; this changes when it
-  is called, not who owns what.
-- **Leave it and say so in the guide.** Honest, and it is the answer this
-  milestone exists to avoid.
-
-Whichever is chosen, `Cmd+Shift+Z` has to mean redo in a field as well, and
-the menu items must stay enabled to match — today they follow
-`document.can_undo` only.
-
-## 15 The translation field takes focus when a region is selected
-
-Select a balloon, start typing. Small, wanted, and with one conflict that has
-to be settled first rather than discovered.
-
-**Arrow keys already mean something on the canvas.** They nudge the selected
-region a pixel, `Shift` twenty, and they accelerate while held. Move focus to
-the translation field on selection and the arrow keys become cursor movement,
-so nudging is gone for anybody who selects a region the ordinary way. That is
-a real loss, not a hypothetical: nudging is how a polygon gets lined up.
-
-Ways to have both, in the order they are worth trying:
-
-- **Focus follows a click, not a keyboard walk.** Clicking a region on the
-  canvas means "I am about to write"; `Tab`, `Next Flagged Region` and the
-  page list mean "I am moving about". Nudging survives where it is used.
-- **Escape returns focus to the canvas**, which it already half does — it
-  cancels a shape — so there is one key that always gets you back.
-- **A preference**, which is the answer if the first two do not settle it,
-  and the worst of the three: a window that behaves two ways is a window with
-  two sets of instructions in its guide.
-
-Also worth deciding here: whether the field is focused with its text selected
-(so typing replaces a seeded source text, which is usually what is wanted) or
-with the caret at the end (so typing appends). The seeded-translation
-behaviour from 4.26 argues for selected.
 
 ## 16 Languages by name, not by code
 

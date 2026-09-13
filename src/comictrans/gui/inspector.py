@@ -25,7 +25,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 
 from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QResizeEvent
+from PySide6.QtGui import QFontMetrics, QResizeEvent, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QListWidget,
-    QPlainTextEdit,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -43,6 +42,7 @@ from ..model import Color, Erase, Region
 from .color_box import ColorBox
 from .document import PlanDocument, RegionFlags
 from .font_box import FontBox
+from .prose import ProseEdit
 
 # The words in this table and in _FLAG_LABELS go through
 # ``QCoreApplication.translate`` rather than ``tr``: both are module-level and
@@ -211,6 +211,10 @@ class RegionInspector(QWidget):
     The canvas is not reachable from here; the window arranges the picking
     and writes the answer back through :meth:`set_region`."""
 
+    escaped = Signal()
+    """Escape was pressed in one of the prose fields. The window puts focus
+    back on the page, where the arrow keys nudge a region again."""
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._document: PlanDocument | None = None
@@ -224,21 +228,19 @@ class RegionInspector(QWidget):
         # that has been hand-editable since milestone 1. What apply reports
         # as "same as source" is measured against whatever is in the plan,
         # here or in the YAML.
-        self._source_text = QPlainTextEdit()
+        # ``ProseEdit`` rather than ``QPlainTextEdit``: these fields keep no
+        # undo history of their own, because the document keeps one for
+        # everything and two stacks over the same text would disagree the
+        # moment either was used. Switching the widget's history off is not
+        # enough on its own — see that module for the measurement.
+        self._source_text = ProseEdit()
         self._source_text.setMaximumHeight(100)
-        self._source_text.setUndoRedoEnabled(False)
         self._source_text.setPlaceholderText(self.tr("what the lettering on the page says"))
-        self._translation = QPlainTextEdit()
+        self._translation = ProseEdit()
         self._translation.setMaximumHeight(100)
-        self._notes = QPlainTextEdit()
+        self._notes = ProseEdit()
         self._notes.setMaximumHeight(_NOTES_HEIGHT)
         self._notes.setPlaceholderText(self.tr("never rendered; kept when re-extracting"))
-        # These fields keep no undo history of their own; the document keeps
-        # one for everything. Two stacks would disagree the moment a
-        # document-level undo put text back that the widget had never seen
-        # leave, and only one of the two is what Ctrl+Z reaches anyway.
-        for prose in (self._translation, self._notes):
-            prose.setUndoRedoEnabled(False)
         self._skip = QCheckBox(self.tr("skip: leave this region untouched"))
         self._erase = QComboBox()
         for label, mode, hint in ERASE_CHOICES:
@@ -269,6 +271,8 @@ class RegionInspector(QWidget):
         layout.addLayout(form)
         layout.addStretch(1)
 
+        for prose in (self._source_text, self._translation, self._notes):
+            prose.escaped.connect(self.escaped)
         self._source_text.textChanged.connect(self._on_source_text_changed)
         self._translation.textChanged.connect(self._on_translation_changed)
         self._notes.textChanged.connect(self._on_notes_changed)
@@ -357,6 +361,22 @@ class RegionInspector(QWidget):
         self._text_color.set_color(region.text_color)
         self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
+
+    def focus_translation(self) -> None:
+        """Put the caret in the translation, ready to type.
+
+        The caret at the end, with nothing selected. Selecting the text was
+        the other candidate — a fresh region's translation is seeded from
+        what the recogniser read and is usually about to be replaced whole —
+        and it is not what this does, because the same gesture on a
+        translation somebody has already written would put one keystroke
+        between them and losing it. Ctrl+A is one keystroke too, and it is
+        the one that says so.
+        """
+        self._translation.setFocus(Qt.FocusReason.OtherFocusReason)
+        cursor = self._translation.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self._translation.setTextCursor(cursor)
 
     def _commit(self) -> None:
         if self._document is not None and self._region_id is not None:

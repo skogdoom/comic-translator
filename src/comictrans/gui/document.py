@@ -134,6 +134,48 @@ def overlapping_region_ids(regions: Sequence[Region]) -> frozenset[str]:
     return frozenset(hit)
 
 
+def inserted(was: str, now: str) -> str:
+    """What an edit added, when it added it in one place.
+
+    The common prefix and the common suffix are what did not change, so what
+    is between them is what did. A keystroke, a pasted sentence, or the empty
+    string for an edit that only took text away — which is every edit that did
+    not make the text longer, and is where this stops rather than working out
+    what a replacement replaced.
+    """
+    if len(now) <= len(was):
+        return ""
+    head = 0
+    while head < len(was) and was[head] == now[head]:
+        head += 1
+    tail = 0
+    while tail < len(was) - head and was[len(was) - 1 - tail] == now[len(now) - 1 - tail]:
+        tail += 1
+    return now[head : len(now) - tail]
+
+
+def finished_a_word(was: object, now: object) -> bool:
+    """Whether this edit put whitespace into a piece of text.
+
+    Typing arrives a keystroke at a time and is collapsed into one undo step
+    per run — see :meth:`PlanDocument._record` — and a run used to end only
+    when the selection moved. So one Ctrl+Z in the middle of a translation
+    threw away everything typed since the field was entered, which is right
+    for a drag and much too coarse for prose.
+
+    A word is the unit. An edit that adds a space or a newline closes the
+    step it is in, so undo walks back a word at a time, and a pasted sentence
+    is one step of its own.
+
+    **A word rather than a pause**, which was the other candidate: a timer
+    makes what Ctrl+Z does depend on how fast you type, which is not
+    something anybody can predict while typing or a test can pin down.
+    """
+    if not isinstance(was, str) or not isinstance(now, str) or len(now) <= len(was):
+        return False
+    return any(character.isspace() for character in inserted(was, now))
+
+
 @dataclass(frozen=True, slots=True)
 class RegionFlags:
     """Why a region is worth a second look, as plain bools a badge can key off.
@@ -343,6 +385,8 @@ class PlanDocument:
             ),
             run=(region_id, field),
         )
+        if finished_a_word(getattr(current, field, None), getattr(updated, field, None)):
+            self._run = None
         return updated
 
     def _record(self, plan: Plan, *, run: tuple[str | None, str] | None) -> None:
