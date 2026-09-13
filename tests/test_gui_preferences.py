@@ -7,6 +7,8 @@ config of whoever runs the suite.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from comictrans.config import (
     DEFAULT_ERASE_STRATEGY,
     DEFAULT_SOURCE_LANGUAGE,
@@ -14,6 +16,7 @@ from comictrans.config import (
 )
 from comictrans.gui.preferences import (
     DEFAULTS,
+    ON,
     PREFIX,
     Preferences,
     load_preferences,
@@ -47,6 +50,7 @@ def _filled() -> Preferences:
         erase_strategy="inpaint",
         image_format="tiff",
         language="sv",
+        experimental="yes",
         last_directory="/tmp/pages",
     )
 
@@ -153,3 +157,51 @@ def test_preferences_are_frozen_so_the_shared_default_cannot_be_edited() -> None
 
     assert dataclasses.is_dataclass(Preferences)
     assert Preferences.__dataclass_params__.frozen  # type: ignore[attr-defined]
+
+
+# -- the one field that is a yes or a no ---------------------------------
+
+
+def test_experimental_features_start_off() -> None:
+    assert DEFAULTS.experimental == ""
+    assert not DEFAULTS.experimental_on
+    assert not load_preferences(FakeStore()).experimental_on
+
+
+def test_the_switch_is_on_only_for_the_word_that_means_on() -> None:
+    """A string field holding a yes or a no, and the trap that comes with it.
+
+    ``""`` is off like every other unset setting here. What matters is the
+    other direction: a settings file edited by hand is free to hold ``false``
+    or ``0``, and "any non-empty string is on" would read both as on.
+    """
+    assert replace(DEFAULTS, experimental=ON).experimental_on
+
+    # The question itself, asked of a value that never went through loading:
+    # "any non-empty string is on" would call every one of these on, and
+    # ``false`` reading as true is the exact trap this file's one-rule
+    # decision exists to avoid.
+    for written_by_hand in ("false", "0", "no", "off", "true", "YES", " "):
+        assert not replace(DEFAULTS, experimental=written_by_hand).experimental_on, written_by_hand
+
+    for written_by_hand in ("false", "0", "no", "off", "true", "YES", " "):
+        store = FakeStore({f"{PREFIX}experimental": written_by_hand})
+        loaded = load_preferences(store)
+        assert not loaded.experimental_on, written_by_hand
+        assert loaded.experimental == "", "and it is put back to off, not kept"
+
+
+def test_the_switch_survives_a_round_trip() -> None:
+    store = FakeStore()
+    save_preferences(store, replace(DEFAULTS, experimental=ON))
+
+    assert load_preferences(store).experimental_on
+
+
+def test_experimental_is_not_a_field_twice_over() -> None:
+    """The question is a property, so loading and saving never see it."""
+    from dataclasses import fields
+
+    names = [field.name for field in fields(Preferences)]
+    assert "experimental" in names
+    assert "experimental_on" not in names

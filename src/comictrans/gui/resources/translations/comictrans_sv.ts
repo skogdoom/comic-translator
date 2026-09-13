@@ -965,154 +965,159 @@
 <context>
     <name>PreferencesDialog</name>
     <message>
-        <location filename="../../preferences_dialog.py" line="50"/>
+        <location filename="../../preferences_dialog.py" line="51"/>
         <source>These fill in the Extract and Render dialogs when they open. They never change a plan you already have.</source>
         <translation>De här fyller i dialogrutorna Extrahera och Rendera när de öppnas. De ändrar aldrig en plan du redan har.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="56"/>
+        <location filename="../../preferences_dialog.py" line="57"/>
         <source>the same as this Mac</source>
         <translation>samma som datorn</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="65"/>
+        <location filename="../../preferences_dialog.py" line="66"/>
         <source>takes effect the next time this application starts</source>
         <translation>börjar gälla nästa gång programmet startar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="76"/>
+        <location filename="../../preferences_dialog.py" line="77"/>
         <source>(let extract choose)</source>
         <translation>(låt extract välja)</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="139"/>
+        <location filename="../../preferences_dialog.py" line="140"/>
         <source>Only for opening a .cbr, and only when unrar is somewhere this application cannot see. unar, bsdtar and 7z do as well. CBZ and PDF need nothing.</source>
         <translation>Bara för att öppna en .cbr, och bara när unrar finns någonstans som det här programmet inte ser. unar, bsdtar och 7z duger också. CBZ och PDF kräver ingenting.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="153"/>
+        <location filename="../../preferences_dialog.py" line="154"/>
         <source>Only for saving a .cbr. That needs rar itself, which comes with WinRAR and needs a licence; unrar cannot write. CBZ needs nothing.</source>
         <translation>Bara för att spara en .cbr. Det kräver rar självt, som följer med WinRAR och kräver en licens; unrar kan inte skriva. CBZ kräver ingenting.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="164"/>
+        <location filename="../../preferences_dialog.py" line="165"/>
         <source>Done</source>
         <translation>Klar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="199"/>
+        <location filename="../../preferences_dialog.py" line="200"/>
         <source>Preferences</source>
         <translation>Inställningar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="205"/>
+        <location filename="../../preferences_dialog.py" line="206"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="219"/>
+        <location filename="../../preferences_dialog.py" line="220"/>
         <source>beside the pages</source>
         <translation>bredvid sidorna</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="221"/>
-        <location filename="../../preferences_dialog.py" line="409"/>
+        <location filename="../../preferences_dialog.py" line="222"/>
+        <location filename="../../preferences_dialog.py" line="420"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="245"/>
-        <location filename="../../preferences_dialog.py" line="251"/>
+        <location filename="../../preferences_dialog.py" line="246"/>
+        <location filename="../../preferences_dialog.py" line="252"/>
         <source>found on PATH</source>
         <translation>hittas via PATH</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="279"/>
+        <location filename="../../preferences_dialog.py" line="263"/>
+        <source>experimental features</source>
+        <translation>experimentella funktioner</translation>
+    </message>
+    <message>
+        <location filename="../../preferences_dialog.py" line="283"/>
         <source>a new plan starts as</source>
         <translation>en ny plan börjar som</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="280"/>
+        <location filename="../../preferences_dialog.py" line="284"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="281"/>
+        <location filename="../../preferences_dialog.py" line="285"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="282"/>
+        <location filename="../../preferences_dialog.py" line="286"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="283"/>
+        <location filename="../../preferences_dialog.py" line="287"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="284"/>
+        <location filename="../../preferences_dialog.py" line="288"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="286"/>
+        <location filename="../../preferences_dialog.py" line="290"/>
         <source>chapter files</source>
         <translation>kapitelfiler</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="287"/>
+        <location filename="../../preferences_dialog.py" line="291"/>
         <source>unrar is at</source>
         <translation>unrar finns i</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="289"/>
+        <location filename="../../preferences_dialog.py" line="293"/>
         <source>rar is at</source>
         <translation>rar finns i</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="292"/>
+        <location filename="../../preferences_dialog.py" line="296"/>
         <source>rendering pages</source>
         <translation>rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="293"/>
+        <location filename="../../preferences_dialog.py" line="297"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="294"/>
+        <location filename="../../preferences_dialog.py" line="298"/>
         <source>erase</source>
         <translation>radera</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="295"/>
+        <location filename="../../preferences_dialog.py" line="299"/>
         <source>format</source>
         <translation>format</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="297"/>
+        <location filename="../../preferences_dialog.py" line="301"/>
         <source>this window</source>
         <translation>det här fönstret</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="298"/>
+        <location filename="../../preferences_dialog.py" line="302"/>
         <source>language</source>
         <translation>språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="421"/>
+        <location filename="../../preferences_dialog.py" line="432"/>
         <source>Where unrar Is</source>
         <translation>Var unrar Finns</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="424"/>
+        <location filename="../../preferences_dialog.py" line="435"/>
         <source>Where rar Is</source>
         <translation>Var rar Finns</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="453"/>
+        <location filename="../../preferences_dialog.py" line="464"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>

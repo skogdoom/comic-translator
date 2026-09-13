@@ -87,7 +87,7 @@ from comictrans.gui.main_window import (
     MainWindow,
 )
 from comictrans.gui.note import Note
-from comictrans.gui.preferences import Preferences
+from comictrans.gui.preferences import ON, Preferences
 from comictrans.gui.preferences_dialog import (
     FONT_DEFAULT,
     MINIMUM_HEIGHT,
@@ -4747,6 +4747,37 @@ def test_where_unrar_is_can_be_said_here_and_is_said_nowhere_else(qapp: object) 
     dialog._unrar_tool.setText("  /opt/homebrew/bin/unrar  ")
 
     assert dialog.preferences().unrar_tool == "/opt/homebrew/bin/unrar"
+
+
+def test_experimental_features_is_off_and_writes_through(qapp: object) -> None:
+    """A flag with nothing behind it yet — see ``Preferences.experimental``."""
+    dialog = PreferencesDialog(Preferences(), None)
+    seen: list[Preferences] = []
+    dialog.changed.connect(lambda: seen.append(dialog.preferences()))
+
+    assert not dialog._experimental.isChecked(), "off until somebody says otherwise"
+    assert dialog.preferences().experimental == ""
+
+    dialog._experimental.setChecked(True)
+
+    assert seen and seen[-1].experimental_on
+    assert seen[-1].experimental == ON, "one of two words, not a bool"
+
+    dialog._experimental.setChecked(False)
+
+    assert not seen[-1].experimental_on
+    assert seen[-1].experimental == ""
+
+
+def test_the_dialog_shows_a_switch_that_was_already_on(qapp: object) -> None:
+    dialog = PreferencesDialog(Preferences(experimental=ON), None)
+
+    assert dialog._experimental.isChecked()
+
+    dialog.repopulate(Preferences())
+
+    assert not dialog._experimental.isChecked()
+    assert dialog.preferences().experimental == "", "and showing it is not an edit"
 
 
 def test_an_unset_font_is_not_called_the_plan_default_here(qapp: object) -> None:

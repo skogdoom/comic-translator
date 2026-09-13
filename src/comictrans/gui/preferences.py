@@ -12,8 +12,8 @@ That rule is why nothing here reaches an open document. Every field either
 seeds a new plan's header (the extract dialog's), picks a run-wide setting
 that is not part of a plan at all (the render dialog's erase strategy and
 output format, both of which a region's own ``erase`` still beats), or is
-about this window rather than any comic — which is only ``language``. None of
-them is written into a plan that already exists.
+about this application rather than any comic — ``language``, and
+``experimental``. None of them is written into a plan that already exists.
 
 No Qt. ``QSettings`` satisfies :class:`SettingsStore` structurally, so this
 module is tested against a dictionary and the window hands it the real thing.
@@ -24,6 +24,14 @@ the source language for OCR, the source image's own format, whatever font
 ``extract`` finds for itself. That keeps one rule instead of a scattering of
 sentinels, and it round-trips through an INI file without the type guessing
 that makes ``QSettings`` booleans a trap.
+
+**A checkbox is stored under that rule too, not as a boolean.**
+``experimental`` is ``""`` or ``"yes"``, and everything else a hand-edited
+file might hold — ``false``, ``0``, ``no``, ``off`` — is not "on", so it
+reads as off rather than as a non-empty string that happens to be truthy.
+That is the trap the one-rule decision exists to avoid, and it only stays
+avoided if the on-state is a named value rather than "anything at all".
+:attr:`Preferences.experimental_on` is the question to ask.
 """
 
 from __future__ import annotations
@@ -50,6 +58,14 @@ than reaching ``get_recognizer`` as nonsense."""
 
 FORMATS = ("", "png", "jpeg", "tiff")
 """``""`` is apply's own default: match the source, except JPEG becomes PNG."""
+
+ON = "yes"
+"""What a ticked checkbox is stored as. Off is ``""``, like every other
+setting whose absence means "behave as though nobody said"."""
+
+SWITCHES = ("", ON)
+"""Everything a checkbox may be. See the module docstring on why a stored
+``false`` must not read as on."""
 
 
 class SettingsStore(Protocol):
@@ -111,7 +127,16 @@ class Preferences:
     erase_strategy: str = DEFAULT_ERASE_STRATEGY
     image_format: str = ""
 
-    # -- the window itself ---------------------------------------------
+    # -- the application itself ----------------------------------------
+    experimental: str = ""
+    """Whether unfinished work is switched on. ``ON`` or empty, and empty is
+    what a fresh installation gets.
+
+    **Nothing reads it yet**, which is deliberate rather than an oversight: it
+    is here so that the first thing that needs it has a flag to hang off and a
+    settled place in the window, instead of one being added in a hurry
+    alongside the feature it gates. Ask :attr:`experimental_on`."""
+
     language: str = ""
     """The interface language, empty for whatever this machine asks for.
 
@@ -126,6 +151,16 @@ class Preferences:
     """Remembered, not chosen: it is where you last opened or read from, so
     it is kept here but never shown in the preferences dialog. Nobody wants
     to type a last directory."""
+
+    @property
+    def experimental_on(self) -> bool:
+        """Whether unfinished work is switched on, as a yes or a no.
+
+        A property rather than a stored field, so it is not a preference in
+        its own right: ``fields()`` does not see it, which is what keeps
+        loading, saving and the round-trip test working off one list.
+        """
+        return self.experimental == ON
 
 
 DEFAULTS = Preferences()
@@ -163,6 +198,8 @@ def _validated(preferences: Preferences) -> Preferences:
         changes["erase_strategy"] = DEFAULTS.erase_strategy
     if preferences.image_format not in FORMATS:
         changes["image_format"] = DEFAULTS.image_format
+    if preferences.experimental not in SWITCHES:
+        changes["experimental"] = DEFAULTS.experimental
     return replace(preferences, **changes) if changes else preferences
 
 
@@ -178,7 +215,9 @@ __all__ = [
     "DEFAULTS",
     "ENGINES",
     "FORMATS",
+    "ON",
     "PREFIX",
+    "SWITCHES",
     "Preferences",
     "SettingsStore",
     "load_preferences",

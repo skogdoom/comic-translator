@@ -141,6 +141,11 @@ for themselves. See **Build the application** in `README.md`.
   so the window is capped at the display however long the text runs in
   whatever language.
 
+- **Preferences has an "experimental features" switch**, off, with nothing
+  behind it. It is there so the first piece of unfinished work has a flag to
+  hang off and a settled place in the window rather than one being added in a
+  hurry beside the feature it gates.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings
