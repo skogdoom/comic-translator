@@ -158,13 +158,6 @@ RAR_NOTE = QCoreApplication.translate(
 )
 """Why the field above it is not the same field. See ``Preferences``."""
 
-EXPERIMENTAL_NOTE = QCoreApplication.translate("PreferencesDialog", "Nothing uses this yet.")
-"""Said because a switch that does nothing reads as a broken one.
-
-It is here ahead of the first thing that needs it — see ``Preferences`` —
-and this line is what stops somebody ticking it, seeing no change, and
-filing that as a bug. It goes when something is behind it."""
-
 MINIMUM_HEIGHT = 240
 """A floor under the cap, so a screen reporting something absurd leaves a
 window you can still use rather than a title bar and a button."""
@@ -269,7 +262,6 @@ class PreferencesDialog(QDialog):
 
         self._experimental = QCheckBox(self.tr("experimental features"))
         self._experimental.setChecked(preferences.experimental_on)
-        self._experimental_note = Note(EXPERIMENTAL_NOTE)
 
         heading = QLabel(WHAT_IT_IS)
         heading.setWordWrap(True)
@@ -310,7 +302,6 @@ class PreferencesDialog(QDialog):
         form.addRow(self.tr("language"), self._language)
         form.addRow(self._language_note)
         form.addRow("", self._experimental)
-        form.addRow(self._experimental_note)
 
         # "Done", not "Close". Every field here has written itself through
         # by the time this is pressed, so there is nothing being closed

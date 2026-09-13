@@ -144,8 +144,7 @@ for themselves. See **Build the application** in `README.md`.
 - **Preferences has an "experimental features" switch**, off, with nothing
   behind it. It is there so the first piece of unfinished work has a flag to
   hang off and a settled place in the window rather than one being added in a
-  hurry beside the feature it gates. The note under it says nothing uses it
-  yet, which is what stops a switch that does nothing reading as a broken one.
+  hurry beside the feature it gates.
 
 ### Known limitations
 

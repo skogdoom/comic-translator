@@ -1977,7 +1977,7 @@ one the whole window and the other half of it. Spanning the form, every note
 gets the same width and they wrap alike.
 
 **A window whose height depends on its text is capped at the screen.**
-Preferences has twelve settings and a note under four of them, and how tall
+Preferences has twelve settings and a note under three of them, and how tall
 that honestly is depends on the system font and the language — neither of
 which can be known while writing it, and one short display is all it takes
 for `Done` to end up under the Dock. So the form sits in a `QScrollArea`

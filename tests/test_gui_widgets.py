@@ -4751,15 +4751,12 @@ def test_where_unrar_is_can_be_said_here_and_is_said_nowhere_else(qapp: object) 
 
 def test_experimental_features_is_off_and_writes_through(qapp: object) -> None:
     """A flag with nothing behind it yet — see ``Preferences.experimental``."""
-    from comictrans.gui.preferences_dialog import EXPERIMENTAL_NOTE
-
     dialog = PreferencesDialog(Preferences(), None)
     seen: list[Preferences] = []
     dialog.changed.connect(lambda: seen.append(dialog.preferences()))
 
     assert not dialog._experimental.isChecked(), "off until somebody says otherwise"
     assert dialog.preferences().experimental == ""
-    assert EXPERIMENTAL_NOTE, "a switch that does nothing has to say so"
 
     dialog._experimental.setChecked(True)
 
