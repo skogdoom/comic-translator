@@ -635,6 +635,24 @@ source name after the index is not decoration; it is what lets somebody match
 an entry back to the page it came from, and what stops two pages called
 `01.png` from different folders colliding.
 
+**The two writers name an entry very differently, and that is where CBR
+output was broken for a milestone.** `ZipFile.write(source, arcname)` takes
+the file and the name it goes in under as two arguments, so the zip half
+names entries for free. `rar a` has no equivalent — it adds a file under the
+name it already has — so `_pack_rar` stages the pages into a directory of
+their own under their entry names, hard-linked where the filesystem allows it
+and copied where it does not, and runs the compressor there. Before that it
+handed `rar` the entry names as the files to add, which named files that were
+not on disk, and every `.cbr` ever asked for failed.
+
+It survived a milestone because the tests stubbed the compressor with
+something that recorded its arguments and never opened a file it was told to
+add — a stub more forgiving than the thing it stood in for. The stub in
+`tests/test_pack.py` now reads what it is handed and exits non-zero when a
+name is missing, which is the property that would have caught it, and an
+end-to-end test opens the archive rather than inspecting the command and
+believing it.
+
 **A cancelled run leaves no archive at all**, which is a different promise
 from the directory case and had to be chosen rather than fallen into. Cancel
 a render into a directory and the pages already written are whole pages, each

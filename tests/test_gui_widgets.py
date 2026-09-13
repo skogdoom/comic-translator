@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import zipfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
@@ -4305,8 +4306,6 @@ def test_the_choose_button_opens_a_save_panel_for_a_chapter_file(
 def test_rendering_into_a_cbz_from_the_window_writes_one_file(
     qapp: object, two_page_plan: Path, font_dir: Path
 ) -> None:
-    import zipfile
-
     window = MainWindow()
     window.open_plan(two_page_plan)
     dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
@@ -4332,7 +4331,21 @@ def test_the_compressor_the_dialog_was_given_is_the_one_the_run_uses(
     the path the setting travels, not the archive that comes out.
     """
     stub = tmp_path / "rar"
-    stub.write_text(f'#!/bin/sh\necho used > "{tmp_path}/ran.txt"\nshift 3\ntouch "$1"\n')
+    # It reads what it is handed rather than touching the archive and
+    # claiming success. A stub that never opens its inputs is how CBR output
+    # shipped broken for a whole milestone — see tests/test_pack.py.
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys, zipfile\n"
+        "archive, names = sys.argv[4], sys.argv[5:]\n"
+        "missing = [n for n in names if not os.path.exists(n)]\n"
+        "if missing:\n"
+        "    print('cannot find: ' + ', '.join(missing), file=sys.stderr)\n"
+        "    sys.exit(10)\n"
+        "with zipfile.ZipFile(archive, 'a') as z:\n"
+        "    for n in names:\n"
+        "        z.write(n, n)\n"
+    )
     stub.chmod(0o755)
     window = MainWindow()
     window.open_plan(two_page_plan)
@@ -4346,8 +4359,9 @@ def test_the_compressor_the_dialog_was_given_is_the_one_the_run_uses(
 
     _run_render(window, request)
 
-    assert (tmp_path / "ran.txt").exists(), "the preference reached the compressor"
-    assert request.output.is_file()
+    assert request.output.is_file(), "the preference reached the compressor"
+    with zipfile.ZipFile(request.output) as packed:
+        assert packed.namelist() == ["001-page-001.png", "002-page-002.png"]
 
 
 def test_a_cancelled_chapter_run_says_nothing_was_written_rather_than_none(
