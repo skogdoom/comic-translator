@@ -4951,7 +4951,7 @@ def _read_region(
         "get_recognizer",
         reader if callable(reader) and not isinstance(reader, _Reads) else lambda config: reader,
     )
-    window._on_read_text()
+    window._on_extract_text()
     job = window._read_job
     assert job is not None, "the command did not start a reading"
     assert job.wait(60_000), "the worker thread did not finish"
@@ -4976,6 +4976,66 @@ def test_reading_a_region_puts_what_the_page_says_into_the_source_text(
     assert shown == [], "nothing to lose, so nothing to ask"
     assert window.document.region("page-001-002").source_text == "NON CI POSSO CREDERE"  # type: ignore[union-attr]
     assert window._inspector._source_text.toPlainText() == "NON CI POSSO CREDERE"
+
+
+def test_a_region_with_nothing_in_it_yet_gets_the_translation_too(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What extract does for every region it reads, for the one just drawn.
+
+    The text is then edited into the target language in place rather than
+    retyped, and the region stops being flagged as held back.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-002")
+    window.document.set_source_text("page-001-002", "")  # type: ignore[union-attr]
+    assert window.document.region("page-001-002").translation == ""  # type: ignore[union-attr]
+    _catch_alerts(monkeypatch)
+
+    _read_region(window, _Reads("NON CI POSSO CREDERE"), monkeypatch)
+
+    region = window.document.region("page-001-002")  # type: ignore[union-attr]
+    assert region.source_text == "NON CI POSSO CREDERE"
+    assert region.translation == "NON CI POSSO CREDERE"
+    assert window._inspector._translation.toPlainText() == "NON CI POSSO CREDERE"
+    assert window.document.undo()  # type: ignore[union-attr]
+    assert window.document.region("page-001-002").translation == "", "one edit, one undo"  # type: ignore[union-attr]
+
+
+def test_a_translation_somebody_cleared_is_not_seeded_over(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blanking a translation is how you say leave this balloon alone."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    window.document.set_translation("page-001-001", "")  # type: ignore[union-attr]
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Ok)
+
+    _read_region(window, _Reads("WHAT THE PAGE SAYS"), monkeypatch)
+
+    region = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert region.source_text == "WHAT THE PAGE SAYS"
+    assert region.translation == "", "the decision stands"
+
+
+def test_a_reading_that_is_not_language_does_not_seed_a_translation(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Extract's own rule: a region whose reading is an artefact is kept and
+    not seeded, because seeding makes it something apply will letter."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-002")
+    window.document.set_source_text("page-001-002", "")  # type: ignore[union-attr]
+    _catch_alerts(monkeypatch)
+
+    _read_region(window, _Reads("(6 ~"), monkeypatch)
+
+    region = window.document.region("page-001-002")  # type: ignore[union-attr]
+    assert region.source_text == "(6 ~"
+    assert region.translation == ""
 
 
 def test_the_recogniser_is_given_the_region_and_not_the_page(
@@ -5009,8 +5069,11 @@ def test_reading_asks_before_writing_over_text_that_is_already_there(
 
     assert len(shown) == 1
     assert "page-001-001" in shown[0].text()
-    assert "CIAO" in shown[0].informativeText()
-    assert "SOMETHING ELSE" in shown[0].informativeText()
+    detail = shown[0].informativeText()
+    assert "Ctrl+Z" in detail
+    assert "CIAO" not in detail and "SOMETHING ELSE" not in detail, (
+        "a balloon's worth of lettering is a paragraph, and two of them are two"
+    )
     assert window.document.region("page-001-001").source_text == "CIAO", "cancelled"  # type: ignore[union-attr]
 
 
@@ -5065,7 +5128,7 @@ def test_a_region_that_says_nothing_says_so_and_changes_nothing(
     _read_region(window, _Reads(""), monkeypatch)
 
     assert len(shown) == 1
-    assert "Nothing was read" in shown[0].text()
+    assert "No text was found" in shown[0].text()
     assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
     assert not window.document.can_undo  # type: ignore[union-attr]
 
@@ -5083,7 +5146,9 @@ def test_a_reading_that_says_what_is_already_there_is_not_an_edit(
 
     assert shown == []
     assert not window.document.can_undo  # type: ignore[union-attr]
-    assert "already says" in window.statusBar().currentMessage()
+    assert "nothing changed" in window.statusBar().currentMessage(), (
+        "a command that did nothing has to say so somewhere"
+    )
 
 
 def test_an_answer_about_a_region_that_has_gone_is_dropped(
@@ -5151,18 +5216,18 @@ def test_a_reading_with_no_recogniser_to_do_it_says_so(
     assert "could not be read" in shown[0].text()
     assert "no recogniser on this machine" in shown[0].informativeText()
     assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
-    assert window._read_text_action.isEnabled(), "and the command is offered again"
+    assert window._extract_text_action.isEnabled(), "and the command is offered again"
 
 
 def test_reading_waits_for_a_region_to_be_chosen(qapp: object, two_page_plan: Path) -> None:
     window = MainWindow()
-    assert not window._read_text_action.isEnabled(), "nothing open"
+    assert not window._extract_text_action.isEnabled(), "nothing open"
 
     window.open_plan(two_page_plan)
     window._pages.select_image("page-001.png")
     window._current_region = None
     window._update_actions_enabled()
-    assert not window._read_text_action.isEnabled(), "a page, but no region on it chosen"
+    assert not window._extract_text_action.isEnabled(), "a page, but no region on it chosen"
 
     window._go_to_region("page-001-001")
-    assert window._read_text_action.isEnabled()
+    assert window._extract_text_action.isEnabled()

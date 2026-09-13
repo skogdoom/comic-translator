@@ -51,6 +51,7 @@ from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
+from ..ocr.grouping import looks_like_text
 from ..sources import is_container
 from . import about, alerts, help_dialog, icons, recent, translations
 from .about_dialog import AboutDialog
@@ -101,7 +102,7 @@ log = logging.getLogger(__name__)
 PREVIEW_WORKING = QCoreApplication.translate("MainWindow", "rendering preview…")
 """Shown while the render blocks the window, and replaced by its result."""
 
-READING_TEXT = QCoreApplication.translate("MainWindow", "reading the page…")
+EXTRACTING_TEXT = QCoreApplication.translate("MainWindow", "extracting the text of {0}…")
 """Shown while a recogniser reads one region, and replaced by its result."""
 
 PREVIEW_TEXT = QCoreApplication.translate("MainWindow", "&Render Preview")
@@ -413,15 +414,18 @@ class MainWindow(QMainWindow):
         self._merge_action.toggled.connect(self._on_merge_toggled)
         edit_menu.addAction(self._merge_action)
 
-        # The ellipsis, because this one stops to ask whenever there is text
-        # in the region to lose — which is most of the time, since the usual
-        # reason to reach for it is lettering extract read badly.
-        self._read_text_action = QAction(self.tr("&Read Text from the Page…"), self)
+        # Named for what it does to one region, not for what it reads: this
+        # is the extract pass over the selected outline, and "from the page"
+        # read as though it might do the page. The ellipsis, because it stops
+        # to ask whenever there is text in the region to lose — which is most
+        # of the time, since the usual reason to reach for it is lettering
+        # extract read badly.
+        self._extract_text_action = QAction(self.tr("&Extract Text from Region…"), self)
         # T for text. Cmd+Shift+R is Render Pages and Cmd+R the preview;
-        # this is neither, and reading one balloon is not a run.
-        self._read_text_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
-        self._read_text_action.triggered.connect(self._on_read_text)
-        edit_menu.addAction(self._read_text_action)
+        # this is neither, and one balloon is not a run.
+        self._extract_text_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
+        self._extract_text_action.triggered.connect(self._on_extract_text)
+        edit_menu.addAction(self._extract_text_action)
 
         # No confirmation: undo is the safety net every other edit here gets,
         # and a dialog on every delete would be one to click through rather
@@ -767,7 +771,7 @@ class MainWindow(QMainWindow):
         # the same way sampling a colour does, and it waits for the reading
         # already going: two at once would be asking the same question twice
         # and racing to answer it.
-        self._read_text_action.setEnabled(
+        self._extract_text_action.setEnabled(
             has_image and self._current_region is not None and self._read_job is None
         )
         self._edit_shape_action.setEnabled(can_edit_shapes)
@@ -1181,7 +1185,7 @@ class MainWindow(QMainWindow):
 
     # -- reading one region ----------------------------------------------
 
-    def _on_read_text(self) -> None:
+    def _on_extract_text(self) -> None:
         """Ask the recogniser what the current region says. Returns at once.
 
         The same reading ``extract`` would have written, for a region drawn
@@ -1208,7 +1212,7 @@ class MainWindow(QMainWindow):
         self._read_job = job
         self._reading = request
         self._update_actions_enabled()
-        self.statusBar().showMessage(READING_TEXT)
+        self.statusBar().showMessage(EXTRACTING_TEXT.format(region.id))
         self._busy.set_busy(True)
         job.start()
 
@@ -1240,7 +1244,7 @@ class MainWindow(QMainWindow):
         self._reading = None
         self.statusBar().clearMessage()
         self._busy.set_busy(False)
-        alerts.report(self, self.tr("The page could not be read."), message)
+        alerts.report(self, self.tr("The region could not be read."), message)
 
     def _on_region_text_ready(self, text: object) -> None:
         """What the recogniser read, back on this thread.
@@ -1263,7 +1267,7 @@ class MainWindow(QMainWindow):
         if not reading:
             alerts.note(
                 self,
-                self.tr("Nothing was read in {0}.").format(region.id),
+                self.tr("No text was found in {0}.").format(region.id),
                 self.tr(
                     "The recogniser found no text inside this outline. Check that the "
                     "outline covers the lettering, and that the plan's source language "
@@ -1273,39 +1277,59 @@ class MainWindow(QMainWindow):
             return
         if reading == region.source_text:
             self.statusBar().showMessage(
-                self.tr("{0} already says what the page says").format(region.id), 5000
+                self.tr("{0} reads the same as the text already there — nothing changed").format(
+                    region.id
+                ),
+                8000,
             )
             return
-        if region.source_text.strip() and not self._may_replace(region, reading):
+        if region.source_text.strip() and not self._may_replace(region):
             return
+        # A region with neither a reading nor a translation is a region
+        # nothing has been decided about — one just drawn — and extract seeds
+        # both for every region it reads, so that the text is edited into the
+        # target language in place rather than retyped. A blank translation
+        # beside source text that is not blank is the other thing entirely: a
+        # reviewer saying leave this balloon alone.
+        fresh = not region.source_text.strip() and not region.translation.strip()
+        seed = fresh and looks_like_text(reading)
         # Its own undo step, not swallowed by whatever was being typed before
         # it: this is one command, and the run it would otherwise join is
         # somebody's keystrokes in the same field.
         self.document.end_edit_run()
-        self.document.set_source_text(region.id, reading)
+        self.document.set_source_text(region.id, reading, seed_translation=seed)
         self.document.end_edit_run()
         if self._current_region == region.id:
             self._inspector.set_region(self.document, region.id)
         self._refresh_page_visuals()
         self._update_actions_enabled()
         self.statusBar().showMessage(
-            self.tr("read {0} — Ctrl+Z puts the old text back").format(region.id), 5000
+            (
+                self.tr("extracted {0} into the source text and the translation — Ctrl+Z undoes it")
+                if seed
+                else self.tr("extracted {0} — Ctrl+Z puts the old text back")
+            ).format(region.id),
+            8000,
         )
 
-    def _may_replace(self, region: Region, reading: str) -> bool:
+    def _may_replace(self, region: Region) -> bool:
         """Ask before writing over text that is already there.
 
         Nothing else in this window replaces the reviewer's own words with
         anything but the reviewer's own words, and nothing in a plan file
         says whether a region's source text was read off the page or typed
-        in by hand — so the question is put whenever there is text to lose,
-        with both readings in it to answer from.
+        in by hand — so the question is put whenever there is text to lose.
+
+        Neither text is in the question. A balloon's worth of lettering is a
+        paragraph, two of them are two, and a dialog that grows with what it
+        is about is one nobody reads to the end of. What it needs to say is
+        that something will be replaced and that it can be taken back.
         """
         answer = alerts.ask(
             self,
             self.tr("Replace the source text of {0}?").format(region.id),
-            self.tr("It says now:\n{0}\n\nThe page reads:\n{1}").format(
-                region.source_text, reading
+            self.tr(
+                "What is there now is replaced by what the recogniser reads. Ctrl+Z puts it back."
             ),
             alerts.Button.Ok | alerts.Button.Cancel,
             alerts.Button.Ok,

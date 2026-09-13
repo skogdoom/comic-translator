@@ -34,7 +34,7 @@
 <context>
     <name>MainWindow</name>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="974"/>
+        <location filename="../../main_window.py" line="982"/>
         <source>{0}: %n region(s), {1} flagged</source>
         <translation>
             <numerusform>{0}: %n region, {1} flagged</numerusform>
@@ -42,7 +42,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1637"/>
+        <location filename="../../main_window.py" line="1666"/>
         <source>preview: %n problem(s) — {0}</source>
         <translation>
             <numerusform>preview: %n problem — {0}</numerusform>
@@ -50,7 +50,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1669"/>
+        <location filename="../../main_window.py" line="1698"/>
         <source>rendering %n page(s) — {0}</source>
         <translation>
             <numerusform>rendering %n page — {0}</numerusform>
@@ -58,8 +58,8 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1696"/>
-        <location filename="../../main_window.py" line="1708"/>
+        <location filename="../../main_window.py" line="1725"/>
+        <location filename="../../main_window.py" line="1737"/>
         <source>reading %n page(s) — {0}</source>
         <translation>
             <numerusform>reading %n page — {0}</numerusform>
@@ -67,7 +67,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1756"/>
+        <location filename="../../main_window.py" line="1785"/>
         <source>cancelled after %n page(s) to {0}</source>
         <translation>
             <numerusform>cancelled after %n page to {0}</numerusform>
@@ -75,7 +75,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1758"/>
+        <location filename="../../main_window.py" line="1787"/>
         <source>rendered %n page(s) to {0}</source>
         <translation>
             <numerusform>rendered %n page to {0}</numerusform>
@@ -83,7 +83,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1763"/>
+        <location filename="../../main_window.py" line="1792"/>
         <source>{0} — %n to check</source>
         <translation>
             <numerusform>{0} — %n to check</numerusform>
@@ -91,7 +91,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1783"/>
+        <location filename="../../main_window.py" line="1812"/>
         <source>cancelled after %n page(s)</source>
         <translation>
             <numerusform>cancelled after %n page</numerusform>
@@ -99,7 +99,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1841"/>
+        <location filename="../../main_window.py" line="1870"/>
         <source>%n font family/families available</source>
         <translation>
             <numerusform>%n font family available</numerusform>

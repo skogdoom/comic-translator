@@ -47,8 +47,8 @@ here and in use: `extract` writes a plan file, `apply` renders translated
 pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
 reason is in the first paragraph. `validate` checks a plan without rendering
-it, for the moment before a long run, and the window can ask the recogniser
-to read one balloon over again.
+it, for the moment before a long run, and the window can put the recogniser
+back over one balloon.
 
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
@@ -452,12 +452,12 @@ because checking it is exactly what you have just done.
 detection missed entirely. Click to place each corner; click the first corner
 again, double-click, or press Enter to close the outline; Backspace takes a
 corner back and `Esc` abandons it. A region drawn here has no OCR reading:
-type its **source text** in along with the translation, or use **Read Text
-from the Page** below to have the recogniser read it. Until there is text, the
+type its **source text** in along with the translation, or use **Extract Text
+from Region** below to have the recogniser read it. Until there is text, the
 region is flagged as held back. It records `geometry: manual` and
 `confidence: 1.0` — there is no recogniser's score to report.
 
-**Edit > Read Text from the Page…** (`Ctrl+Shift+T`) runs the recogniser over
+**Edit > Extract Text from Region…** (`Ctrl+Shift+T`) runs the recogniser over
 the selected region and puts what it reads into the **source text** — for a
 region you drew, which has none, and for one whose lettering `extract` read
 badly. It reads that region rather than the page: a crop of the outline with
@@ -469,13 +469,20 @@ agreed 27, better than half of them word for word — and anything the margin
 lets in from the balloon next door is dropped, because a line belongs to the
 outline its middle falls inside.
 
-It asks before writing over text that is already there, showing both
-readings, since nothing in a plan file says whether that text was read off the
-page or typed in by hand. It is one undo step like any other edit, it runs in
-the background with the window still usable, and a reading that comes back
-empty changes nothing and says so. Only the source text is written: the
-region's `confidence` is what detection scored it, and reading one balloon is
-not detection.
+A region with neither a reading nor a translation — one you have just drawn —
+gets both, which is what `extract` does for every region it reads: the text is
+then edited into the target language in place rather than retyped. A region
+that already has text keeps its translation, and is asked about before its
+source text is replaced, since nothing in a plan file says whether that text
+was read off the page or typed in by hand. The question does not quote either
+text: a balloon's worth of lettering is a paragraph.
+
+It is one undo step like any other edit, it runs in the background with the
+window still usable, a reading that comes back empty changes nothing and says
+so, and a reading that matches the text already there says that too rather
+than appearing to do nothing. Only the text is written: the region's
+`confidence` is what detection scored it, and reading one balloon is not
+detection.
 
 Its **fill colour** and **text colour** are measured from the page inside the
 outline you drew, the same way `extract` measures a detected region's, and it

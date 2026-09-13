@@ -1611,9 +1611,20 @@ that region has gone.
 else in the window does: every other edit replaces the reviewer's words with
 the reviewer's words. Nothing in a plan file says whether a region's source
 text was read off the page or typed in by hand, so the question is put
-whenever there is text to lose, with both readings in it. Only `source_text`
-is written — `confidence` is what detection scored the region, and reading
-one balloon is not detection.
+whenever there is text to lose. Neither text is in the question: a balloon's
+worth of lettering is a paragraph, and a dialog that grows with what it is
+about is one nobody reads to the end of.
+
+**A region with neither a reading nor a translation gets both**, which is
+what `extract` does for every region it reads — the text is edited into the
+target language in place rather than retyped — and it is one edit, so one
+undo. The two conditions together are what makes it safe: source text with a
+blank translation beside it is a reviewer saying leave this balloon alone,
+and seeding over that would take the decision back. A reading that does not
+look like language seeds nothing, which is extract's rule for the same
+reason: a seeded artefact is one `apply` will letter onto the artwork.
+`confidence` is never written — it is what detection scored the region, and
+reading one balloon is not detection.
 
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what

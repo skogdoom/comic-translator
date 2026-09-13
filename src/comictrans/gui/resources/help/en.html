@@ -151,11 +151,12 @@ modified marker tracks what is on disk, so undoing back to your last save
 clears it. <b>Revert to Saved</b> re-reads the file and throws away what is
 unsaved.</p>
 
-<p><b>Read Text from the Page</b> asks the recogniser what one region says and
+<p><b>Extract Text from Region</b> asks the recogniser what one region says and
 puts it in the source text &mdash; for a region you drew, which has no reading
 of its own, and for one the first pass read badly. It reads that balloon
-rather than the page, so it takes a moment rather than a minute, and it asks
-before writing over text that is already there. Like every other edit, one
+rather than the page, so it takes a moment rather than a minute. A region with
+nothing in it yet gets the translation as well, the way a whole extract does;
+one that already has text is asked about first. Like every other edit, one
 <b>Ctrl+Z</b> puts back what it replaced.</p>
 
 <p><b>Extract Pages</b> runs detection and recognition over a folder of pages

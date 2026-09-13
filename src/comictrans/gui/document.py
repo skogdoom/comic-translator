@@ -448,7 +448,9 @@ class PlanDocument:
         """
         return self._update(region_id, polygon=validated_polygon(polygon), geometry=Geometry.MANUAL)
 
-    def set_source_text(self, region_id: str, source_text: str) -> Region:
+    def set_source_text(
+        self, region_id: str, source_text: str, *, seed_translation: bool = False
+    ) -> Region:
         """The text as it stands on the page.
 
         For a detected region this is what OCR read; for a hand-drawn one
@@ -456,7 +458,18 @@ class PlanDocument:
         way it is what ``apply`` measures "same as source" against, and the
         plan file has been hand-editable since milestone 1 — the inspector
         offering the same field is not a new licence, just a nearer one.
+
+        ``seed_translation`` puts the same text in the translation, which is
+        what ``extract`` does for every region it reads: the text is then
+        edited into the target language in place rather than retyped. One
+        edit and one undo step, not two — they are one act.
+
+        Only ever asked for by a caller that has looked at what is there.
+        Blanking a translation is how a reviewer says "leave this balloon
+        alone", and seeding over that would take the decision back.
         """
+        if seed_translation:
+            return self._update(region_id, source_text=source_text, translation=source_text)
         return self._update(region_id, source_text=source_text)
 
     def set_fill_color(self, region_id: str, color: Color) -> Region:

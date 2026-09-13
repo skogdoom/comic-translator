@@ -86,16 +86,18 @@ for themselves. See **Build the application** in `README.md`.
   decide rather than its name: a CBR that is really a zip, or a CBZ that is
   really a RAR, is read as what it is.
 
-- **The window can read one balloon off the page.** **Edit > Read Text from
-  the Page…** runs the recogniser over the selected region and puts what it
+- **The window can read one balloon off the page.** **Edit > Extract Text
+  from Region…** runs the recogniser over the selected region and puts what it
   reads into the source text — for a region you drew by hand, which has no
   reading, and for one whose lettering the first pass read badly. It reads
   that region rather than the whole page: a crop of the outline with a margin
   round it, measured to be worth having (a crop cut to the outline agreed with
   a full-page reading 10 times out of 31; the same crops with a margin, 27),
   with anything the margin lets in from the next balloon dropped. It runs
-  in the background like the other two passes, asks before writing over text
-  that is already there, and is one undo step.
+  in the background like the other two passes and is one undo step. A region
+  with neither a reading nor a translation — one you have just drawn — gets
+  both, the way a whole extract seeds them; one that already has text is asked
+  about first.
 
 ### Known limitations
 
