@@ -4,7 +4,13 @@ import cv2
 import numpy as np
 
 from comictrans.config import DetectConfig
-from comictrans.detect import _build, _merge_overlapping, find_regions, reading_order
+from comictrans.detect import (
+    _build,
+    _merge_overlapping,
+    find_regions,
+    lines_inside,
+    reading_order,
+)
 from comictrans.detect.color import glyph_mask, polygon_mask
 from comictrans.detect.contour import build_candidates, enclosing_candidate
 from comictrans.detect.fallback import approximate_polygon, cluster_lines
@@ -570,3 +576,35 @@ def test_growing_a_polygon_keeps_it_simple_and_does_not_hull_it(
     array, boxes = balloon_page
     regions = find_regions(_page(array), lines_for(boxes, ["ONE", "TWO"]), CFG)
     assert polygon_is_simple(regions[0].polygon)
+
+
+# -- which lines a polygon speaks for ------------------------------------
+
+_SQUARE = ((100, 100), (200, 100), (200, 200), (100, 200))
+
+
+def test_a_line_is_inside_when_its_centre_is() -> None:
+    """Looser than covering it: lettering grazing an outline still counts."""
+    middle = OcrLine(text="IN", box=Box(120, 120, 180, 150), confidence=0.9)
+    grazing = OcrLine(text="EDGE", box=Box(90, 140, 210, 170), confidence=0.9)
+    away = OcrLine(text="OUT", box=Box(300, 300, 340, 320), confidence=0.9)
+
+    kept = lines_inside(_SQUARE, [middle, grazing, away])
+
+    assert [line.text for line in kept] == ["IN", "EDGE"]
+
+
+def test_lines_read_from_a_crop_are_placed_by_where_the_crop_starts() -> None:
+    """A crop's lines start at its own corner; the polygon is on the page."""
+    # The same line, in the coordinates of a crop that began at (90, 90).
+    line = OcrLine(text="IN", box=Box(30, 30, 90, 60), confidence=0.9)
+
+    assert lines_inside(_SQUARE, [line], (90, 90)) == [line]
+    assert lines_inside(_SQUARE, [line]) == [], "read as page pixels, it is nowhere near"
+
+
+def test_nothing_inside_is_nothing_rather_than_everything() -> None:
+    away = OcrLine(text="OUT", box=Box(300, 300, 340, 320), confidence=0.9)
+
+    assert lines_inside(_SQUARE, [away]) == []
+    assert lines_inside(_SQUARE, []) == []

@@ -7,23 +7,43 @@ detector tweak.
 
 from __future__ import annotations
 
+import re
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
 
-from comictrans.config import DetectConfig, EraseConfig, OcrConfig
+from comictrans.config import DetectConfig, EraseConfig, ExtractConfig, OcrConfig
 from comictrans.detect import find_regions
 from comictrans.errors import OcrUnavailableError
+from comictrans.extract import read_region
 from comictrans.imaging import IMAGE_SUFFIXES, load_page
 from comictrans.model import Color, polygon_area, polygon_is_simple
 from comictrans.ocr import get_recognizer
+from comictrans.ocr.grouping import utterance_text
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 _RECOGNIZED: dict[Path, tuple[object, list[object]]] = {}
 _DETECTED: dict[Path, tuple[object, ...]] = {}
+
+
+_SPACE = re.compile(r"\s+")
+
+
+def _flat(text: str) -> str:
+    """Text with its line breaks and case taken out, for comparing readings."""
+    return _SPACE.sub(" ", text).strip().casefold()
+
+
+def _recognizer() -> object:
+    """The backend the fixture tests are already using, or a skip."""
+    try:
+        return get_recognizer(OcrConfig())
+    except OcrUnavailableError as exc:
+        pytest.skip(f"no OCR backend: {exc}")
 
 
 def _page_and_lines(path: Path) -> tuple[object, list[object]]:
@@ -139,6 +159,48 @@ def test_erasing_in_a_window_gives_the_whole_pages_answer(
     whole_page = erase_module.erase(rgb, region, cfg, page_height=rgb.shape[0])
 
     assert np.array_equal(windowed, whole_page)
+
+
+_ONE_BALLOON = (
+    "1-plain_white_balloon_on_flat_art.png",
+    "2-white_on_black_caption_box.png",
+    "5-borderless_caption_on_artwork.png",
+    "8-thought_bubble_with_bubble_trail.png",
+    "9-burst_balloon_with_lightning_tail.png",
+)
+"""The fixtures with one region on them, which is what makes them cheap to
+read a second time: a crop of one balloon, not a page."""
+
+
+@pytest.mark.parametrize("name", _ONE_BALLOON)
+def test_reading_one_region_says_what_reading_the_page_said(name: str) -> None:
+    """The claim the whole design of ``read_region`` rests on.
+
+    A crop with a margin round it should read as the page read — that is the
+    only reason it is worth handing a recogniser one balloon instead of the
+    page it is on. Measured over the 31 fixture regions that read as
+    language, it agrees exactly 27 times and averages 0.965 similarity; the
+    five here are the one-region pages, where it agrees word for word and a
+    second reading costs a crop rather than a page.
+
+    Held as similarity rather than equality because the backend decides what
+    the words are: this says the two paths agree, not what either one says.
+    """
+    path = FIXTURES / name
+    if not path.is_file():  # the fixture directory is not in every checkout
+        pytest.skip(f"{name} is not here")
+    page, _lines = _page_and_lines(path)
+    regions = _regions(path)
+    assert regions, f"{name} has nothing to read"
+    config = ExtractConfig(ocr=OcrConfig(), detect=DetectConfig())
+
+    for region in regions:
+        as_a_page = utterance_text(region.lines)  # type: ignore[attr-defined]
+        as_a_crop = read_region(page, region.polygon, _recognizer(), config)  # type: ignore[arg-type,attr-defined]
+
+        assert as_a_crop.strip(), f"{name}: nothing came back from the crop"
+        agreement = SequenceMatcher(None, _flat(as_a_page), _flat(as_a_crop)).ratio()
+        assert agreement >= 0.9, f"{name}: {as_a_page!r} read as {as_a_crop!r}"
 
 
 @pytest.mark.parametrize("path", _fixture_images(), ids=lambda p: p.name)

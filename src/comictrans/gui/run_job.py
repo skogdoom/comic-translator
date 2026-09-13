@@ -44,9 +44,10 @@ from ..config import (
     ExtractConfig,
 )
 from ..errors import ComictransError
-from ..extract import ExtractReport, extract
+from ..extract import ExtractReport, extract, read_region
 from ..fonts import resolve
-from ..model import Plan, TextCase
+from ..imaging import PageImage
+from ..model import Plan, Polygon, TextCase
 from ..ocr import get_recognizer
 from ..planfile import write_plan
 from ..progress import CancelCheck, PageProgress, ProgressCallback
@@ -277,6 +278,58 @@ class ExtractJob(RunJob):
         return report
 
 
+# -- reading one region ------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RegionTextRequest:
+    """One region to read, settled before the thread starts.
+
+    It carries the page the window already has open rather than a path to
+    load again: this is a per-region action, and 230MB and a third of a
+    second to decode the same eleven-megapixel page for every balloon is the
+    cost this milestone exists to avoid on the recognition side. A
+    ``PageImage`` is frozen and nothing reads one destructively, so handing
+    it to a thread is the same promise ``RenderRequest`` makes with a
+    ``Plan``.
+
+    The region is named as well as outlined because the answer has to find
+    its way back to it: the window may be looking at something else by the
+    time a recogniser is done.
+    """
+
+    page: PageImage
+    polygon: Polygon
+    config: ExtractConfig
+    region_id: str
+    image: str
+
+
+class RegionTextJob(RunJob):
+    """``read_region`` on a worker thread. Completes with the text it read.
+
+    One unit of work, no page loop, and nothing to cancel: a recogniser is
+    handed a crop and either comes back or does not. What makes it a job
+    rather than a call is that it is seconds, on a window that has to stay
+    live — and that a recogniser can be missing, which is a failure to
+    report rather than an exception on the UI thread.
+    """
+
+    def __init__(self, request: RegionTextRequest, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.request = request
+
+    def work(
+        self,
+        progress: ProgressCallback,  # noqa: ARG002 - nothing to report from one crop
+        should_cancel: CancelCheck,  # noqa: ARG002 - and nothing to stop half way
+    ) -> str:
+        request = self.request
+        recognizer = get_recognizer(request.config.ocr)
+        log.info("OCR backend: %s", recognizer.name)
+        return read_region(request.page, request.polygon, recognizer, request.config)
+
+
 # -- previewing --------------------------------------------------------
 
 
@@ -326,6 +379,8 @@ __all__ = [
     "ExtractRequest",
     "PreviewJob",
     "PreviewRequest",
+    "RegionTextJob",
+    "RegionTextRequest",
     "RenderJob",
     "RenderRequest",
     "RunJob",

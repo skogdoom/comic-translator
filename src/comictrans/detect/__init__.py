@@ -343,21 +343,36 @@ def _containment(inner: DetectedRegion, outer: DetectedRegion, threshold: float)
     return float((inner_mask & mask(outer)).sum()) / area
 
 
-def _contains_centers(polygon: Polygon, lines: Sequence[OcrLine]) -> bool:
-    """True when the centre of every line's box falls inside the polygon.
+def lines_inside(
+    polygon: Polygon, lines: Sequence[OcrLine], origin: tuple[int, int] = (0, 0)
+) -> list[OcrLine]:
+    """The lines whose centre falls inside ``polygon``, in the order given.
 
-    Looser than :func:`_covers`, which wants the whole box in. Used where the
-    question is which lines a polygon speaks for rather than whether it covers
+    Looser than :func:`_covers`, which wants the whole box in. The question
+    here is which lines a polygon speaks for rather than whether it covers
     them pixel for pixel, so lettering grazing the outline still counts.
 
-    Tested point by point rather than by rasterising, for the same reason
-    :func:`_containment` keeps its masks small.
+    ``origin`` is where the lines' own coordinates start, for lines read from
+    a crop of the page rather than from the page: the polygon is in page
+    pixels and they are not. Tested point by point rather than by
+    rasterising, for the same reason :func:`_containment` keeps its masks
+    small.
     """
     outline = np.array(polygon, dtype=np.int32)
-    return all(
-        cv2.pointPolygonTest(outline, (float(x), float(y)), False) >= 0
-        for x, y in (line.box.center for line in lines)
-    )
+    left, top = origin
+    return [
+        line
+        for line in lines
+        if cv2.pointPolygonTest(
+            outline, (float(line.box.center[0] + left), float(line.box.center[1] + top)), False
+        )
+        >= 0
+    ]
+
+
+def _contains_centers(polygon: Polygon, lines: Sequence[OcrLine]) -> bool:
+    """True when the centre of every line's box falls inside the polygon."""
+    return len(lines_inside(polygon, lines)) == len(lines)
 
 
 def _merge_overlapping(

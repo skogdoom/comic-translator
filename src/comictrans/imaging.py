@@ -8,7 +8,7 @@ the mtime of a source file.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 from PIL import Image, UnidentifiedImageError
 
 from .errors import InputError
+from .model import Box
 from .util import natural_key, sha256_file
 
 log = logging.getLogger(__name__)
@@ -141,6 +142,32 @@ def page_size(path: Path) -> tuple[int, int] | None:
             return (image.width, image.height)
     except (UnidentifiedImageError, OSError):
         return None
+
+
+def crop_page(page: PageImage, box: Box) -> PageImage:
+    """The part of a page inside ``box``, as a page in its own right.
+
+    For handing one region to a recogniser, which takes a page and reads
+    whatever is on it. The box is clamped to the page first, so a padded
+    region at an edge comes back smaller rather than raising.
+
+    It keeps the page's path, hash and metadata, because it is that page:
+    nothing downstream of a recogniser reads any of them, and a crop with a
+    hash of its own would be claiming to be a file that does not exist. The
+    alpha channel is dropped — ``rgb`` already has any transparency flattened
+    onto white, and nothing reading a crop writes an image back out.
+    """
+    # Only the near edges are clamped, and they have to be: a negative index
+    # counts from the far end of the page, which is a crop of somewhere else
+    # entirely. Past the far edge there is nothing to do — a slice stops at
+    # the last row and column by itself.
+    left = max(0, box.left)
+    top = max(0, box.top)
+    # Contiguous, because a slice is a view into the page: a recogniser that
+    # hands its pixels to a C library gets a buffer it can walk in one go,
+    # and nothing holds a reference to the whole page through it.
+    rgb = np.ascontiguousarray(page.rgb[top : box.bottom, left : box.right])
+    return replace(page, rgb=rgb, alpha=None)
 
 
 def collect_inputs(target: Path) -> tuple[list[Path], list[tuple[Path, str]]]:

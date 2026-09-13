@@ -46,10 +46,12 @@ from PySide6.QtWidgets import (
 
 from .. import fonts
 from ..apply import ApplyReport
+from ..config import DEFAULT_LANGUAGES, DetectConfig, ExtractConfig, OcrConfig
 from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
+from ..ocr.grouping import looks_like_text
 from ..sources import is_container
 from . import about, alerts, help_dialog, icons, recent, translations
 from .about_dialog import AboutDialog
@@ -82,6 +84,8 @@ from .run_job import (
     ExtractJob,
     PreviewJob,
     PreviewRequest,
+    RegionTextJob,
+    RegionTextRequest,
     RenderJob,
     RenderRequest,
     RunJob,
@@ -97,6 +101,9 @@ log = logging.getLogger(__name__)
 # rather than running it — see ``translations``.
 PREVIEW_WORKING = QCoreApplication.translate("MainWindow", "rendering preview…")
 """Shown while the render blocks the window, and replaced by its result."""
+
+EXTRACTING_TEXT = QCoreApplication.translate("MainWindow", "extracting the text of {0}…")
+"""Shown while a recogniser reads one region, and replaced by its result."""
 
 PREVIEW_TEXT = QCoreApplication.translate("MainWindow", "&Render Preview")
 OVERLAY_TEXT = QCoreApplication.translate("MainWindow", "Back to &Overlay")
@@ -180,6 +187,16 @@ class MainWindow(QMainWindow):
         A job cannot be stopped, so a superseded one is recognised on
         arrival instead: a result whose request is not this one is
         dropped. See ``_on_preview_ready``."""
+
+        self._read_job: RegionTextJob | None = None
+        """The region being read, or None. Its own slot rather than ``_job``,
+        for the reason the preview has one: reading a balloon must not grey
+        out the window around it."""
+
+        self._reading: RegionTextRequest | None = None
+        """What the last read asked for, or None once it has landed. A job
+        cannot be stopped, so a result that is no longer wanted — another
+        plan opened, the region deleted — is recognised on arrival."""
 
         self._help: HelpDialog | None = None
         """The guide, once it has been asked for. Kept so that asking again
@@ -396,6 +413,19 @@ class MainWindow(QMainWindow):
         self._merge_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self._merge_action.toggled.connect(self._on_merge_toggled)
         edit_menu.addAction(self._merge_action)
+
+        # Named for what it does to one region, not for what it reads: this
+        # is the extract pass over the selected outline, and "from the page"
+        # read as though it might do the page. The ellipsis, because it stops
+        # to ask whenever there is text in the region to lose — which is most
+        # of the time, since the usual reason to reach for it is lettering
+        # extract read badly.
+        self._extract_text_action = QAction(self.tr("&Extract Text from Region…"), self)
+        # T for text. Cmd+Shift+R is Render Pages and Cmd+R the preview;
+        # this is neither, and one balloon is not a run.
+        self._extract_text_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
+        self._extract_text_action.triggered.connect(self._on_extract_text)
+        edit_menu.addAction(self._extract_text_action)
 
         # No confirmation: undo is the safety net every other edit here gets,
         # and a dialog on every delete would be one to click through rather
@@ -737,6 +767,13 @@ class MainWindow(QMainWindow):
         # canvas, and dropping out of it on every page change would make it
         # something to keep switching back on.
         can_edit_shapes = has_image and not self._showing_preview
+        # Reading a region needs the page's pixels, so it waits for the page
+        # the same way sampling a colour does, and it waits for the reading
+        # already going: two at once would be asking the same question twice
+        # and racing to answer it.
+        self._extract_text_action.setEnabled(
+            has_image and self._current_region is not None and self._read_job is None
+        )
         self._edit_shape_action.setEnabled(can_edit_shapes)
         self._add_region_action.setEnabled(can_edit_shapes)
         self._delete_region_action.setEnabled(can_edit_shapes and self._current_region is not None)
@@ -819,6 +856,10 @@ class MainWindow(QMainWindow):
 
         self.document = document
         self._preview_cache.clear()  # a page of the last plan is nobody's now
+        # A reading still in flight was asked about the plan that is going.
+        # Its region id could name a region of this one — plans number their
+        # regions the same way — and the answer would land in the wrong file.
+        self._reading = None
         self._remember_directory(path)
         self._remember_recent(path)
         self._current_image = None
@@ -1141,6 +1182,159 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             self.tr("deleted {0} — Ctrl+Z puts it back").format(going), 5000
         )
+
+    # -- reading one region ----------------------------------------------
+
+    def _on_extract_text(self) -> None:
+        """Ask the recogniser what the current region says. Returns at once.
+
+        The same reading ``extract`` would have written, for a region drawn
+        by hand — which has none — and for one whose lettering came back
+        wrong. It runs off this thread because a recogniser is seconds, and
+        this is a per-balloon command rather than a once-a-chapter one.
+        """
+        if self.document is None or self._current_region is None or self._page is None:
+            return
+        if self._read_job is not None:
+            return  # one at a time: the second would be asking the same thing
+        region = self.document.region(self._current_region)
+        request = RegionTextRequest(
+            page=self._page,
+            polygon=region.polygon,
+            config=ExtractConfig(ocr=self._ocr_config(), detect=DetectConfig()),
+            region_id=region.id,
+            image=region.image,
+        )
+        job = RegionTextJob(request, self)
+        job.completed.connect(self._on_region_text_ready)
+        job.failed.connect(self._on_region_text_failed)
+        job.finished.connect(self._on_region_text_thread_done)
+        self._read_job = job
+        self._reading = request
+        self._update_actions_enabled()
+        self.statusBar().showMessage(EXTRACTING_TEXT.format(region.id))
+        self._busy.set_busy(True)
+        job.start()
+
+    def _ocr_config(self) -> OcrConfig:
+        """What the preferences say a recogniser should be asked for.
+
+        The same three answers the extract dialog takes, because a region
+        read here and a page read by that dialog should be read the same
+        way. The plan file records which engine wrote it, and this does not
+        change that: it is one region's text, not a new provenance.
+        """
+        languages = tuple(
+            part.strip() for part in self._preferences.ocr_languages.split(",") if part.strip()
+        )
+        header = self.document.plan.header if self.document is not None else None
+        return OcrConfig(
+            languages=languages or ((header.source_language,) if header else DEFAULT_LANGUAGES),
+            engine=self._preferences.ocr_engine,
+        )
+
+    def _on_region_text_thread_done(self) -> None:
+        job, self._read_job = self._read_job, None
+        if job is not None:
+            job.deleteLater()
+        self._busy.set_busy(False)
+        self._update_actions_enabled()
+
+    def _on_region_text_failed(self, message: str) -> None:
+        self._reading = None
+        self.statusBar().clearMessage()
+        self._busy.set_busy(False)
+        alerts.report(self, self.tr("The region could not be read."), message)
+
+    def _on_region_text_ready(self, text: object) -> None:
+        """What the recogniser read, back on this thread.
+
+        Applied to the region it was asked about rather than to whatever is
+        selected now: it is an answer to a question about that balloon, and
+        a recogniser takes long enough that the reviewer may well have moved
+        on. What makes it stale is the region not being there any more — a
+        different plan, or a deleted region — and then it is dropped.
+        """
+        request, self._reading = self._reading, None
+        self.statusBar().clearMessage()
+        if request is None or self.document is None:
+            return
+        try:
+            region = self.document.region(request.region_id)
+        except KeyError:  # deleted, or another plan opened, while it read
+            return
+        reading = str(text).strip()
+        if not reading:
+            alerts.note(
+                self,
+                self.tr("No text was found in {0}.").format(region.id),
+                self.tr(
+                    "The recogniser found no text inside this outline. Check that the "
+                    "outline covers the lettering, and that the plan's source language "
+                    "is the language on the page."
+                ),
+            )
+            return
+        if reading == region.source_text:
+            self.statusBar().showMessage(
+                self.tr("{0} reads the same as the text already there — nothing changed").format(
+                    region.id
+                ),
+                8000,
+            )
+            return
+        if region.source_text.strip() and not self._may_replace(region):
+            return
+        # A region with neither a reading nor a translation is a region
+        # nothing has been decided about — one just drawn — and extract seeds
+        # both for every region it reads, so that the text is edited into the
+        # target language in place rather than retyped. A blank translation
+        # beside source text that is not blank is the other thing entirely: a
+        # reviewer saying leave this balloon alone.
+        fresh = not region.source_text.strip() and not region.translation.strip()
+        seed = fresh and looks_like_text(reading)
+        # Its own undo step, not swallowed by whatever was being typed before
+        # it: this is one command, and the run it would otherwise join is
+        # somebody's keystrokes in the same field.
+        self.document.end_edit_run()
+        self.document.set_source_text(region.id, reading, seed_translation=seed)
+        self.document.end_edit_run()
+        if self._current_region == region.id:
+            self._inspector.set_region(self.document, region.id)
+        self._refresh_page_visuals()
+        self._update_actions_enabled()
+        self.statusBar().showMessage(
+            (
+                self.tr("extracted {0} into the source text and the translation — Ctrl+Z undoes it")
+                if seed
+                else self.tr("extracted {0} — Ctrl+Z puts the old text back")
+            ).format(region.id),
+            8000,
+        )
+
+    def _may_replace(self, region: Region) -> bool:
+        """Ask before writing over text that is already there.
+
+        Nothing else in this window replaces the reviewer's own words with
+        anything but the reviewer's own words, and nothing in a plan file
+        says whether a region's source text was read off the page or typed
+        in by hand — so the question is put whenever there is text to lose.
+
+        Neither text is in the question. A balloon's worth of lettering is a
+        paragraph, two of them are two, and a dialog that grows with what it
+        is about is one nobody reads to the end of. What it needs to say is
+        that something will be replaced and that it can be taken back.
+        """
+        answer = alerts.ask(
+            self,
+            self.tr("Replace the source text of {0}?").format(region.id),
+            self.tr(
+                "What is there now is replaced by what the recogniser reads. Ctrl+Z puts it back."
+            ),
+            alerts.Button.Ok | alerts.Button.Cancel,
+            alerts.Button.Ok,
+        )
+        return answer == alerts.Button.Ok
 
     def _neighbour_of(self, region_id: str) -> str | None:
         """Somewhere to stand once this region is gone, chosen before it goes.

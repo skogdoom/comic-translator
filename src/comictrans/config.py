@@ -213,6 +213,18 @@ class ExtractConfig:
     font_size_min_ratio: float = DEFAULT_FONT_SIZE_MIN_RATIO
     condense_min: float = DEFAULT_CONDENSE_MIN
 
+    region_padding_ratio: float = 0.10
+    """Margin around one region before it is handed to the recogniser, as a
+    fraction of its box's shorter side. See ``extract.read_region``.
+
+    Measured over the 31 fixture regions whose own reading looks like
+    language, against what full-page detection read for each: with no margin
+    at all a crop agreed exactly 10 times and averaged 0.69 similarity; at
+    5%, 10% and 15% it agreed 27 times and averaged 0.965, more than half of
+    them word for word. At 20% it starts to fall back (25). A fraction rather
+    than a number of pixels because nothing here knows a scan's resolution,
+    and the middle of the flat range rather than either edge of it."""
+
     artefact_uniformity: float = 0.75
     """How flat the ground under oversized lettering must be to believe it.
 

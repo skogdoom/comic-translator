@@ -8,8 +8,9 @@ import pytest
 from PIL import Image
 
 from comictrans.errors import InputError
-from comictrans.imaging import collect_inputs, load_page, page_size
+from comictrans.imaging import collect_inputs, crop_page, load_page, page_size
 from comictrans.imaging import save_page as write_output_page
+from comictrans.model import Box
 
 from .conftest import save_page
 
@@ -104,6 +105,43 @@ def test_page_size_answers_none_for_what_it_cannot_open(tmp_path: Path) -> None:
 
     assert page_size(tmp_path / "broken.png") is None
     assert page_size(tmp_path / "not-there.png") is None
+
+
+def test_a_crop_is_the_part_of_the_page_inside_the_box(tmp_path: Path) -> None:
+    array = _blank(width=40, height=30)
+    array[10:20, 5:15] = (7, 8, 9)
+    page = load_page(save_page(array, tmp_path / "page.png"))
+
+    piece = crop_page(page, Box(5, 10, 15, 20))
+
+    assert piece.rgb.shape == (10, 10, 3)
+    assert np.array_equal(piece.rgb, np.full((10, 10, 3), (7, 8, 9), dtype=np.uint8))
+
+
+def test_a_crop_is_clamped_to_the_page_rather_than_refused(tmp_path: Path) -> None:
+    # Which is what a region's margin does at the edge of a page: a balloon
+    # in the corner is asked for with a box that reaches off the paper.
+    page = load_page(save_page(_blank(width=40, height=30), tmp_path / "page.png"))
+
+    piece = crop_page(page, Box(-20, -20, 100, 100))
+
+    assert piece.rgb.shape == (30, 40, 3), "the whole page, and no more of it"
+    assert crop_page(page, Box(38, 28, 60, 60)).rgb.shape == (2, 2, 3)
+
+
+def test_a_crop_keeps_the_pages_identity_and_drops_its_alpha(tmp_path: Path) -> None:
+    """It is that page, cropped: a hash of its own would name no file."""
+    source = tmp_path / "page.png"
+    Image.fromarray(np.full((30, 40, 4), 255, dtype=np.uint8), mode="RGBA").save(source)
+    page = load_page(source)
+    assert page.alpha is not None
+
+    piece = crop_page(page, Box(0, 0, 10, 10))
+
+    assert piece.path == page.path
+    assert piece.sha256 == page.sha256
+    assert piece.meta == page.meta
+    assert piece.alpha is None
 
 
 def test_transparency_is_flattened_onto_white_not_dropped(tmp_path: Path) -> None:
