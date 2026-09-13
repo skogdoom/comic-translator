@@ -7,8 +7,10 @@ import pytest
 
 from comictrans.config import ExtractConfig, OcrConfig
 from comictrans.errors import InputError
-from comictrans.extract import default_plan_path, extract
-from comictrans.model import Box, Geometry, TextCase
+from comictrans.extract import default_plan_path, extract, read_region, region_box
+from comictrans.imaging import PageImage, PageMeta
+from comictrans.model import Box, Geometry, Polygon, TextCase
+from comictrans.ocr.base import OcrLine
 from comictrans.planfile import load_plan, write_plan
 from comictrans.progress import PageProgress
 from comictrans.util import sha256_file
@@ -589,3 +591,84 @@ def test_a_cancelled_run_still_returns_a_plan_for_the_caller_to_refuse(
     assert report.cancelled
     assert plan.images == () and plan.regions == ()
     assert not plan_path.exists()
+
+
+# -- reading one region --------------------------------------------------
+
+BALLOON: Polygon = ((100, 100), (300, 100), (300, 200), (100, 200))
+"""201 x 101 in pixels, since a box's right and bottom are exclusive."""
+
+
+class CropReader:
+    """A recogniser that records what it was handed, and answers in the
+    coordinates of it — which is what a real one does with a crop."""
+
+    name = "crop-reader"
+
+    def __init__(self, lines: tuple[OcrLine, ...] = ()) -> None:
+        self.given: list[PageImage] = []
+        self._lines = list(lines)
+
+    def recognize(self, page: PageImage, config: OcrConfig) -> list[OcrLine]:
+        self.given.append(page)
+        return list(self._lines)
+
+
+def _blank_page(width: int = 600, height: int = 400) -> PageImage:
+    return PageImage(
+        path=Path("page-001.png"),
+        rgb=np.full((height, width, 3), 255, dtype=np.uint8),
+        sha256="0" * 64,
+        meta=PageMeta(format="PNG", mode="RGB", dpi=None, icc_profile=None),
+    )
+
+
+def test_a_region_is_read_with_a_margin_round_it() -> None:
+    """The margin is the whole reason this is worth doing over a tight crop.
+
+    Measured across the fixtures: cut to the polygon's own box, a crop agreed
+    with what full-page detection read 13 times out of 67; with a margin, 29
+    or 30.
+    """
+    reader = CropReader()
+
+    read_region(_blank_page(), BALLOON, reader, ExtractConfig())
+
+    # 10% of the shorter side, which is 101 high: ten pixels every way.
+    assert region_box(BALLOON, ExtractConfig()) == Box(90, 90, 311, 211)
+    assert reader.given[0].rgb.shape[:2] == (121, 221)
+
+
+def test_the_margin_is_the_regions_own_size_and_not_the_pages() -> None:
+    """A fraction, because nothing here knows what a scan's resolution is."""
+    small: Polygon = ((100, 100), (140, 100), (140, 140), (100, 140))
+
+    assert region_box(small, ExtractConfig()) == Box(96, 96, 145, 145)
+    assert region_box(BALLOON, ExtractConfig(region_padding_ratio=0.2)) == Box(80, 80, 321, 221)
+
+
+def test_a_margin_that_runs_off_the_page_is_cut_to_the_page() -> None:
+    corner: Polygon = ((0, 0), (80, 0), (80, 60), (0, 60))
+    reader = CropReader()
+
+    read_region(_blank_page(width=100, height=100), corner, reader, ExtractConfig())
+
+    assert reader.given[0].rgb.shape[:2] == (67, 87), "clipped at two edges, padded at the others"
+
+
+def test_the_neighbour_the_margin_lets_in_is_not_read_as_this_region() -> None:
+    """The margin that makes the crop readable is also what lets a neighbour
+    into it, and on a dense page the next balloon starts a few pixels away."""
+    reader = CropReader(
+        (
+            # In the crop's coordinates, which start at (90, 90).
+            OcrLine(text="MINE", box=Box(20, 20, 100, 50), confidence=0.9),
+            OcrLine(text="THEIRS", box=Box(0, 0, 15, 10), confidence=0.9),
+        )
+    )
+
+    assert read_region(_blank_page(), BALLOON, reader, ExtractConfig()) == "MINE"
+
+
+def test_a_region_with_nothing_in_it_reads_as_nothing() -> None:
+    assert read_region(_blank_page(), BALLOON, CropReader(), ExtractConfig()) == ""

@@ -47,7 +47,8 @@ here and in use: `extract` writes a plan file, `apply` renders translated
 pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
 reason is in the first paragraph. `validate` checks a plan without rendering
-it, for the moment before a long run.
+it, for the moment before a long run, and the window can ask the recogniser
+to read one balloon over again.
 
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
@@ -413,8 +414,8 @@ text, or overlapping another region — is outlined dashed red instead,
 regardless of its geometry colour, and the reason is named in the inspector.
 Click a region to select it; its fields are on the right, editable in place,
 written straight into the plan as you type — the source text among them,
-since a region you drew by hand has no OCR reading, and the plan file has
-always been hand-editable anyway.
+since a region you drew by hand has no OCR reading until you ask for one, and
+the plan file has always been hand-editable anyway.
 
 **Moving a region** needs no mode: `Ctrl`-drag it (`Cmd` on macOS), or use
 the **arrow keys** — one pixel a tap, twenty with `Shift`, and faster the
@@ -450,11 +451,31 @@ because checking it is exactly what you have just done.
 **Edit > Add Region** (`Ctrl+Shift+A`) draws one by hand, for a balloon
 detection missed entirely. Click to place each corner; click the first corner
 again, double-click, or press Enter to close the outline; Backspace takes a
-corner back and `Esc` abandons it. Nothing in `review` reads a page for text,
-so a region drawn here has no OCR reading: its **source text** is typed in
-along with the translation, and until it is, the region is flagged as held
-back. It records `geometry: manual` and `confidence: 1.0` — there is no
-recogniser's score to report, and the reading is your own.
+corner back and `Esc` abandons it. A region drawn here has no OCR reading:
+type its **source text** in along with the translation, or use **Read Text
+from the Page** below to have the recogniser read it. Until there is text, the
+region is flagged as held back. It records `geometry: manual` and
+`confidence: 1.0` — there is no recogniser's score to report.
+
+**Edit > Read Text from the Page…** (`Ctrl+Shift+T`) runs the recogniser over
+the selected region and puts what it reads into the **source text** — for a
+region you drew, which has none, and for one whose lettering `extract` read
+badly. It reads that region rather than the page: a crop of the outline with
+a margin around it, which costs a fraction of a page and is why this is a
+per-balloon command rather than a re-run. The margin is not decoration —
+measured across the test pages, a crop cut to the outline agreed with what a
+full-page reading found 10 times out of 31, and the same crops with a margin
+agreed 27, better than half of them word for word — and anything the margin
+lets in from the balloon next door is dropped, because a line belongs to the
+outline its middle falls inside.
+
+It asks before writing over text that is already there, showing both
+readings, since nothing in a plan file says whether that text was read off the
+page or typed in by hand. It is one undo step like any other edit, it runs in
+the background with the window still usable, and a reading that comes back
+empty changes nothing and says so. Only the source text is written: the
+region's `confidence` is what detection scored it, and reading one balloon is
+not detection.
 
 Its **fill colour** and **text colour** are measured from the page inside the
 outline you drew, the same way `extract` measures a detected region's, and it

@@ -44,7 +44,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.26 | Extract text for one region | M |
 | 4.27 | Lock a region | M |
 | 4.28 | Region context menu | S |
 | 8 | CBZ and CBR output | M |
@@ -110,9 +109,12 @@ thread and moving on. That milestone then did the same thing to itself: 540MB
 was a number rather than a diagnosis, and walking one `erase` call line by
 line turned it into "a colour distance computed for the whole page to decide
 a mask a balloon wide", which is a one-paragraph fix worth 15x the time and
-all of the memory. The same is still owed to 4.26: what a crop does to
-recognition accuracy is a number somebody has to produce before that design
-is settled.
+all of the memory. 4.26 owed the same debt and has now paid it: what a crop
+does to recognition accuracy was a number somebody had to produce before that
+design could be settled, and it turned out to settle it — a crop cut to the
+outline agrees with a full-page reading 10 times out of 31, the same crops
+with a margin 27, and masking everything outside the outline, which looked
+like the obvious refinement, is worse than either.
 
 One ordering was a judgement call rather than a dependency, and it paid out:
 **rendering (4.14) went before extract (4.6)**. Both run a pipeline pass from
@@ -135,36 +137,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 4.26 Extract text for one region
-
-Run the recogniser over a single region and put what it reads into
-`source_text`: for a region drawn by hand, which has no reading at all, and
-for one where detection read the lettering badly.
-
-**Two ways to do it, and the cheap one is wrong.** Recognising the whole
-page and keeping the lines inside the polygon needs almost no new code, but
-spends a full-page recognition on one balloon. Cropping to the region and
-recognising that is the one worth building, and its risk is accuracy rather
-than speed: recognisers do better with a margin around the text than with a
-tight crop. So the crop wants padding, and the result wants comparing
-against what full-page detection finds on the same fixtures before this is
-called done.
-
-**It writes over something a person may have typed**, which nothing else in
-the window does — every other edit replaces the reviewer's text with the
-reviewer's text. So it asks first when `source_text` is not what extract
-left there, and it is one undo step like any other edit.
-
-**It wants the worker thread, which preview has now built out.** A
-recogniser is seconds, not milliseconds, and unlike preview this is a
-per-balloon action rather than an occasional one; a wait cursor is the wrong
-answer at that frequency. `PreviewJob` is the shape to copy — one unit of
-work, no page loop, nothing to cancel — and a per-region request keyed the
-same way answers the same staleness question.
-
-`apply` is untouched and still runs no OCR. This is `review` doing what
-`extract` does, to one region.
 
 ## 4.27 Lock a region
 

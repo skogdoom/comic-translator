@@ -67,6 +67,10 @@ collect_inputs(target: Path) -> (list[Path], list[(Path, reason)])
 # sources — a chapter that arrived as one file, turned into pages
 unpack(source: Path, into: Path | None) -> UnpackReport
 
+# extract — the pass, and one region of it
+extract(target, plan_path, recognizer, font, config, ...) -> (Plan, ExtractReport)
+read_region(page, polygon, recognizer, config) -> str
+
 # ocr — one adapter per backend
 class TextRecognizer(Protocol):
     name: str
@@ -1563,6 +1567,53 @@ default, `AllNonFixedFieldsGrow` is everyone else's), so nought is the width
 it got and the label said nothing at all. That one was invisible to every
 test and every screenshot taken on Linux; the test now runs the layout both
 ways round.
+
+**Reading one region is a crop, not a page.** `extract.read_region` hands the
+recogniser the region's own box with a margin round it and keeps the lines
+whose centre falls inside the polygon. The alternative — recognise the page,
+keep the lines inside the outline — needs almost no new code and spends a
+full-page recognition on one balloon, which is the wrong trade for a
+per-balloon command in a window.
+
+The margin is the part that had to be measured rather than chosen, and the
+measurement settled the other two questions with it. Every fixture region
+whose own reading looks like language — 31 of them; the rest are halftone
+noise on one screentoned page, which no recogniser reads the same way twice
+— was read again as a crop and compared with what the full-page pass found
+for it:
+
+| margin | drop what the margin let in | mean | exact |
+|---|---|---|---|
+| none | — | 0.69 | 10 of 31 |
+| 5% | yes | 0.965 | 27 |
+| 10% | no | 0.958 | 26 |
+| **10%** | **yes** | **0.965** | **27** |
+| 20% | no | 0.939 | 22 |
+| 20% | yes | 0.965 | 25 |
+
+A margin is decisive and how much of one barely matters between a twentieth
+and a sixth, so this takes the middle of the flat range. Dropping the lines
+the margin let in is never worse and sometimes rescues the whole thing —
+which is what says the neighbour is real. Masking everything outside the
+polygon, the obvious alternative to dropping lines afterwards, is worse than
+either: measured separately at 0.50 to 0.55 against 0.60 on the same
+comparison, because it takes away the very margin the crop needed.
+
+`ExtractJob`'s shape, with none of its loop: `RegionTextJob` is one crop, one
+recogniser, one string back. It carries the page the window already has
+rather than a path, because decoding an eleven-megapixel page again for every
+balloon is the same waste in a different place. What comes back is applied to
+the region it was asked about rather than to whatever is selected now — a
+recogniser is seconds, and the answer is about that balloon — and dropped if
+that region has gone.
+
+**It asks before writing over text that is already there**, which nothing
+else in the window does: every other edit replaces the reviewer's words with
+the reviewer's words. Nothing in a plan file says whether a region's source
+text was read off the page or typed in by hand, so the question is put
+whenever there is text to lose, with both readings in it. Only `source_text`
+is written — `confidence` is what detection scored the region, and reading
+one balloon is not detection.
 
 **A render saves first; a preview does not.** `apply_plan` takes a `Plan`
 object and would happily render what is in the window, which is exactly what

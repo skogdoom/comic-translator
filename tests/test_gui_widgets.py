@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 import textwrap
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from comictrans import fonts
+from comictrans.config import ExtractConfig
 from comictrans.errors import InputError, OcrUnavailableError
 from comictrans.model import (
     Box,
@@ -34,6 +35,7 @@ from comictrans.model import (
     Region,
     TextCase,
 )
+from comictrans.ocr.base import OcrLine
 from comictrans.planfile import load_plan, write_plan
 from comictrans.planfile.schema import PLAN_VERSION
 from comictrans.util import sha256_file
@@ -90,7 +92,13 @@ from comictrans.gui.render_dialog import (
     RenderDialog,
     suggested_output,
 )
-from comictrans.gui.run_job import ExtractJob, ExtractRequest, RenderJob, RenderRequest
+from comictrans.gui.run_job import (
+    ExtractJob,
+    ExtractRequest,
+    RegionTextRequest,
+    RenderJob,
+    RenderRequest,
+)
 
 BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
@@ -4904,3 +4912,257 @@ def test_the_window_reads_a_chapter_file_from_end_to_end(
     assert window.document.path == pages / "comic-plan.yaml"
     assert window._pages.count() == 2
     assert chapter_file.is_file(), "the chapter file is a source and is never written to"
+
+
+# -- reading one region off the page -------------------------------------
+
+
+class _Reads:
+    """A recogniser that answers with one line across the middle of whatever
+    it is handed — which, for a crop, puts it inside the region."""
+
+    name = "reads"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.given: list[tuple[int, int]] = []
+
+    def recognize(self, page: object, config: object) -> list[OcrLine]:
+        height, width = page.rgb.shape[:2]  # type: ignore[attr-defined]
+        self.given.append((width, height))
+        if not self.text:
+            return []
+        box = Box(width // 4, height // 4, 3 * width // 4, 3 * height // 4)
+        return [OcrLine(text=self.text, box=box, confidence=0.9)]
+
+
+def _read_region(
+    window: MainWindow, reader: _Reads | Callable[[object], object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run the read the way the menu item does, and wait for it to land.
+
+    Every caller answers alerts first, including the ones that expect none:
+    an unanswered modal blocks the offscreen event loop for as long as the
+    suite is willing to wait, which turns a failing assertion into a hung
+    run.
+    """
+    monkeypatch.setattr(
+        run_job,
+        "get_recognizer",
+        reader if callable(reader) and not isinstance(reader, _Reads) else lambda config: reader,
+    )
+    window._on_read_text()
+    job = window._read_job
+    assert job is not None, "the command did not start a reading"
+    assert job.wait(60_000), "the worker thread did not finish"
+    for _ in range(20):
+        QApplication.processEvents()
+        if window._read_job is None:
+            return
+    raise AssertionError("the reading never reached the window")
+
+
+def test_reading_a_region_puts_what_the_page_says_into_the_source_text(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-002")
+    window.document.set_source_text("page-001-002", "")  # type: ignore[union-attr]
+    shown = _catch_alerts(monkeypatch)
+
+    _read_region(window, _Reads("NON CI POSSO CREDERE"), monkeypatch)
+
+    assert shown == [], "nothing to lose, so nothing to ask"
+    assert window.document.region("page-001-002").source_text == "NON CI POSSO CREDERE"  # type: ignore[union-attr]
+    assert window._inspector._source_text.toPlainText() == "NON CI POSSO CREDERE"
+
+
+def test_the_recogniser_is_given_the_region_and_not_the_page(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cheap way round is to read the page and keep the lines inside the
+    outline; it costs a full-page recognition for one balloon."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    reader = _Reads("CIAO")
+    _catch_alerts(monkeypatch)
+
+    _read_region(window, reader, monkeypatch)
+
+    assert window._page is not None
+    given = reader.given[0]
+    assert given < (window._page.width, window._page.height)
+
+
+def test_reading_asks_before_writing_over_text_that_is_already_there(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
+    shown = _catch_alerts(monkeypatch, QMessageBox.StandardButton.Cancel)
+
+    _read_region(window, _Reads("SOMETHING ELSE"), monkeypatch)
+
+    assert len(shown) == 1
+    assert "page-001-001" in shown[0].text()
+    assert "CIAO" in shown[0].informativeText()
+    assert "SOMETHING ELSE" in shown[0].informativeText()
+    assert window.document.region("page-001-001").source_text == "CIAO", "cancelled"  # type: ignore[union-attr]
+
+
+def test_reading_over_text_that_is_there_replaces_it_when_asked_to(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Ok)
+
+    _read_region(window, _Reads("SOMETHING ELSE"), monkeypatch)
+
+    assert window.document.region("page-001-001").source_text == "SOMETHING ELSE"  # type: ignore[union-attr]
+
+
+def test_a_reading_is_one_undo_step_like_any_other_edit(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """And a step of its own: not swallowed by the typing either side of it.
+
+    Consecutive edits to one field collapse into a single undo step, because
+    that is how a run of keystrokes should behave. A command is not a run of
+    keystrokes, and one Ctrl+Z after it should put back what was typed rather
+    than throwing the typing away as well.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    window.document.set_source_text("page-001-001", "TYPED BY HAND")  # type: ignore[union-attr]
+    _catch_alerts(monkeypatch, QMessageBox.StandardButton.Ok)
+
+    _read_region(window, _Reads("READ OFF THE PAGE"), monkeypatch)
+    window.document.set_source_text("page-001-001", "TYPED AFTERWARDS")  # type: ignore[union-attr]
+
+    assert window.document.undo()  # type: ignore[union-attr]
+    assert window.document.region("page-001-001").source_text == "READ OFF THE PAGE"  # type: ignore[union-attr]
+    assert window.document.undo()  # type: ignore[union-attr]
+    assert window.document.region("page-001-001").source_text == "TYPED BY HAND"  # type: ignore[union-attr]
+    assert window.document.undo()  # type: ignore[union-attr]
+    assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
+
+
+def test_a_region_that_says_nothing_says_so_and_changes_nothing(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    shown = _catch_alerts(monkeypatch)
+
+    _read_region(window, _Reads(""), monkeypatch)
+
+    assert len(shown) == 1
+    assert "Nothing was read" in shown[0].text()
+    assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
+    assert not window.document.can_undo  # type: ignore[union-attr]
+
+
+def test_a_reading_that_says_what_is_already_there_is_not_an_edit(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No question to ask, no undo step to take, and it says so."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    shown = _catch_alerts(monkeypatch)
+
+    _read_region(window, _Reads("CIAO"), monkeypatch)
+
+    assert shown == []
+    assert not window.document.can_undo  # type: ignore[union-attr]
+    assert "already says" in window.statusBar().currentMessage()
+
+
+def test_an_answer_about_a_region_that_has_gone_is_dropped(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recogniser takes seconds, and a plan can be edited while it reads."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-002")
+    window._reading = RegionTextRequest(
+        page=window._page,  # type: ignore[arg-type]
+        polygon=window.document.region("page-001-002").polygon,  # type: ignore[union-attr]
+        config=ExtractConfig(),
+        region_id="gone-since",
+        image="page-001.png",
+    )
+    shown = _catch_alerts(monkeypatch)
+
+    window._on_region_text_ready("WHATEVER IT SAID")
+
+    assert shown == [], "nothing to ask about a region that is not there"
+    assert not window.document.can_undo  # type: ignore[union-attr]
+
+
+def test_an_answer_about_a_plan_that_has_been_closed_is_dropped(
+    qapp: object, two_page_plan: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two plans number their regions the same way, so an answer left over
+    from the last one would land in this one under the same name."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._reading = RegionTextRequest(
+        page=window._page,  # type: ignore[arg-type]
+        polygon=window.document.region("page-001-001").polygon,  # type: ignore[union-attr]
+        config=ExtractConfig(),
+        region_id="page-001-001",
+        image="page-001.png",
+    )
+
+    window.open_plan(two_page_plan)  # the same file, opened again: a new document
+    _catch_alerts(monkeypatch)
+    window._on_region_text_ready("FROM THE PLAN BEFORE")
+
+    assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
+    assert not window.document.can_undo  # type: ignore[union-attr]
+
+
+def test_a_reading_with_no_recogniser_to_do_it_says_so(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reason this is a job rather than a call: it can fail, off-thread."""
+
+    def refuse(config: object) -> object:
+        raise OcrUnavailableError("no recogniser on this machine")
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._go_to_region("page-001-001")
+    shown = _catch_alerts(monkeypatch)
+
+    _read_region(window, refuse, monkeypatch)  # type: ignore[arg-type]
+
+    assert len(shown) == 1
+    assert "could not be read" in shown[0].text()
+    assert "no recogniser on this machine" in shown[0].informativeText()
+    assert window.document.region("page-001-001").source_text == "CIAO"  # type: ignore[union-attr]
+    assert window._read_text_action.isEnabled(), "and the command is offered again"
+
+
+def test_reading_waits_for_a_region_to_be_chosen(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    assert not window._read_text_action.isEnabled(), "nothing open"
+
+    window.open_plan(two_page_plan)
+    window._pages.select_image("page-001.png")
+    window._current_region = None
+    window._update_actions_enabled()
+    assert not window._read_text_action.isEnabled(), "a page, but no region on it chosen"
+
+    window._go_to_region("page-001-001")
+    assert window._read_text_action.isEnabled()
