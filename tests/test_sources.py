@@ -341,7 +341,7 @@ def test_asking_about_a_cbr_asks_whether_the_tool_is_there(
         check_readable(archive)
 
 
-def test_the_caller_can_name_the_rar_tool_as_well_as_the_environment(
+def test_the_caller_can_name_the_unrar_tool_as_well_as_the_environment(
     tmp_path: Path, fake_rarfile: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The window has a Preferences field for it, because an application
@@ -351,7 +351,7 @@ def test_the_caller_can_name_the_rar_tool_as_well_as_the_environment(
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
 
-    unpack(archive, rar_tool="/named/by/the/caller")
+    unpack(archive, unrar_tool="/named/by/the/caller")
 
     assert fake_rarfile.UNRAR_TOOL == "/named/by/the/caller"
 
@@ -422,7 +422,7 @@ def test_a_zip_called_cbr_is_read_as_the_zip_it_is(tmp_path: Path) -> None:
     ]
 
 
-def test_a_rar_called_cbz_asks_for_the_rar_tool(
+def test_a_rar_called_cbz_asks_for_the_unrar_tool(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setitem(sys.modules, "rarfile", _fake_rarfile(works=False))
@@ -773,7 +773,7 @@ def test_a_link_in_a_cbr_is_named_as_well(
     assert report.skipped == (("page2.link.png", "a link or a device, not a file"),)
 
 
-def test_without_a_rar_tool_cbr_says_so_and_leaves_nothing_behind(
+def test_without_an_unrar_tool_cbr_says_so_and_leaves_nothing_behind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setitem(sys.modules, "rarfile", _fake_rarfile(works=False))
@@ -787,7 +787,7 @@ def test_without_a_rar_tool_cbr_says_so_and_leaves_nothing_behind(
     assert not (tmp_path / "chapter-pages").exists()
 
 
-def test_the_environment_can_name_the_rar_tool(
+def test_the_environment_can_name_the_unrar_tool(
     tmp_path: Path, fake_rarfile: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(UNRAR_ENV, "/opt/homebrew/bin/unrar")
@@ -800,7 +800,7 @@ def test_the_environment_can_name_the_rar_tool(
     assert fake_rarfile.UNRAR_TOOL == "/opt/homebrew/bin/unrar"
 
 
-def test_a_named_rar_tool_that_does_not_work_is_named_in_the_refusal(
+def test_a_named_unrar_tool_that_does_not_work_is_named_in_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setitem(sys.modules, "rarfile", _fake_rarfile(works=False))

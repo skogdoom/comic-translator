@@ -99,6 +99,48 @@ for themselves. See **Build the application** in `README.md`.
   both, the way a whole extract seeds them; one that already has text is asked
   about first.
 
+- **A chapter can leave as one file too.** `comictrans apply plan.yaml
+  --output chapter.cbz` renders the chapter and writes it as one archive
+  instead of a folder of pages; `.cbr` does the same as a RAR, and any other
+  name is a directory exactly as before. Pages are numbered inside the file in
+  the order the plan holds them — `001-page-004.png` — so a reader shows them
+  in the order you set rather than the order they were scanned. **Render
+  Pages** in the window asks the same thing as a box beside the path: pick
+  `.cbz` and the path is renamed, type a `.cbz` path and the box follows.
+  Cancelling differs from a folder run and deliberately: a stopped folder run
+  leaves the pages it finished, a stopped chapter run leaves nothing at all,
+  because the file is packed once every page is drawn rather than grown as
+  they arrive. CBZ needs nothing. CBR needs the `rar` compressor that comes
+  with WinRAR — `unrar` cannot write archives, and rar is paid and not
+  redistributable — so it is looked for on `PATH`, `COMICTRANS_RAR` names one
+  elsewhere, and Preferences has a field for it beside the one for `unrar`.
+  You are told a `.cbr` cannot be written before a page is rendered rather
+  than after the chapter. Nothing else goes into the file: no ComicInfo.xml,
+  because a plan knows the language pair and nothing else about your chapter.
+
+- **Help text under a field is no longer cut off.** The grey line under a
+  control, and the red one that says why a render cannot start, were being
+  allocated the height they asked for rather than the height they turned out
+  to need at the width the form gave them — so the last line went missing and
+  the row below was drawn over what was left. It showed on macOS and nowhere
+  else, because the form column is narrower there and the system font wider.
+  The preferences dialog had it in three places and the render dialog in two.
+  A field whose placeholder is longer than the box, `same as the sourc…`, is
+  now wide enough to read as well.
+- **The render dialog says where to set the rar path, in one sentence.** The
+  message about a missing compressor was the pipeline's: a licence
+  explanation naming `COMICTRANS_RAR`, which is the command line's answer and
+  no use in a window that has a field for it. It now says what to do instead
+  — set it in Preferences, or save as .cbz — and the licence is explained
+  where the field is. A path that was set and does not work still says which
+  path, because that is the useful half.
+- **Preferences fits on the screen.** The notes under the two chapter-file
+  fields were five lines each and are two; all three notes now wrap at the
+  same width rather than one spanning the window and the next stopping half
+  way; and the settings scroll between a fixed heading and a fixed **Done**,
+  so the window is capped at the display however long the text runs in
+  whatever language.
+
 ### Known limitations
 
 - **macOS will not give the application its own language** — System Settings

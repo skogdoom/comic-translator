@@ -53,9 +53,10 @@ back over one balloon.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
-Chapters can arrive as one file: `extract` reads CBZ, CBR and PDF by
-unpacking them into a folder of pages first. Nothing is written that way
-yet — a chapter comes out as a folder of images, not as an archive or a PDF.
+Chapters can arrive as one file and leave as one: `extract` reads CBZ, CBR
+and PDF by unpacking them into a folder of pages first, and `apply --output
+chapter.cbz` writes the rendered chapter back as one file. CBR output needs
+the `rar` compressor, which cannot ship here; PDF output does not exist.
 `docs/ROADMAP.md` covers that and everything else planned, in the order it is
 worth building, and `known-bugs.md` records what is known to be wrong and left
 alone on purpose.
@@ -220,7 +221,7 @@ licence is not OSI-free and this is an MIT project, so bundling it would put
 somebody else's terms on the whole thing. Instead it drives whatever is
 already on your machine — `unrar`, `unar`, `bsdtar` or `7z`, any of which
 Homebrew has — and `COMICTRANS_UNRAR` names one that lives somewhere the
-`PATH` does not reach (**Preferences ▸ reading a .cbr** is where the window
+`PATH` does not reach (**Preferences ▸ chapter files** is where the window
 asks the same thing). With none of them installed, CBR input is unavailable
 and says so before anything is written, rather than failing part-way through
 a chapter.
@@ -234,7 +235,7 @@ says it is unpacking until it knows, and **Cancel** stops it between pages
 like any other run. Where `unrar` lives is a preference rather than a
 per-run question, because an application opened from the Finder does not
 inherit a terminal's `PATH` and cannot see a Homebrew one: **Preferences ▸
-reading a .cbr**.
+chapter files**.
 
 ### Re-extracting
 
@@ -289,6 +290,10 @@ run if it is the source directory or anywhere inside it. Existing output files
 are never overwritten without `--force`. Filenames are mirrored flat into the
 output directory.
 
+**`--output` named `.cbz` or `.cbr` writes the chapter as one file** instead
+of a directory of pages — see **Chapter output** below. Any other name is a
+directory, which is what it has always been.
+
 `extract` seeds `translation` with the source text it read, so a region you
 have not edited renders that source text back onto the page rather than being
 skipped. Those are counted as **same as source** in the summary and named by
@@ -320,6 +325,47 @@ warning.
 | `--font-size-floor` | absolute floor below which a region fails instead of shrinking further |
 | `--no-hyphenation` | never hyphenate to make a line fit |
 | `--skip-hash-check` | render against a changed source; almost always wrong |
+
+### Chapter output
+
+`apply --output chapter.cbz` writes the rendered chapter as one file instead
+of a folder of pages, and `.cbr` does the same as a RAR. Anything else named
+to `--output` is a directory, exactly as before.
+
+**The name decides, and only the name.** Reading does the opposite — a
+chapter file that is there gets read for what it is, whatever it is called —
+but an output does not exist yet, so there are no bytes to ask. `.zip` and
+`.rar` work as well as `.cbz` and `.cbr`, since chapters arrive under both.
+
+**Pages are numbered in the plan's order**: `001-page-004.png`,
+`002-page-007.png`, and so on, keeping each page's own name after the index.
+Readers sort entries by name, so the order you set by dragging rows in the
+review window has to survive as a name; source names that already sort right
+are luck.
+
+**Nothing else goes in.** No ComicInfo.xml, no metadata of any kind. The plan
+file knows the two languages and nothing else about your chapter — not the
+series, not the volume, not the numbering — and a chapter file that claims
+those things because a tool had to fill the fields in is worse than one that
+claims nothing.
+
+**A cancelled run into a chapter file leaves no file at all**, which is not
+the promise a directory makes and is deliberate. Pages are rendered into a
+temporary directory and packed once every one of them is done: a directory
+keeps whole pages and running it again finishes the job, while half an
+archive is nothing anybody wants. The command line says so when it happens
+rather than reporting zero pages.
+
+**CBZ needs nothing. CBR needs the `rar` compressor, which cannot ship here
+either** — and for a different reason from the reading side. RAR compression
+is proprietary: `unrar` only reads, and its licence forbids using it to
+create archives, so the only thing that writes a `.rar` is the `rar` binary
+that comes with WinRAR, which is paid and not redistributable. What that
+licence restricts is *redistributing* it, not driving a copy you have already
+licensed — so comictrans looks for `rar` on `PATH`, takes `COMICTRANS_RAR`
+for one somewhere else (**Preferences ▸ chapter files** in the window), and
+with neither says which binary would provide it rather than leaving CBR
+quietly missing. It says that before rendering a page, not after the chapter.
 
 ### Erasing
 
@@ -591,19 +637,28 @@ and merged by hand, re-detecting a page is destructive against exactly that
 work. Extract to a new plan, and open it.
 
 **File > Render Pages…** (`Ctrl+Shift+R`) runs the whole `apply` pass without
-leaving the window. The dialog asks the three things the command line asks
-for as flags — where to write, what format, and how to erase the original
-lettering — plus whether to overwrite pages already in that directory, which
-is `--force` as a checkbox rather than a refusal you rerun the command to get
-past. Everything else comes from the plan's own header, so a chapter rendered
-from here and the same chapter rendered by `comictrans apply` are made the
-same way.
+leaving the window. The dialog asks what the command line asks for as flags —
+where to write, what holds the pages, what each page is encoded as, and how to
+erase the original lettering — plus whether to overwrite what is already
+there, which is `--force` as a checkbox rather than a refusal you rerun the
+command to get past. Everything else comes from the plan's own header, so a
+chapter rendered from here and the same chapter rendered by `comictrans apply`
+are made the same way.
 
-The output directory is prefilled with a directory beside the pages, and one
-inside the source tree is refused with the button disabled and the reason
-underneath it. There is no override, no confirmation and nothing to hold
-down: it is the same check `--output` gets, and the only refusal in this tool
-that cannot be argued with. Source images are never written to.
+**A folder or one chapter file** is one decision shown twice, because `apply`
+reads it off the output's name and nothing else: choose `.cbz` in the box and
+the path is renamed, type a `.cbz` path and the box follows. There is no third
+state for the two of them to disagree in. Choosing `.cbr` says up front
+whether there is anything on this machine to write one with, rather than
+finding out after the chapter is drawn; **Preferences ▸ chapter files** is
+where you say where `rar` is.
+
+The output is prefilled with a directory beside the pages, and one inside the
+source tree is refused with the button disabled and the reason underneath it.
+There is no override, no confirmation and nothing to hold down: it is the same
+check `--output` gets, and the only refusal in this tool that cannot be argued
+with. Source images are never written to. A chapter file is asked the same
+question about the folder it would go in.
 
 **A plan with unsaved edits is saved first**, and the button says so — it
 reads *Save and Render* rather than *Render*. Pages rendered from a plan that
@@ -980,9 +1035,10 @@ windowing libraries).
 
 ## Out of scope
 
-Sound effects in artwork, hand-lettered SFX, rotated or vertical text, CBZ,
-CBR and PDF *output* (milestones 8 and 6 — reading them works), and
-preserving italic emphasis from the source.
+Sound effects in artwork, hand-lettered SFX, rotated or vertical text, PDF
+*output* (milestone 6 — reading one works), ComicInfo.xml or any other
+metadata inside a chapter file, and preserving italic emphasis from the
+source.
 
 ## Development
 

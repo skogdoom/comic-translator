@@ -52,6 +52,7 @@ from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
 from ..ocr.grouping import looks_like_text
+from ..pack import archive_kind
 from ..sources import is_container
 from . import about, alerts, help_dialog, icons, recent, translations
 from .about_dialog import AboutDialog
@@ -1780,11 +1781,20 @@ class MainWindow(QMainWindow):
         self._run_dock.show()
         pages = len(report.pages_written)
         checks = self._run_panel.row_count()
-        said = (
-            self.tr("cancelled after %n page(s) to {0}", None, pages)
-            if report.cancelled
-            else self.tr("rendered %n page(s) to {0}", None, pages)
-        ).format(output)
+        if archive_kind(output) is None:
+            said = (
+                self.tr("cancelled after %n page(s) to {0}", None, pages)
+                if report.cancelled
+                else self.tr("rendered %n page(s) to {0}", None, pages)
+            ).format(output)
+        elif report.archive is not None:
+            said = self.tr("packed %n page(s) into {0}", None, pages).format(output)
+        else:
+            # A chapter file is written once, at the end — see ``pack``. So
+            # a run that did not reach the end left nothing, and saying how
+            # many pages it got through would be describing a temporary
+            # directory that is already gone.
+            said = self.tr("cancelled — nothing written to {0}").format(output)
         if checks:
             # The sentence so far is the placeholder, so the clause can go
             # in front of it in a language that wants it there.

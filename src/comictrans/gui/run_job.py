@@ -146,6 +146,11 @@ class RenderRequest:
     image_format: str | None = None
     force: bool = False
 
+    rar_tool: str = ""
+    """Where the ``rar`` compressor is, for writing a .cbr. Empty looks at
+    ``COMICTRANS_RAR`` and then ``PATH``. Ignored for every other output —
+    a directory and a .cbz need nothing."""
+
     @property
     def total(self) -> int:
         return len(self.plan.image_names())
@@ -166,6 +171,7 @@ class RenderJob(RunJob):
             request.output,
             request.config,
             image_format=request.image_format,
+            rar_tool=request.rar_tool,
             force=request.force,
             progress=progress,
             should_cancel=should_cancel,
@@ -194,9 +200,14 @@ class ExtractRequest:
     force: bool = False
     """Overwrite an existing plan file, discarding everything in it."""
 
-    rar_tool: str = ""
-    """Where ``unrar`` is, for a .cbr. Empty looks on ``PATH``, which an
-    application opened from the Finder barely has — hence the preference."""
+    unrar_tool: str = ""
+    """Where ``unrar`` is, for reading a .cbr. Empty looks on ``PATH``, which
+    an application opened from the Finder barely has — hence the preference.
+
+    Named for the tool rather than the format because the other direction
+    needs a different binary: ``unrar`` cannot write an archive whatever it
+    is asked to, so :class:`RenderRequest` carries ``rar_tool`` and this
+    carries ``unrar_tool``, and neither will do the other's job."""
 
     pages: tuple[Path, ...] = field(default_factory=tuple)
     """The images the run will read, as the dialog counted them. Carried so
@@ -252,7 +263,7 @@ class ExtractJob(RunJob):
         if is_container(source):
             chapter = unpack(
                 source,
-                rar_tool=request.rar_tool,
+                unrar_tool=request.unrar_tool,
                 progress=progress,
                 should_cancel=should_cancel,
             )

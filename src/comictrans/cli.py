@@ -262,12 +262,15 @@ def _add_apply(
     apply_parser = subparsers.add_parser(
         "apply",
         parents=[verbosity],
-        help="render translated pages from a plan file into an output directory",
+        help="render translated pages from a plan file into a directory or a chapter file",
         description=(
             "Reads a plan file with translations filled in and writes new "
             "images. Runs no detection and no OCR: all geometry comes from the "
             "plan, so re-running after editing a translation changes only that "
-            "text. Source images are opened read-only."
+            "text. Source images are opened read-only. --output named .cbz or "
+            ".cbr writes the chapter as one file instead of a directory of "
+            "pages; CBR needs the rar compressor, which does not ship with "
+            "comictrans."
         ),
     )
     apply_parser.add_argument("plan", type=Path, help="plan file to render")
@@ -275,8 +278,9 @@ def _add_apply(
         "--output",
         type=Path,
         required=True,
-        metavar="DIR",
-        help="directory to write pages into; must be outside the source tree",
+        metavar="DEST",
+        help="directory to write pages into, or a .cbz/.cbr to write the whole "
+        "chapter as one file; either way it must be outside the source tree",
     )
     apply_parser.add_argument(
         "--force", action="store_true", help="overwrite existing output files"

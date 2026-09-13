@@ -58,14 +58,16 @@ from PySide6.QtGui import QAction, QDesktopServices, QKeyEvent, QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QWidget,
 )
 
-from comictrans.gui import about, extract_dialog, logfile, main_window, run_job
+from comictrans.gui import about, extract_dialog, logfile, main_window, render_dialog, run_job
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -84,9 +86,15 @@ from comictrans.gui.main_window import (
     PREVIEW_WORKING,
     MainWindow,
 )
+from comictrans.gui.note import Note
 from comictrans.gui.preferences import Preferences
-from comictrans.gui.preferences_dialog import FONT_DEFAULT, PreferencesDialog
+from comictrans.gui.preferences_dialog import (
+    FONT_DEFAULT,
+    MINIMUM_HEIGHT,
+    PreferencesDialog,
+)
 from comictrans.gui.render_dialog import (
+    NO_RAR_HERE,
     RENDER,
     SAVE_AND_RENDER,
     RenderDialog,
@@ -3934,6 +3942,434 @@ def test_a_run_that_cannot_start_says_so_in_the_panel(
     assert window._render_action.isEnabled(), "and the window is usable again"
 
 
+GROWTH_POLICIES = [
+    QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint,
+    QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+]
+"""macOS uses the first and every other platform the second, so a form tested
+under one of them is a form tested in half the arrangements it ships in."""
+
+
+def _set_growth_policy(dialog: QDialog, policy: QFormLayout.FieldGrowthPolicy) -> None:
+    """Stand this dialog's form up the way another platform's style would."""
+    for form in dialog.findChildren(QFormLayout):
+        form.setFieldGrowthPolicy(policy)
+
+
+def _assert_nothing_is_clipped(labels: dict[str, Note], where: str) -> None:
+    for name, label in labels.items():
+        if not label.isVisible() or not label.text():
+            continue
+        assert label.height() >= label.needed_height(label.width()), f"{name} is cut off ({where})"
+
+
+# -- a chapter written as one file ---------------------------------------
+
+
+def test_choosing_a_chapter_file_renames_the_output_and_typing_one_moves_the_box(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Two views of one fact; neither can be left saying the other thing."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    folder = dialog.output()
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    assert dialog.output() == folder.with_name(folder.name + ".cbz")
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+    assert dialog.output() == folder.with_name(folder.name + ".cbr")
+
+    dialog._container.setCurrentIndex(dialog._container.findData(None))
+    assert dialog.output() == folder, "and back, with the name it started with"
+
+    dialog._output.setText(str(folder.parent / "chapter-01.cbz"))
+    assert dialog._container.currentData() == ".cbz"
+    assert dialog.output() == folder.parent / "chapter-01.cbz", "typing it does not rename it"
+
+    dialog._output.setText(str(folder.parent / "chapter-01.zip"))
+    assert dialog._container.currentData() == ".cbz", "a chapter saved under the plain name"
+    assert dialog.output().suffix == ".zip", "which is left exactly as it was typed"
+
+
+def test_a_folder_whose_name_has_a_dot_in_it_keeps_all_of_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """``with_suffix`` would make ``vol.2-translated`` into ``vol.cbz``."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._output.setText(str(two_page_plan.parent.parent / "vol.2-translated"))
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    assert dialog.output().name == "vol.2-translated.cbz"
+
+    dialog._container.setCurrentIndex(dialog._container.findData(None))
+    assert dialog.output().name == "vol.2-translated"
+
+
+def test_a_chapter_file_is_asked_the_same_question_about_the_folder_it_goes_in(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    ok = dialog._buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    dialog._output.setText(str(two_page_plan.parent / "chapter.cbz"))
+    assert "inside the source directory" in dialog.refusal()
+    assert not ok.isEnabled(), "the one refusal with no way past it, file or folder"
+
+    dialog._output.setText(str(two_page_plan.parent.parent / "chapter.cbz"))
+    assert dialog.refusal() == ""
+    assert ok.isEnabled()
+
+
+def test_a_chapter_file_that_is_really_a_directory_is_refused(
+    qapp: object, two_page_plan: Path, tmp_path: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    (tmp_path / "chapter.cbz").mkdir()
+
+    dialog._output.setText(str(tmp_path / "chapter.cbz"))
+
+    assert "is a directory, not a file" in dialog.refusal()
+
+
+def test_the_dialog_says_a_cbr_cannot_be_written_before_a_page_is_rendered(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chapter is minutes of work; this answer costs a keystroke."""
+    monkeypatch.delenv("COMICTRANS_RAR", raising=False)
+    monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    ok = dialog._buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+
+    assert dialog.refusal() == NO_RAR_HERE, (
+        "the window's own sentence, not the pipeline's: a dialog has a field "
+        "for this and no business naming an environment variable"
+    )
+    assert "COMICTRANS_RAR" not in dialog.refusal()
+    assert not ok.isEnabled()
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    assert dialog.refusal() == "", "the format that needs nothing"
+
+
+@pytest.mark.parametrize("policy", GROWTH_POLICIES)
+def test_the_dialog_grows_to_hold_what_it_has_to_say(
+    qapp: object,
+    two_page_plan: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: QFormLayout.FieldGrowthPolicy,
+) -> None:
+    """Every wrapped message gets the height it needs, in every state.
+
+    A dialog that stays the height it opened at does not refuse to show a
+    refusal — it takes the height out of the other wrapped labels, and they
+    come out clipped with their last lines missing.
+
+    Both growth policies, and that is the point rather than thoroughness:
+    ``FieldsStayAtSizeHint`` is what ``QMacStyle`` uses and nothing else
+    does, so the first version of this test passed on the one arrangement
+    where the bug was not.
+    """
+    monkeypatch.delenv("COMICTRANS_RAR", raising=False)
+    monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    _set_growth_policy(dialog, policy)
+    dialog.show()
+
+    for suffix in (None, ".cbz", ".cbr", None):
+        dialog._container.setCurrentIndex(dialog._container.findData(suffix))
+        for strategy in ("flat", "inpaint"):
+            dialog._erase.setCurrentIndex(dialog._erase.findData(strategy))
+            for path in (two_page_plan.parent, two_page_plan.parent.parent / "out"):
+                dialog._output.setText(str(path))
+                for width in (420, 520, 760):
+                    dialog.resize(width, dialog.height())
+                    QApplication.processEvents()
+                    _assert_nothing_is_clipped(
+                        {"erase": dialog._erase_help, "refusal": dialog._problem},
+                        f"{policy.name}, {suffix}, {strategy}, {path.name}, {width}px",
+                    )
+
+
+@pytest.mark.parametrize("policy", GROWTH_POLICIES)
+def test_the_preferences_dialog_holds_its_notes_too(
+    qapp: object, policy: QFormLayout.FieldGrowthPolicy
+) -> None:
+    """Three wrapped notes down one form, and the same trap under each."""
+    dialog = PreferencesDialog(Preferences())
+    _set_growth_policy(dialog, policy)
+    dialog.show()
+
+    notes = {
+        "unrar": dialog._unrar_note,
+        "rar": dialog._rar_note,
+        "language": dialog._language_note,
+    }
+    for width in (520, 640, 900):
+        dialog.resize(width, dialog.height())
+        QApplication.processEvents()
+        _assert_nothing_is_clipped(notes, f"{policy.name} at {width}px")
+        widths = {name: note.width() for name, note in notes.items()}
+        assert len(set(widths.values())) == 1, (
+            f"the notes wrap at different widths ({widths}) — in the field "
+            f"column each is given its own size hint's width, and a wrapped "
+            f"label's hint width depends on how much text it holds"
+        )
+
+
+@pytest.mark.parametrize("policy", GROWTH_POLICIES)
+def test_a_field_is_at_least_as_wide_as_the_hint_written_in_it(
+    qapp: object, policy: QFormLayout.FieldGrowthPolicy
+) -> None:
+    """ "same as the sourc…" is not a hint, and it is what a default width gives.
+
+    Under both policies and at the narrowest the window goes: a field that
+    grows to fill a wide dialog fits its placeholder whether or not anything
+    asked it to, which is exactly the arrangement macOS does not use.
+    """
+    dialog = PreferencesDialog(Preferences())
+    _set_growth_policy(dialog, policy)
+    dialog.show()
+    dialog.resize(dialog.minimumWidth(), dialog.height())
+    QApplication.processEvents()
+
+    for name, field in (
+        ("OCR languages", dialog._ocr_languages),
+        ("output", dialog._output),
+        ("unrar", dialog._unrar_tool),
+        ("rar", dialog._rar_tool),
+    ):
+        placeholder = field.placeholderText()
+        assert placeholder, name
+        needed = field.fontMetrics().horizontalAdvance(placeholder)
+        assert field.width() >= needed, f"{name} elides its own placeholder"
+
+
+def test_a_dialog_somebody_has_made_taller_stays_that_way(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Growing to fit must not turn into resizing on every keystroke."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog.show()
+    QApplication.processEvents()
+    dialog.resize(dialog.width(), dialog.height() + 120)
+    QApplication.processEvents()
+    taller = dialog.height()
+
+    dialog._output.setText(str(two_page_plan.parent))  # refused: the message appears
+    QApplication.processEvents()
+    dialog._output.setText(str(two_page_plan.parent.parent / "out"))  # and goes again
+    QApplication.processEvents()
+
+    assert dialog.height() == taller, "a message coming and going did not undo the drag"
+
+
+def test_a_rar_path_that_does_not_work_says_which_path(
+    qapp: object, two_page_plan: Path, tmp_path: Path
+) -> None:
+    """The window's own sentence replaces one message, not every message.
+
+    "there is no rar here" it can say better, because it knows about the
+    field. "the path you gave is a folder" it cannot: the useful half of that
+    is the path, and this is not the place to reword it.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    (tmp_path / "not-a-program").mkdir()
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=Preferences(rar_tool=str(tmp_path / "not-a-program")),
+    )
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+
+    assert "is not a program this can run" in dialog.refusal()
+    assert str(tmp_path / "not-a-program") in dialog.refusal(), "which path it was"
+    assert dialog.refusal() != NO_RAR_HERE, "a different problem, a different answer"
+    assert "COMICTRANS_RAR" not in dialog.refusal()
+
+
+def test_the_preferences_rar_tool_is_what_the_dialog_asks_about_and_hands_on(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+    monkeypatch.setattr("comictrans.pack.rar_compressor", lambda named="": asked.append(named))
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=Preferences(rar_tool="/opt/bin/rar"),
+    )
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+
+    assert asked == ["/opt/bin/rar"], "the same tool it is about to render with"
+    assert dialog.request().rar_tool == "/opt/bin/rar"
+
+
+def test_the_overwrite_checkbox_says_what_it_would_overwrite(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    assert "directory" in dialog._force.text()
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+
+    assert "chapter file" in dialog._force.text()
+    assert "directory" not in dialog._force.text()
+
+
+def test_an_empty_field_with_a_chapter_file_chosen_asks_for_a_name(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The one case where there is nothing to rename.
+
+    ``Path("")`` is ``Path(".")``, whose ``name`` is empty, and ``with_name``
+    raises on it — so choosing a container with the field cleared has to leave
+    it cleared rather than filling it with a dot or falling over.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._output.setText("   ")
+    assert "Choose a directory" in dialog.refusal(), "cleared, it is a folder again"
+
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+
+    assert dialog._output.text().strip() == "", "nothing was invented to rename"
+    assert "Name the chapter file" in dialog.refusal()
+    assert not dialog._buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+    dialog._output.setText(str(two_page_plan.parent.parent / "chapter.cbz"))
+    assert dialog.refusal() == ""
+
+
+@pytest.mark.parametrize("nameless", ["", ".", "/"])
+def test_a_path_with_no_name_of_its_own_is_handed_back_unchanged(nameless: str) -> None:
+    """``with_name`` raises on all three, and every one is typeable.
+
+    The renaming helper directly, not through the box: an exception inside a
+    Qt slot is printed and swallowed, so the widget would look the same
+    either way and the test would prove nothing.
+    """
+    assert RenderDialog._renamed(Path(nameless), ".cbz") == Path(nameless)
+    assert RenderDialog._renamed(Path(nameless), None) == Path(nameless)
+
+
+def test_the_choose_button_opens_a_save_panel_for_a_chapter_file(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A folder panel cannot name a file that does not exist yet."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    opened: list[str] = []
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            render_dialog.QFileDialog,
+            "getExistingDirectory",
+            lambda *args, **kwargs: (opened.append("directory"), "")[1],
+        )
+        patch.setattr(
+            render_dialog.QFileDialog,
+            "getSaveFileName",
+            lambda *args, **kwargs: (opened.append("save"), ("", ""))[1],
+        )
+        dialog._choose_button.click()
+        dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+        dialog._choose_button.click()
+
+    assert opened == ["directory", "save"]
+
+
+def test_rendering_into_a_cbz_from_the_window_writes_one_file(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    import zipfile
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    request = dialog.request()
+
+    _run_render(window, request)
+
+    assert request.output.is_file()
+    with zipfile.ZipFile(request.output) as packed:
+        assert packed.namelist() == ["001-page-001.png", "002-page-002.png"]
+    assert "packed" in window.statusBar().currentMessage()
+    assert str(request.output) in window._run_panel._headline.text()
+
+
+def test_the_compressor_the_dialog_was_given_is_the_one_the_run_uses(
+    qapp: object, two_page_plan: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    """All the way through: preference, request, job, ``pack``.
+
+    Nothing redistributable writes RAR, so a shell script stands in for the
+    compressor and records that it was the one asked. What is being tested is
+    the path the setting travels, not the archive that comes out.
+    """
+    stub = tmp_path / "rar"
+    stub.write_text(f'#!/bin/sh\necho used > "{tmp_path}/ran.txt"\nshift 3\ntouch "$1"\n')
+    stub.chmod(0o755)
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(
+        window.document,  # type: ignore[arg-type]
+        window,
+        preferences=Preferences(rar_tool=str(stub)),
+    )
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbr"))
+    request = dialog.request()
+
+    _run_render(window, request)
+
+    assert (tmp_path / "ran.txt").exists(), "the preference reached the compressor"
+    assert request.output.is_file()
+
+
+def test_a_cancelled_chapter_run_says_nothing_was_written_rather_than_none(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """Zero pages is true and unhelpful: the promise is what needs saying."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = RenderDialog(window.document, window)  # type: ignore[arg-type]
+    dialog._container.setCurrentIndex(dialog._container.findData(".cbz"))
+    request = dialog.request()
+
+    window._start_render(request)
+    assert window._job is not None
+    window._job.cancel()
+    _await_run(window)
+
+    assert not request.output.exists()
+    assert "nothing written" in window._run_panel._headline.text()
+    assert "nothing written" in window.statusBar().currentMessage()
+
+
 # -- extracting pages from the window ------------------------------------
 
 
@@ -4304,13 +4740,13 @@ def test_where_unrar_is_can_be_said_here_and_is_said_nowhere_else(qapp: object) 
     from comictrans.gui.preferences_dialog import RAR_NOTE
 
     dialog = PreferencesDialog(Preferences(), None)
-    assert dialog._rar_tool.text() == ""
-    assert "PATH" in dialog._rar_tool.placeholderText() or dialog._rar_tool.placeholderText()
+    assert dialog._unrar_tool.text() == ""
+    assert "PATH" in dialog._unrar_tool.placeholderText() or dialog._unrar_tool.placeholderText()
     assert "licence" in RAR_NOTE, "why nothing ships is the part worth saying"
 
-    dialog._rar_tool.setText("  /opt/homebrew/bin/unrar  ")
+    dialog._unrar_tool.setText("  /opt/homebrew/bin/unrar  ")
 
-    assert dialog.preferences().rar_tool == "/opt/homebrew/bin/unrar"
+    assert dialog.preferences().unrar_tool == "/opt/homebrew/bin/unrar"
 
 
 def test_an_unset_font_is_not_called_the_plan_default_here(qapp: object) -> None:
@@ -4762,7 +5198,7 @@ def test_a_cbr_with_nothing_to_open_it_is_refused_before_the_run(
     def no_tool(named: str = "") -> None:
         raise InputError("CBR needs a RAR tool and none was found")
 
-    monkeypatch.setattr("comictrans.sources._rar_tool", no_tool)
+    monkeypatch.setattr("comictrans.sources._unrar_tool", no_tool)
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
     dialog = ExtractDialog(None, None)
@@ -4777,14 +5213,14 @@ def test_a_cbr_with_nothing_to_open_it_is_refused_before_the_run(
     )
 
 
-def test_the_preferences_rar_tool_reaches_the_run(qapp: object, tmp_path: Path) -> None:
+def test_the_preferences_unrar_tool_reaches_the_run(qapp: object, tmp_path: Path) -> None:
     archive = tmp_path / "chapter.cbz"
     archive.write_bytes(b"not read by this test")
-    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog = ExtractDialog(None, None, preferences=Preferences(unrar_tool="/opt/bin/unrar"))
 
     dialog._source.setText(str(archive))
 
-    assert dialog.request().rar_tool == "/opt/bin/unrar"
+    assert dialog.request().unrar_tool == "/opt/bin/unrar"
 
 
 def test_the_panel_says_it_is_unpacking_until_the_pages_are_counted(qapp: object) -> None:
@@ -4813,11 +5249,11 @@ def test_where_unrar_is_reaches_the_unpacking(
     seen: list[str] = []
 
     def recorded(source: Path, into: Path | None = None, **kwargs: object) -> UnpackReport:
-        seen.append(str(kwargs["rar_tool"]))
+        seen.append(str(kwargs["unrar_tool"]))
         return unpack(source, into, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(run_job, "unpack", recorded)
-    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog = ExtractDialog(None, None, preferences=Preferences(unrar_tool="/opt/bin/unrar"))
     dialog._source.setText(str(chapter_file))
     job = ExtractJob(dialog.request(), None)
 
@@ -4826,15 +5262,15 @@ def test_where_unrar_is_reaches_the_unpacking(
     assert seen == ["/opt/bin/unrar"]
 
 
-def test_the_dialog_asks_about_the_rar_tool_it_would_hand_to_the_run(
+def test_the_dialog_asks_about_the_unrar_tool_it_would_hand_to_the_run(
     qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Asked about before the run, with the same answer the run would use."""
     asked: list[str] = []
-    monkeypatch.setattr("comictrans.sources._rar_tool", lambda named="": asked.append(named))
+    monkeypatch.setattr("comictrans.sources._unrar_tool", lambda named="": asked.append(named))
     archive = tmp_path / "chapter.cbr"
     archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
-    dialog = ExtractDialog(None, None, preferences=Preferences(rar_tool="/opt/bin/unrar"))
+    dialog = ExtractDialog(None, None, preferences=Preferences(unrar_tool="/opt/bin/unrar"))
 
     dialog._source.setText(str(archive))
 
@@ -5231,3 +5667,46 @@ def test_reading_waits_for_a_region_to_be_chosen(qapp: object, two_page_plan: Pa
 
     window._go_to_region("page-001-001")
     assert window._extract_text_action.isEnabled()
+
+
+def test_the_preferences_window_never_outgrows_the_screen(qapp: object) -> None:
+    """Eleven settings and a note under three of them; a short screen wins.
+
+    How tall this window honestly wants to be depends on the system font and
+    the language it is running in, so it cannot be settled by counting rows
+    here. It is capped instead, and the form gives way rather than Done.
+    """
+    dialog = PreferencesDialog(Preferences())
+    dialog.show()
+    QApplication.processEvents()
+    assert dialog.height() > 400, "it really is a tall window"
+
+    dialog.cap_height(400)
+    QApplication.processEvents()
+
+    assert dialog.height() <= 400
+    assert dialog.maximumHeight() <= 400, "and it cannot be dragged past it either"
+    assert dialog._scroll.verticalScrollBar().maximum() > 0, "the form scrolls instead"
+
+
+def test_a_screen_that_reports_nonsense_still_leaves_a_usable_window(qapp: object) -> None:
+    dialog = PreferencesDialog(Preferences())
+    dialog.show()
+
+    dialog.cap_height(1)
+
+    assert dialog.height() >= MINIMUM_HEIGHT
+    assert dialog.maximumHeight() >= MINIMUM_HEIGHT
+
+
+def test_the_ends_of_the_window_do_not_scroll_away(qapp: object) -> None:
+    """The heading and Done stay put; the middle is what gives."""
+    dialog = PreferencesDialog(Preferences())
+    dialog.show()
+    dialog.cap_height(400)
+    QApplication.processEvents()
+
+    inside = dialog._scroll.widget().findChildren(QWidget)
+    assert dialog._ocr_languages in inside, "the form is what scrolls"
+    buttons = dialog.findChildren(QDialogButtonBox)
+    assert buttons and buttons[0] not in inside, "Done is not in there with it"

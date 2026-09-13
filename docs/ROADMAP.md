@@ -46,7 +46,6 @@ one section can refer to another without ambiguity.
 |---|-----------|------|
 | 4.27 | Lock a region | M |
 | 4.28 | Region context menu | S |
-| 8 | CBZ and CBR output | M |
 | 6 | PDF output | L |
 | 10 | Code quality review | M |
 | 7 | Security audit | M |
@@ -56,8 +55,8 @@ macOS pass that could only happen on a built application has been done.
 Everything in this table is what comes after a release.
 
 The 4.x numbering says these follow milestone 4, the review GUI. What is
-left below them is about the formats a chapter arrives and leaves in;
-reading them has shipped, writing them has not.
+left below them is about the formats a chapter arrives and leaves in:
+reading all three has shipped, and so has writing the two archive ones.
 
 Three things decide this order.
 
@@ -183,68 +182,6 @@ wrong place to find that out.
 same way a left-click chooses it, so the two cannot disagree about what was
 clicked.
 
-## 8 CBZ and CBR output
-
-Write a chapter as a single archive rather than a directory of images.
-
-**CBZ is a zip and needs nothing.** Rendered pages, stored or deflated,
-and the format is done. It is the one every reader on every platform
-opens.
-
-**CBR needs a compressor this project cannot ship, which is not the same
-as cannot use.** RAR compression is proprietary: `unrar` only reads, and
-its licence explicitly forbids using it to create archives, so the only
-thing that writes a `.rar` is the `rar` binary from WinRAR, which is paid
-and not redistributable. What that licence restricts is *redistributing*
-the compressor — it says nothing about someone driving the copy they have
-already licensed. So: `rar` is never bundled. It is looked for on `PATH`,
-and an environment variable names it where it lives somewhere unusual —
-`COMICTRANS_UNRAR` is the one reading CBR already added, and `COMICTRANS_RAR`
-is the shape to copy. Present, CBR is offered; absent, it is not, and the
-reason says which binary would provide it rather than the option quietly not
-being there. A Preferences field for either belongs with the window learning
-to open a chapter file at all, which is an idea below rather than part of
-this.
-
-That keeps this an MIT project and still gives anyone holding a licence
-the format they asked for. It also puts a configurable path to an
-executable this tool then runs into the codebase, which 7 should look at
-closely — how it is validated, and what happens when it names something
-that is not `rar` at all.
-
-**Naming inside the archive carries the reading order, not the source
-filenames.** A reader sorts entries by name, so the page order somebody
-set by dragging rows has to survive into the archive as a zero-padded prefix
-or equivalent.
-Source names that happen to sort correctly today are luck, not a
-guarantee, and a reordered chapter would silently come out in the old
-order if the entry names were copied straight through.
-
-**It collides with how cancel works, and that has to be decided.** Today a
-cancelled render leaves whole pages on disk and re-running finishes the
-job — `README.md` says so, and that is the reason cancel stops after a page
-rather than during one. An archive has no half-way state worth keeping: the
-honest equivalent is to render into a temporary directory, cancel there,
-and only build the archive once every page is done, so a cancelled run
-leaves no archive at all rather than a truncated one. That is a different
-promise from the directory case and both should be written down, not left
-to whichever one the code happens to implement.
-
-The invariant is unchanged and matters more here: a region that cannot be
-rendered is left alone and named in the report. With a directory output the
-page is right there to look at; inside an archive it is one step further
-away, so the report is the only thing that will tell someone a page came
-out untouched.
-
-Where it plugs in: `render_dialog`'s format choice becomes two questions
-rather than one — what each page is encoded as, and what contains them —
-and `apply.output_path` assumes one output file per source image
-throughout.
-
-One thing left open: whether to write a `ComicInfo.xml` alongside the
-pages. Readers use it for series, volume and language, and the plan header
-already knows the language pair. Worth deciding when this is picked up.
-
 ## 6 PDF output
 
 Write a chapter as one PDF rather than a directory of images.
@@ -282,7 +219,8 @@ not how a decision gets reversed.
 
 A pass over this code and over the dependency surface: Pillow, NumPy,
 OpenCV, ruamel.yaml, pyphen, pytesseract, PySide6 and pyobjc-Vision, plus
-`rarfile` and the external `unrar`/`rar` binaries that 3 and 8 bring in.
+`rarfile` and the external `unrar` and `rar` binaries that reading and
+writing chapter files bring in.
 
 **Two halves worth keeping apart.** Dependency CVEs are a tooling question
 — `pip-audit` or equivalent, run on a schedule, reporting versions against
@@ -292,13 +230,14 @@ invariant in `CLAUDE.md` and is enforced nowhere in the suite. An audit is
 where that stops being a rule people remember and starts being something
 that fails a check.
 
-**After 3 and 8.** Reading an archive means handing an untrusted file to an
-unpacker, and for CBR that unpacker is an external binary; writing one
-means invoking a second external binary with paths someone else chose.
-Both are genuinely new attack surface — the first this tool has had that is
-not a Python library — and worth being in scope the first time round rather
-than the second. Whatever shells out to `unrar` or `rar` is where argument
-handling wants reading closely.
+**Both halves of the chapter-file work are now in.** Reading an archive
+means handing an untrusted file to an unpacker, and for CBR that unpacker is
+an external binary; writing one invokes a second external binary with paths
+someone else chose. Both are genuinely new attack surface — the first this
+tool has had that is not a Python library — and both are in scope. What
+shells out is `sources._unrar_tool` through `rarfile`, and `pack._pack_rar`,
+which builds its own argument list with no shell and validates the
+configured path only as far as "something executable is there".
 
 Last on the list, and the only item here that is a recurring activity
 rather than something that ships once and is deleted from this file.

@@ -21,9 +21,10 @@ text it recognised. Nothing has been drawn yet.</p>
 <p><b>You</b> work through the plan here. Fix an outline extract got wrong,
 write the translation, and mark what should be left alone.</p>
 
-<p><b>Render</b> draws the plan onto copies of your pages, into a directory
-you choose. Every decision it makes comes from the plan, which is what lets
-you change one translation, run it again, and have only that text change.</p>
+<p><b>Render</b> draws the plan onto copies of your pages, into a folder or a
+chapter file you choose. Every decision it makes comes from the plan, which is
+what lets you change one translation, run it again, and have only that text
+change.</p>
 
 <h2><a name="colours"></a>The outline colours</h2>
 
@@ -165,10 +166,30 @@ folder of pages beside it first and read from there. A .cbr needs a RAR tool
 already on this machine; Preferences is where you say where it is, and the
 other two need nothing. The new plan goes in with the pages.</p>
 
-<p><b>Render Pages</b> draws the open plan into a directory you choose. Both
-run in the background: the window stays usable, and a panel along the bottom
-reports what happened.</p>
+<p><b>Render Pages</b> draws the open plan into a folder of pages, or into one
+chapter file &mdash; a .cbz or a .cbr &mdash; which is the same choice said
+twice: pick it in the box and the name changes, type the name and the box
+follows. A .cbz needs nothing and every reader opens it. A .cbr needs the rar
+compressor, which comes with WinRAR and which you need a licence for; unrar
+will not do, it only reads. Preferences is where you say where rar is, and the
+dialog tells you before you start rather than after the chapter is
+drawn.</p>
+
+<p>Pages inside a chapter file are numbered in the order the plan has them, so
+a reader shows them in the order you put them in rather than the order they
+were scanned. Nothing else is written into it: no ComicInfo.xml, because the
+only thing this tool knows about your chapter is which languages it is between,
+and a file claiming more than that is worse than one claiming nothing.</p>
+
+<p>Both run in the background: the window stays usable, and a panel along the
+bottom reports what happened. Cancelling differs between the two, and
+deliberately. Stop a render into a folder and the pages it finished are there,
+each one exactly what a whole run would have written; run it again to finish
+the rest. Stop one into a chapter file and nothing is written at all &mdash; a
+chapter file is packed in one go once every page is drawn, and half of one is
+not something to keep.</p>
 
 <p>Rendering will not write inside the folder your pages are in, and there is
 no way to make it. That is the one refusal in this tool with no override, and
-it is what keeps your scans as they were.</p>
+it is what keeps your scans as they were. A chapter file is asked the same
+question about the folder it would go in.</p>

@@ -578,3 +578,169 @@ def test_apply_never_hands_render_page_a_way_to_abandon_a_page(
     for call in seen:
         assert "on_region" not in call
         assert "should_cancel" not in call
+
+
+# -- a chapter written as one file ---------------------------------------
+
+
+def _two_page_project(tmp_path: Path) -> tuple[Path, Plan]:
+    """A plan naming two pages, in an order a plain sort would not give."""
+    source = tmp_path / "pages"
+    source.mkdir()
+    digests = {}
+    for name in ("page10.png", "page2.png"):
+        digests[name] = sha256_file(save_page(_page_array(), source / name))
+    plan_path = source / "comic-plan.yaml"
+    plan = make_plan(
+        _header(),
+        (_region("page10.png", id="page10-001"), _region("page2.png", id="page2-001")),
+        digests,
+    )
+    write_plan(plan, plan_path)
+    return plan_path, plan
+
+
+def test_an_output_named_cbz_is_the_chapter_in_one_file(tmp_path: Path, font_dir: Path) -> None:
+    import zipfile
+
+    plan_path, plan = _two_page_project(tmp_path)
+    archive = tmp_path / "chapter.cbz"
+
+    report = apply_plan(plan, plan_path, archive, ApplyConfig())
+
+    assert report.ok
+    assert report.archive == archive
+    assert archive.is_file()
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.namelist() == ["001-page10.png", "002-page2.png"], (
+            "the plan's order, carried in the names rather than left to a sort"
+        )
+    assert [str(page) for page in report.pages_written] == [
+        "001-page10.png",
+        "002-page2.png",
+    ], "what it wrote is what is in the archive"
+    assert not (tmp_path / "pages" / "page10.png").with_suffix(".cbz").exists()
+
+
+def test_a_cancelled_run_into_an_archive_leaves_no_archive_at_all(
+    tmp_path: Path, font_dir: Path
+) -> None:
+    """The other promise from the directory case, and a deliberate one.
+
+    A directory keeps whole pages and running it again finishes the job; one
+    file has no half-way state worth keeping, so a stopped run leaves what
+    was there before — nothing.
+    """
+    plan_path, plan = _two_page_project(tmp_path)
+    archive = tmp_path / "chapter.cbz"
+    seen: list[str] = []
+
+    report = apply_plan(
+        plan,
+        plan_path,
+        archive,
+        ApplyConfig(),
+        progress=lambda step: seen.append(step.image),
+        should_cancel=lambda: len(seen) >= 1,
+    )
+
+    assert report.cancelled
+    assert not archive.exists()
+    assert report.pages_written == [], "nothing survives, so nothing is claimed"
+    assert report.archive is None
+    assert not report.ok
+
+
+def test_an_archive_already_there_is_not_written_over_without_force(
+    tmp_path: Path, font_dir: Path
+) -> None:
+    plan_path, plan = _two_page_project(tmp_path)
+    archive = tmp_path / "chapter.cbz"
+    archive.write_bytes(b"last week's chapter")
+
+    with pytest.raises(InputError, match="already exists"):
+        apply_plan(plan, plan_path, archive, ApplyConfig())
+    assert archive.read_bytes() == b"last week's chapter"
+
+    report = apply_plan(plan, plan_path, archive, ApplyConfig(), force=True)
+
+    assert report.ok
+    assert archive.read_bytes() != b"last week's chapter"
+
+
+def test_an_archive_inside_the_source_tree_is_refused_like_a_directory(
+    tmp_path: Path, font_dir: Path
+) -> None:
+    """The one refusal with no override, asked of the folder it would go in."""
+    plan_path, plan = _two_page_project(tmp_path)
+
+    with pytest.raises(InputError, match="inside the source directory"):
+        apply_plan(plan, plan_path, plan_path.parent / "chapter.cbz", ApplyConfig())
+
+
+def test_a_cbr_with_nothing_to_write_it_is_refused_before_a_page_is_rendered(
+    tmp_path: Path, font_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chapter is minutes of work; this answer costs nothing to give first."""
+    monkeypatch.delenv("COMICTRANS_RAR", raising=False)
+    monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
+    plan_path, plan = _two_page_project(tmp_path)
+    pages_read: list[str] = []
+
+    with pytest.raises(InputError, match="needs the rar compressor"):
+        apply_plan(
+            plan,
+            plan_path,
+            tmp_path / "chapter.cbr",
+            ApplyConfig(),
+            progress=lambda step: pages_read.append(step.image),
+        )
+
+    assert pages_read == [], "it did not start rendering"
+    assert not (tmp_path / "chapter.cbr").exists()
+
+
+def test_a_directory_output_still_writes_pages_where_it_always_did(
+    project: tuple[Path, Path, Plan], font_dir: Path
+) -> None:
+    """The name decides, and a name that is not an archive decides nothing."""
+    report = _apply(project)
+
+    assert report.archive is None
+    assert report.pages_written == [project[1] / "page-001.png"]
+
+
+def test_two_pages_with_one_name_do_not_quietly_become_one_in_an_archive(
+    tmp_path: Path, font_dir: Path
+) -> None:
+    """The flat output name is where they collide, archive or not.
+
+    A plan is hand-editable and its images are paths relative to it, so it
+    can hold ``left/page.png`` and ``right/page.png``. Rendered into a
+    directory those two are one filename and the second is refused and named
+    in the report; the archive path has to refuse it the same way, or it
+    holds two entries that are the same page.
+    """
+    digests = {}
+    for folder in ("left", "right"):
+        (tmp_path / folder).mkdir()
+        digests[f"{folder}/page.png"] = sha256_file(
+            save_page(_page_array(), tmp_path / folder / "page.png")
+        )
+    plan_path = tmp_path / "comic-plan.yaml"
+    plan = make_plan(
+        _header(),
+        (_region("left/page.png", id="l-001"), _region("right/page.png", id="r-001")),
+        digests,
+    )
+    write_plan(plan, plan_path)
+    archive = tmp_path / "out" / "chapter.cbz"
+    archive.parent.mkdir()
+
+    report = apply_plan(plan, plan_path, archive, ApplyConfig())
+
+    assert [image for image, _reason in report.page_failures] == ["right/page.png"]
+    assert "already exists" in report.page_failures[0][1]
+    assert [str(name) for name in report.pages_written] == ["001-page.png"], (
+        "one page in, one entry out — not the same page twice"
+    )

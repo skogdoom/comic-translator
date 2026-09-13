@@ -25,6 +25,7 @@ from PySide6.QtCore import QCoreApplication, QObject
 
 from ..apply import ApplyReport
 from ..extract import ExtractReport
+from ..pack import archive_kind
 
 
 class RunText(QObject):
@@ -168,8 +169,24 @@ def render_headline(report: ApplyReport, output: Path) -> str:
     Cancelled or not, the count is part of one sentence rather than a prefix
     glued to a shared tail: a language that puts the number last, or inflects
     the noun for it, cannot be assembled from two halves translated apart.
+
+    A chapter file gets its own three, because the count would otherwise be
+    the only thing said about a run that left nothing at all: a stopped
+    archive run has no partial form to keep, which is a promise worth saying
+    out loud the once it applies rather than reporting as zero pages.
     """
     pages = len(report.pages_written)
+    if archive_kind(output) is not None:
+        if report.archive is not None:
+            return RunText.tr("%n page(s) packed into {0}", None, pages).format(output)
+        if report.cancelled:
+            return RunText.tr(
+                "cancelled — nothing written: {0} is one file, so it is packed "
+                "only once every page is rendered"
+            ).format(output.name)
+        return RunText.tr(
+            "nothing written: no page was rendered, so there was nothing to pack into {0}"
+        ).format(output.name)
     if report.cancelled:
         return RunText.tr("cancelled — %n page(s) written to {0}", None, pages).format(output)
     return RunText.tr("%n page(s) written to {0}", None, pages).format(output)

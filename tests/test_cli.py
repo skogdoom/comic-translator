@@ -214,6 +214,44 @@ def test_apply_erase_strategies_all_run(page_dir: Path, font_dir: Path, tmp_path
         assert code == EXIT_OK, strategy
 
 
+def test_apply_writes_a_cbz_when_the_output_is_named_one(
+    page_dir: Path, font_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan_path = _extract_then_translate(page_dir, "I CANNOT BELIEVE IT")
+    archive = tmp_path / "chapter-01.cbz"
+
+    assert main(["apply", str(plan_path), "--output", str(archive)]) == EXIT_OK
+
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.namelist() == ["001-page1.png"]
+    assert not (tmp_path / "chapter-01").exists(), "the workspace is temporary and goes away"
+    assert archive.name in capsys.readouterr().out
+
+
+def test_apply_will_not_overwrite_a_chapter_file_without_force(
+    page_dir: Path, font_dir: Path, tmp_path: Path
+) -> None:
+    plan_path = _extract_then_translate(page_dir, "HELLO THERE")
+    archive = tmp_path / "chapter-01.cbz"
+    assert main(["apply", str(plan_path), "--output", str(archive)]) == EXIT_OK
+    stamp = archive.stat().st_mtime_ns
+
+    assert main(["apply", str(plan_path), "--output", str(archive)]) == EXIT_FATAL
+    assert archive.stat().st_mtime_ns == stamp
+    assert main(["apply", str(plan_path), "--output", str(archive), "--force"]) == EXIT_OK
+
+
+def test_apply_says_what_is_missing_when_a_cbr_cannot_be_written(
+    page_dir: Path, font_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("COMICTRANS_RAR", raising=False)
+    monkeypatch.setattr("comictrans.pack.shutil.which", lambda name: None)
+    plan_path = _extract_then_translate(page_dir, "HELLO THERE")
+
+    assert main(["apply", str(plan_path), "--output", str(tmp_path / "ch.cbr")]) == EXIT_FATAL
+    assert not (tmp_path / "ch.cbr").exists()
+
+
 def test_help_lists_both_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["--help"])
