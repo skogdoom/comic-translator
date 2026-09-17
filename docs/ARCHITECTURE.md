@@ -1424,6 +1424,19 @@ actions follow the canvas through `mode_changed` rather than driving it,
 because the canvas leaves a mode on its own: an outline that closes and a
 pixel that is picked both end the mode that produced them.
 
+**The region context menu is select mode's own, not a fifth mode.**
+Right-click — and Control-click, which Qt maps to the same
+`contextMenuEvent` on macOS — asks `region_at` the identical hit test a left
+click uses, so the two can never disagree about what was under the cursor.
+It only answers in `CanvasMode.SELECT`: every other mode already gives a
+click a meaning of its own, and a menu of unrelated commands appearing
+mid-gesture would contradict whichever one is in progress rather than ask
+about it. The menu itself, `MainWindow._region_menu`, offers nothing of its
+own — it reuses the same `QAction` objects the Edit menu and the toolbar
+already own, the way the toolbar already reuses `_extract_action`. Lock and
+unlock are not on it: that command is milestone 4.27's, not built when this
+one shipped.
+
 **A mode's gestures are shown, not announced.** The line under the canvas
 carries them, keyed off the same `mode_changed` the toolbar follows, and its
 text lives in `canvas.MODE_HINTS` beside the modes themselves — a mode that

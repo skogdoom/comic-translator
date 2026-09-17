@@ -12,9 +12,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QContextMenuEvent,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
@@ -350,6 +351,13 @@ class PageCanvas(QGraphicsView):
     """A click landed on a region the mode will not switch to: its id, so
     that whoever can explain why can say so. Reshaping stays on the region it
     was chosen for; nothing else here refuses a click."""
+
+    region_context_menu_requested = Signal(str, QPoint)
+    """Right-click, or Control-click on macOS, landed on a region: its id and
+    where on screen to put the menu. Reported rather than shown here, for the
+    same reason ``region_drawn`` and the rest are: the commands themselves —
+    extract, reshape — belong to whoever owns them, not to a widget whose job
+    is pixels on screen."""
 
     mode_changed = Signal(str)
     """The canvas changed mode, including when it left one of its own accord
@@ -879,6 +887,29 @@ class PageCanvas(QGraphicsView):
             self.set_zoom(self.zoom * (1.0 + event.value()))
             return True
         return bool(super().event(event))
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802 - Qt override
+        """A region's own commands, or nothing when there is no region here.
+
+        Select mode only. Every other mode has already given a click a
+        meaning of its own — a corner to drag, a corner to place, a region to
+        merge or pick — and a menu of unrelated commands popping up mid-
+        gesture would contradict whatever is in progress rather than ask
+        about it, which is the wrong place to find that out.
+
+        ``region_at`` is the same hit test a left click uses, so a
+        right-click and a left-click can never disagree about what was
+        clicked.
+        """
+        if self._mode is not CanvasMode.SELECT:
+            super().contextMenuEvent(event)
+            return
+        region_id = self.region_at(QPointF(event.pos()))
+        if region_id is None:
+            super().contextMenuEvent(event)
+            return
+        self.region_context_menu_requested.emit(region_id, event.globalPos())
+        event.accept()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
         if event.button() == Qt.MouseButton.LeftButton:

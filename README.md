@@ -60,7 +60,8 @@ pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
 reason is in the first paragraph. `validate` checks a plan without rendering
 it, for the moment before a long run, and the window can put the recogniser
-back over one balloon.
+back over one balloon. Right-click a balloon — Control-click on a one-button
+Mac — for a menu of what can be done to it.
 
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.

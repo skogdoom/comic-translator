@@ -55,7 +55,7 @@ from .conftest import (
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QAction, QDesktopServices, QKeyEvent, QKeySequence
+from PySide6.QtGui import QAction, QContextMenuEvent, QDesktopServices, QKeyEvent, QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -3095,6 +3095,129 @@ def test_edit_mode_survives_a_page_change(qapp: object, two_page_plan: Path) -> 
     assert len(window._canvas._handles) == len(
         window.document.region("page-002-001").polygon  # type: ignore[union-attr]
     )
+
+
+# -- the region context menu -------------------------------------------------
+
+
+def _canvas_with_two_regions() -> object:
+    """A shown, bare canvas — no window, no document — with two named regions.
+
+    Bare because what these tests check is the canvas's own hit-testing and
+    mode-gating, the same thing the ``PageCanvas``-only tests above check
+    without a window either. Shown, so ``mapFromScene`` reflects a real
+    fit-to-window transform rather than a 0x0 one.
+    """
+    from PySide6.QtGui import QPixmap
+
+    from comictrans.gui.canvas import COLOR_EXACT, PageCanvas, RegionAppearance
+
+    canvas = PageCanvas()
+    canvas.resize(300, 200)
+    canvas.show()
+    QTest.qWaitForWindowExposed(canvas)
+    canvas.show_page(
+        QPixmap(300, 200),
+        [
+            RegionAppearance(
+                region_id="a",
+                polygon=((10, 10), (90, 10), (90, 90), (10, 90)),
+                color=COLOR_EXACT,
+                flagged=False,
+            ),
+            RegionAppearance(
+                region_id="b",
+                polygon=((150, 10), (280, 10), (280, 90), (150, 90)),
+                color=COLOR_EXACT,
+                flagged=False,
+            ),
+        ],
+    )
+    return canvas
+
+
+def _right_click_scene(canvas: object, x: float, y: float) -> None:
+    """Right-click a page coordinate, the same way ``_click_scene`` left-clicks one."""
+    view_point = canvas.mapFromScene(QPointF(x, y))  # type: ignore[attr-defined]
+    global_point = canvas.mapToGlobal(view_point)  # type: ignore[attr-defined]
+    event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, view_point, global_point)
+    canvas.contextMenuEvent(event)  # type: ignore[attr-defined]
+
+
+def test_right_clicking_a_region_reports_the_same_hit_test_a_click_uses(qapp: object) -> None:
+    canvas = _canvas_with_two_regions()
+    requested: list[tuple[str, QPoint]] = []
+    canvas.region_context_menu_requested.connect(
+        lambda region_id, pos: requested.append((region_id, pos))
+    )
+
+    _right_click_scene(canvas, 215, 50)  # the centre of region "b"
+
+    assert [region_id for region_id, _pos in requested] == ["b"]
+
+
+def test_right_clicking_empty_page_requests_no_menu(qapp: object) -> None:
+    canvas = _canvas_with_two_regions()
+    requested: list[str] = []
+    canvas.region_context_menu_requested.connect(
+        lambda region_id, _pos: requested.append(region_id)
+    )
+
+    _right_click_scene(canvas, 120, 50)  # between the two regions, on neither
+
+    assert requested == []
+
+
+def test_the_context_menu_does_not_appear_outside_select_mode(qapp: object) -> None:
+    canvas = _canvas_with_two_regions()
+    canvas.set_mode(CanvasMode.RESHAPE)
+    requested: list[str] = []
+    canvas.region_context_menu_requested.connect(
+        lambda region_id, _pos: requested.append(region_id)
+    )
+
+    _right_click_scene(canvas, 215, 50)  # the centre of region "b"
+
+    assert requested == [], "reshaping is in progress; a menu of other commands would contradict it"
+
+
+def test_the_region_menu_selects_its_region_and_offers_its_commands(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")  # a different region than the one asked for below
+
+    menu = window._region_menu("page-001-002")
+
+    assert window._current_region == "page-001-002", "chosen the same way a left-click would"
+    actions = menu.actions()
+    assert window._extract_text_action in actions
+    assert window._edit_shape_action in actions
+
+
+def test_right_clicking_a_region_on_the_window_opens_its_menu(
+    qapp: object, monkeypatch: pytest.MonkeyPatch, two_page_plan: Path
+) -> None:
+    from comictrans.gui import main_window as main_window_module
+
+    shown: list[object] = []
+
+    class _NonBlockingMenu(main_window_module.QMenu):  # type: ignore[misc]
+        def exec(self, *args: object, **kwargs: object) -> None:
+            shown.append(self)
+
+    monkeypatch.setattr(main_window_module, "QMenu", _NonBlockingMenu)
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    # The centre of BALLOON_B, which page-001-002 is drawn over.
+    _right_click_scene(window._canvas, 400, 130)
+
+    assert window._current_region == "page-001-002"
+    assert len(shown) == 1
+    actions = shown[0].actions()  # type: ignore[attr-defined]
+    assert window._extract_text_action in actions
+    assert window._edit_shape_action in actions
 
 
 # -- adding and deleting ------------------------------------------------------
