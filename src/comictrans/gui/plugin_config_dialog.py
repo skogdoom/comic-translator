@@ -43,6 +43,15 @@ from .preferences import SettingsStore
 
 _PLUGIN_ROLE = 0x100
 
+_SETTINGS_FIELD_MIN_WIDTH = 260
+"""Wider than a ``QLineEdit``'s own size hint — about seventeen characters —
+which is all it asks for on macOS, where ``QFormLayout`` defaults to
+``FieldsStayAtSizeHint`` and holds the field at that width instead of
+stretching it to the form's own. Not an attempt to fit every value in full:
+a plugin's default can always be longer than this, the same as any other
+text field in this window. Just enough that the common case is not clipped
+the moment the dialog opens."""
+
 
 class PluginConfigDialog(QDialog):
     changed = Signal()
@@ -145,6 +154,7 @@ class PluginConfigDialog(QDialog):
             form = QFormLayout()
             for field in plugin.settings:
                 edit = QLineEdit(values[field.key])
+                edit.setMinimumWidth(_SETTINGS_FIELD_MIN_WIDTH)
                 edit.textChanged.connect(
                     lambda text, p=plugin, key=field.key: self._on_setting_changed(p, key, text)
                 )

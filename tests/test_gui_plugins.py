@@ -545,6 +545,28 @@ def test_editing_a_setting_in_the_dialog_is_used_the_next_time_the_plugin_runs(
     assert window.document.region("page-001-001").notes == "a note chosen in the dialog"  # type: ignore[union-attr]
 
 
+def test_a_settings_field_is_wider_than_a_plain_line_edit(
+    qapp: object, _empty_plugin_directory: Path
+) -> None:
+    """Not a promise every value fits — just wider than the seventeen-character default."""
+    from PySide6.QtWidgets import QLineEdit
+
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    window = MainWindow()
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+    row = next(
+        row for row in range(dialog._list.count()) if dialog._list.item(row).text() == EXAMPLE_NAME
+    )
+    dialog._list.setCurrentRow(row)
+    edit = dialog.findChild(QLineEdit)
+    assert edit is not None
+
+    assert edit.minimumWidth() > QLineEdit().minimumSizeHint().width()
+
+
 def test_a_failed_plugin_shows_its_error_instead_of_settings(
     qapp: object, _empty_plugin_directory: Path
 ) -> None:
