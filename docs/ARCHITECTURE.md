@@ -1978,28 +1978,29 @@ Tab is the exception in the other direction and not a shortcut at all: a
 text field takes it as a character, which stopped it walking the panel.
 These fields hold two lines of prose, so they let it past.
 
-**While the caret is in a prose field, undo stays inside the region on
-screen.** One history over the whole plan is what makes a drag, a merge and a
-plugin rewriting every region one step each — and it is also how holding
-Ctrl+Z down in one balloon used to walk out of it, into an edit made to
-another region, a polygon dragged, two regions merged. None of that is on
-screen while the panel is showing this region, so none of it could be
+**Undo brings the region it is about into view.** One history over the whole
+plan is what makes a drag, a merge and a plugin rewriting every region one
+step each — and it is also why holding Ctrl+Z down in one balloon walks out
+of it, into an edit made to another region, on another page. None of that is
+on screen while the panel is showing this region, so none of it could be
 noticed.
 
-`PlanDocument.undo(within=...)` refuses a step that is about anything else,
-and `step_is_only_about` decides by comparing the two plans rather than by
-remembering what each step was for — the same question either way, and one
-of the two answers can go stale. A step that *adds or deletes* the selected
-region counts as being about it: a balloon just drawn is the balloon on
-screen, and Ctrl+Z after drawing one means that. What is refused is a step
-about something else.
+Refusing to cross the boundary was tried first and is the worse answer: it
+fixes the surprise by making the rest of the history unreachable from
+wherever somebody happens to be typing, and it turns a key into one that
+sometimes does nothing. Following the step costs nothing instead. It happens
+as it always did, in order, and `MainWindow._follow_the_change` selects the
+region it happened to, changing page if that is where it is.
+`document.regions_touched` compares the two plans rather than remembering
+what each step was for: the same question either way, and one of the two
+answers can go stale.
 
-It refuses rather than searching the stack for one that qualifies, because
-reordering history is how an undo stack stops being trustworthy; and it says
-so in the status bar, because a key that silently stops working is worse
-than one that explains itself. Escape puts the focus back on the page, where
-undo is the whole plan as ever — so nothing is unreachable, only out of reach
-from inside a text box.
+A region added or deleted by the step counts as touched — it is the thing
+that changed, and Ctrl+Z after drawing a balloon means that balloon. A step
+that touched no region at all, the header or a page moved, leaves the
+selection alone, because there is nothing it could usefully select. A step
+that touched several is a merge, and the first in the plan's own order is
+shown, because showing one of them beats showing none.
 
 **Typing is undone a word at a time.** A run of edits collapses into one undo
 step, keyed by region and field, and it used to end only when the selection

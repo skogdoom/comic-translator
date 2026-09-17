@@ -52,7 +52,7 @@ from ..config import DEFAULT_LANGUAGES, DetectConfig, ExtractConfig, OcrConfig
 from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
-from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
+from ..model import Color, Geometry, Plan, Point, Polygon, Region, convex_hull
 from ..ocr.grouping import looks_like_text
 from ..pack import archive_kind
 from ..sources import is_container
@@ -69,7 +69,7 @@ from .canvas import (
     ViewState,
     mode_hint,
 )
-from .document import PlanDocument
+from .document import PlanDocument, regions_touched
 from .extract_dialog import ExtractDialog
 from .header_dialog import HeaderDialog
 from .help_dialog import HelpDialog
@@ -107,15 +107,6 @@ PREVIEW_WORKING = QCoreApplication.translate("MainWindow", "rendering preview…
 
 EXTRACTING_TEXT = QCoreApplication.translate("MainWindow", "extracting the text of {0}…")
 """Shown while a recogniser reads one region, and replaced by its result."""
-
-UNDO_IS_ELSEWHERE = QCoreApplication.translate(
-    "MainWindow",
-    "the next undo is not in this region — press Escape to undo anywhere in the plan",
-)
-"""Said when undo stops at the edge of the region being typed into.
-
-Rather than nothing at all, which is what refusing looks like from the
-keyboard: the key stops working and there is no way to find out why."""
 
 PREVIEW_TEXT = QCoreApplication.translate("MainWindow", "&Render Preview")
 OVERLAY_TEXT = QCoreApplication.translate("MainWindow", "Back to &Overlay")
@@ -1551,44 +1542,52 @@ class MainWindow(QMainWindow):
         self._refresh_page_visuals()
         self._update_actions_enabled()
 
-    def _typing_in(self) -> str | None:
-        """The region whose text is being edited, or ``None``.
-
-        The caret being in one of the inspector's prose fields is the whole
-        test. It is what tells undo to stay inside this region — see
-        :meth:`PlanDocument.undo` — and it is false the moment Escape puts
-        the focus back on the page, which is how the whole plan's history is
-        reached again.
-        """
-        if self._current_region is None or not self._inspector.editing_text():
-            return None
-        return self._current_region
-
     def _on_undo(self) -> None:
         if self.document is None:
             return
-        within = self._typing_in()
-        if self.document.undo(within=within):
+        before = self.document.plan
+        if self.document.undo():
             self._reload_from_document()
-        elif within is not None and self.document.can_undo:
-            self._say_undo_is_elsewhere()
+            self._follow_the_change(before)
 
     def _on_redo(self) -> None:
         if self.document is None:
             return
-        within = self._typing_in()
-        if self.document.redo(within=within):
+        before = self.document.plan
+        if self.document.redo():
             self._reload_from_document()
-        elif within is not None and self.document.can_redo:
-            self._say_undo_is_elsewhere()
+            self._follow_the_change(before)
 
-    def _say_undo_is_elsewhere(self) -> None:
-        """Why nothing happened, rather than letting it look broken.
+    def _follow_the_change(self, before: Plan) -> None:
+        """Select whatever the step was about, so that it is on screen.
 
-        Refusing silently is the one thing worse than crossing the boundary:
-        the key would simply stop working and there would be nothing to read.
+        One history covers the whole plan, which is what makes a drag, a
+        merge and a plugin rewriting every region one step each. The cost is
+        that holding Ctrl+Z down in one balloon walks out of it — past the
+        typing and into an edit made to another region, on another page —
+        and none of that is visible while the panel is showing this one.
+
+        Refusing to cross would fix the surprise by making the rest of the
+        history unreachable from where somebody is typing. Following it
+        costs nothing instead: the step happens as it always did, and the
+        region it happened to comes into view, changing page if it is on
+        another. What was hidden is the whole problem, and this is what
+        stops it being hidden.
+
+        A step that touched no region — the header, or a page moved — leaves
+        the selection alone; there is nothing it could usefully select. A
+        step that touched several, which is a merge, shows the first in the
+        plan's own order, because showing one of them beats showing none.
         """
-        self.statusBar().showMessage(UNDO_IS_ELSEWHERE)
+        if self.document is None:
+            return
+        touched = regions_touched(before, self.document.plan)
+        if self._current_region in touched:
+            return
+        for region in self.document.plan.regions:
+            if region.id in touched:
+                self._go_to_region(region.id)
+                return
 
     def _reload_from_document(self) -> None:
         """After undo or redo, when the plan changed under everything at once.

@@ -85,7 +85,6 @@ from comictrans.gui.main_window import (
     OVERLAY_TEXT,
     PREVIEW_TEXT,
     PREVIEW_WORKING,
-    UNDO_IS_ELSEWHERE,
     MainWindow,
 )
 from comictrans.gui.note import Note
@@ -6024,50 +6023,105 @@ def test_tab_walks_out_of_the_prose_fields(qapp: object, two_page_plan: Path) ->
         assert QApplication.focusWidget() is not field, "and it moved on"
 
 
-def test_undo_while_typing_does_not_walk_into_another_region(
+def test_undoing_another_region_s_edit_brings_that_region_into_view(
     qapp: object, two_page_plan: Path
 ) -> None:
-    """The hazard: the panel shows one region, and undo was taking back
-    edits made to another one, which is not on screen to be noticed."""
+    """The hazard, solved by showing rather than refusing.
+
+    The panel shows one region while undo walks back through a history that
+    covers the whole plan, so an edit made somewhere else was taken back
+    where nobody could see it happen. Now the step still happens and the
+    region it happened to is selected first.
+    """
     window = _shown_window(two_page_plan)
     window._go_to_region("page-001-001")
     window._inspector._translation.setPlainText("FIRST")
     window._go_to_region("page-001-002")
-    window._inspector._translation.setFocus()
-    QApplication.processEvents()
     window._inspector._translation.setPlainText("SECOND")
     QApplication.processEvents()
 
     window._on_undo()
-    assert window.document.region("page-001-002").translation != "SECOND"  # type: ignore[union-attr]
+    assert window._current_region == "page-001-002", "its own edit, where it already was"
 
     window._on_undo()
 
-    assert window.document.region("page-001-001").translation == "FIRST", (  # type: ignore[union-attr]
-        "the other region's edit was left alone"
-    )
-    assert UNDO_IS_ELSEWHERE in window.statusBar().currentMessage()
-    assert window.document.can_undo, "and it is still there"
-
-
-def test_escape_puts_the_whole_plan_s_history_back_within_reach(
-    qapp: object, two_page_plan: Path
-) -> None:
-    window = _shown_window(two_page_plan)
-    window._go_to_region("page-001-001")
-    window._inspector._translation.setPlainText("FIRST")
-    window._go_to_region("page-001-002")
-    window._inspector._translation.setFocus()
-    QApplication.processEvents()
-    window._inspector._translation.setPlainText("SECOND")
-    window._on_undo()
-    assert not window.document.undo(within="page-001-002")  # type: ignore[union-attr]
-
-    QTest.keyClick(window._inspector._translation, Qt.Key.Key_Escape)
-    QApplication.processEvents()
-    window._on_undo()
-
+    assert window._current_region == "page-001-001", "and now the region that changed"
     assert window.document.region("page-001-001").translation != "FIRST"  # type: ignore[union-attr]
+    assert window._inspector._translation.toPlainText() == (
+        window.document.region("page-001-001").translation  # type: ignore[union-attr]
+    )
+
+
+def test_following_a_change_onto_another_page(qapp: object, two_page_plan: Path) -> None:
+    """Selecting a region on another page has to bring the page with it."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-002-001")
+    window._inspector._translation.setPlainText("ON THE SECOND PAGE")
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("ON THE FIRST")
+    QApplication.processEvents()
+
+    window._on_undo()
+    window._on_undo()
+
+    assert window._current_image == "page-002.png"
+    assert window._current_region == "page-002-001"
+
+
+def test_redo_follows_the_change_as_well(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setPlainText("SECOND")
+    window._on_undo()
+    window._on_undo()
+    assert window._current_region == "page-001-001"
+
+    window._on_redo()
+
+    assert window._current_region == "page-001-001", "its own step, put back"
+
+    window._on_redo()
+
+    assert window._current_region == "page-001-002"
+    assert window.document.region("page-001-002").translation == "SECOND"  # type: ignore[union-attr]
+
+
+def test_the_change_does_not_hop_off_a_region_already_shown(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Several regions touched, one of them already on screen: stay there.
+
+    A step that touches more than one region — a merge — shows the first
+    in the plan's own order when none of them is selected. That is a
+    different case from this one: the region on screen already is among
+    the touched, just not the first of them, and it should be left alone
+    rather than swapped for the first merely because the first is touched
+    too.
+    """
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    before = window.document.plan  # type: ignore[union-attr]
+    window.document.set_translation("page-001-001", "A CHANGED")  # type: ignore[union-attr]
+    window.document.set_translation("page-001-002", "B CHANGED")  # type: ignore[union-attr]
+
+    window._follow_the_change(before)
+
+    assert window._current_region == "page-001-002"
+
+
+def test_a_step_about_no_region_leaves_the_selection_alone(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """There is nothing a header edit could usefully select."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    window.document.set_header_font("Marker Felt")  # type: ignore[union-attr]
+
+    window._on_undo()
+
+    assert window._current_region == "page-001-002"
 
 
 def test_with_the_caret_on_the_page_undo_is_the_whole_plan(

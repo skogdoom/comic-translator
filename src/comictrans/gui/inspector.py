@@ -368,25 +368,6 @@ class RegionInspector(QWidget):
         self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
 
-    def editing_text(self) -> bool:
-        """Whether the caret is in one of the prose fields of this panel.
-
-        What scopes undo to the region on screen — see
-        ``MainWindow._typing_in``. The three prose fields and nothing else:
-        the colour boxes and the font size are one edit each and have never
-        been anything a run of undo could walk through unseen.
-        """
-        # ``hasFocus`` on each field, and neither of the two obvious
-        # alternatives. ``QApplication.focusWidget`` is the whole
-        # application's and answers about whichever window is active, which
-        # is not necessarily this one — measured, it named a field in another
-        # window entirely. ``QWidget.focusWidget`` is per widget and goes
-        # stale: it keeps naming the last child that held focus long after
-        # focus has gone elsewhere.
-        return any(
-            field.hasFocus() for field in (self._source_text, self._translation, self._notes)
-        )
-
     def focus_translation(self) -> None:
         """Put the caret in the translation, ready to type.
 

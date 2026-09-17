@@ -14,7 +14,7 @@ from comictrans.gui.document import (
     inserted,
     overlapping_region_ids,
     region_flags,
-    step_is_only_about,
+    regions_touched,
 )
 from comictrans.model import (
     Box,
@@ -1117,25 +1117,51 @@ def test_which_edits_finish_a_word() -> None:
     assert not finished_a_word(12, 20), "nor a number"
 
 
-# -- undo stays inside the region being typed into -----------------------
+# -- what a step was about, so undo can show it --------------------------
 
 
-def test_undo_within_a_region_takes_back_only_that_region() -> None:
+def test_what_a_step_touched() -> None:
     doc = _document(_apart(1), _apart(2))
-    doc.set_translation("r1", "FIRST REGION")
-    doc.end_edit_run()
-    doc.set_translation("r2", "SECOND REGION")
+    plan = doc.plan
 
-    assert doc.undo(within="r2")
-    assert doc.region("r2").translation != "SECOND REGION"
+    one = replace(plan, regions=(replace(plan.regions[0], notes="X"), plan.regions[1]))
+    assert regions_touched(plan, one) == {"r1"}
 
-    assert not doc.undo(within="r2"), "the next step is r1's, and r1 is not on screen"
-    assert doc.region("r1").translation == "FIRST REGION", "untouched"
-    assert doc.can_undo, "and still there to take back from the page"
+    both = replace(
+        plan,
+        regions=(replace(plan.regions[0], notes="X"), replace(plan.regions[1], notes="Y")),
+    )
+    assert regions_touched(plan, both) == {"r1", "r2"}, "a merge is two"
+
+    assert regions_touched(plan, plan) == frozenset(), "a step that changed nothing"
 
 
-def test_undo_with_no_region_named_is_the_whole_plan_as_ever() -> None:
-    """Escape puts the focus back on the page, and this is what it buys."""
+def test_a_region_added_or_taken_away_is_what_the_step_touched() -> None:
+    """It is the thing that changed, so it is the thing to show."""
+    doc = _document(_apart(1))
+    before = doc.plan
+    drawn = _added(doc)
+
+    assert regions_touched(before, doc.plan) == {drawn.id}
+    assert regions_touched(doc.plan, before) == {drawn.id}, "and the same undoing it"
+
+
+def test_a_step_that_is_not_about_any_region_touches_none() -> None:
+    """The header and the page order have no region to select."""
+    doc = _document(_apart(1), _apart(2))
+    plan = doc.plan
+
+    header = replace(plan, header=replace(plan.header, font="Something Else"))
+    assert regions_touched(plan, header) == frozenset()
+
+    pages = replace(plan, images=(PlanImage(name="page-001.png", sha256="a" * 64),))
+    assert regions_touched(plan, pages) == frozenset()
+
+    reordered = replace(plan, regions=(plan.regions[1], plan.regions[0]))
+    assert regions_touched(plan, reordered) == frozenset(), "nobody's, and nothing to show"
+
+
+def test_undo_is_the_whole_plan_and_refuses_nothing() -> None:
     doc = _document(_apart(1), _apart(2))
     doc.set_translation("r1", "FIRST REGION")
     doc.end_edit_run()
@@ -1145,102 +1171,3 @@ def test_undo_with_no_region_named_is_the_whole_plan_as_ever() -> None:
     assert doc.undo()
 
     assert doc.region("r1").translation != "FIRST REGION"
-
-
-def test_redo_stays_inside_the_same_boundary() -> None:
-    doc = _document(_apart(1), _apart(2))
-    doc.set_translation("r1", "FIRST REGION")
-    doc.end_edit_run()
-    doc.set_translation("r2", "SECOND REGION")
-    doc.undo()
-    doc.undo()
-
-    assert not doc.redo(within="r2"), "the step to put back is r1's"
-    assert doc.redo(within="r1")
-    assert doc.region("r1").translation == "FIRST REGION"
-
-
-def test_a_step_that_drew_this_region_is_about_this_region() -> None:
-    """Ctrl+Z after drawing a balloon means the balloon, and it is on screen."""
-    doc = _document(_apart(1))
-    drawn = _added(doc)
-
-    assert doc.undo(within=drawn.id)
-    assert drawn.id not in {region.id for region in doc.plan.regions}
-
-
-def test_a_merge_is_never_one_region_s_to_take_back() -> None:
-    doc = _document(_apart(1), _apart(2))
-
-    assert not step_is_only_about(
-        doc.plan,
-        replace(
-            doc.plan,
-            regions=(replace(doc.plan.regions[0], translation="MERGED"),),
-        ),
-        "r1",
-    ), "two regions became one; that is not r1's alone"
-
-
-def test_what_counts_as_one_region_s_step() -> None:
-    doc = _document(_apart(1), _apart(2))
-    plan = doc.plan
-
-    one = replace(plan, regions=(replace(plan.regions[0], notes="X"), plan.regions[1]))
-    assert step_is_only_about(plan, one, "r1")
-    assert not step_is_only_about(plan, one, "r2")
-
-    both = replace(
-        plan,
-        regions=(replace(plan.regions[0], notes="X"), replace(plan.regions[1], notes="Y")),
-    )
-    assert not step_is_only_about(plan, both, "r1")
-
-    header = replace(plan, header=replace(plan.header, font="Something Else"))
-    assert not step_is_only_about(plan, header, "r1")
-
-    reordered = replace(plan, regions=(plan.regions[1], plan.regions[0]))
-    assert not step_is_only_about(plan, reordered, "r1")
-
-    assert not step_is_only_about(plan, plan, "r1"), "a step that changed nothing"
-
-
-def test_a_step_that_does_two_things_is_not_one_region_s_either() -> None:
-    """The guards that only bite when a step is compound.
-
-    Nothing in this document writes the header and a region together, or
-    moves a page while editing one — but ``step_is_only_about`` is a
-    predicate over two plans, not over the operations that happen to exist
-    today, and the whole point of it is to refuse what somebody cannot see.
-    Tested directly, because a step that changes only the header is already
-    refused for changing no region at all, and would pass with the guard
-    gone.
-    """
-    doc = _document(_apart(1), _apart(2), _apart(3))
-    plan = doc.plan
-    edited = replace(plan.regions[0], translation="R1 EDITED")
-
-    with_header = replace(
-        plan,
-        header=replace(plan.header, font="Something Else"),
-        regions=(edited, plan.regions[1], plan.regions[2]),
-    )
-    assert not step_is_only_about(plan, with_header, "r1"), "the header went with it"
-
-    with_reorder = replace(plan, regions=(edited, plan.regions[2], plan.regions[1]))
-    assert not step_is_only_about(plan, with_reorder, "r1"), "and two other regions swapped"
-
-    # The fixture's plan carries no images, so one is put on both sides and
-    # changed on one of them — otherwise this asserts nothing.
-    with_pages = replace(plan, images=(PlanImage(name="page-001.png", sha256="a" * 64),))
-    with_a_page_moved = replace(
-        with_pages,
-        images=(PlanImage(name="page-001.png", sha256="b" * 64),),
-        regions=(edited, plan.regions[1], plan.regions[2]),
-    )
-    assert not step_is_only_about(with_pages, with_a_page_moved, "r1"), (
-        "and the pages changed under it"
-    )
-
-    alone = replace(plan, regions=(edited, plan.regions[1], plan.regions[2]))
-    assert step_is_only_about(plan, alone, "r1"), "where the same edit on its own is fine"
