@@ -168,7 +168,12 @@ def _run_spec(monkeypatch: pytest.MonkeyPatch, lproj: Path | None = None) -> dic
     """
     hooks = types.ModuleType("PyInstaller.utils.hooks")
 
-    def collect_data_files(package: str) -> list[tuple[str, str]]:
+    def collect_data_files(
+        package: str, include_py_files: bool = False, subdir: str | None = None
+    ) -> list[tuple[str, str]]:
+        if subdir is not None:
+            label = "include_py_files" if include_py_files else "no_py_files"
+            return [(f"{package}/{subdir}[{label}]", f"comictrans/{subdir}")]
         return [(f"{package}/resources", "comictrans/resources")]
 
     def copy_metadata(distribution: str, recursive: bool = False) -> list[tuple[str, str]]:
@@ -448,6 +453,21 @@ def test_the_bundle_carries_the_files_nothing_imports(monkeypatch: pytest.Monkey
         "PySide6 is an extra, so a recursive walk of the required dependencies "
         "does not reach it — measured on a build, where it was simply absent"
     )
+
+
+def test_the_example_plugin_is_carried_with_its_py_files_included(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one directory under ``resources/`` whose files *are* Python.
+
+    ``collect_data_files`` excludes ``.py`` by default, which is right for
+    everything else under ``resources/`` — none of it is source — and wrong
+    here, since the example plugin needs its actual files to copy out and
+    install the first time experimental features are turned on.
+    """
+    carried = [source for source, _destination in _run_spec(monkeypatch)["Analysis"]["datas"]]
+
+    assert "comictrans/gui/resources/plugins[include_py_files]" in carried
 
 
 def test_an_extra_this_machine_does_not_have_does_not_stop_the_build(

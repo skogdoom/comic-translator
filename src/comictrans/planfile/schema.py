@@ -108,7 +108,8 @@ comictrans plan file. Hand-edit this, then run: comictrans apply
                 it in place; apply reports any left identical to source_text.
                 Empty means "leave this balloon alone", reported as skipped.
   skip: true    deliberately leave the art untouched, no warning.
-  notes         yours; comictrans never reads or rewrites it.
+  notes         yours; the passes here never read or rewrite it, though a
+                plugin you install might (off by default; see README.md).
   **bold**      emphasis. Renders as bold, never italic.
   polygon       pixels, origin top-left. Editing it moves the erase and
                 typeset area; apply never re-runs detection.

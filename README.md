@@ -39,6 +39,18 @@ file rather than a damaged scan — keep your originals backed up anyway. And
 purpose; it is a record of what is known to be wrong, not a claim that
 nothing else is.
 
+**Plugins are a second, separate kind of risk, and unreviewed in a different
+sense.** They are off unless Preferences ▸ this window ▸ experimental
+features is turned on. Turning that on installs the one example that ships,
+but installed is not running: a plugin only ever runs when you choose it
+from the Plugins menu by name. A plugin is a folder of plain Python with no
+sandbox around it: it can do anything the interpreter running `review` can
+do, which is everything you can do, including reach the network — this
+project makes no network call anywhere in its own pipeline, but a plugin you
+keep installed is not this project, and that promise is not one this tool
+can make on a plugin's behalf. Read one before you keep it, the same as you
+would any other script you did not write yourself.
+
 ## Status
 
 **Released: 1.0.0. This tree: 1.1.0.dev0**, which is work since that release
@@ -52,6 +64,13 @@ back over one balloon.
 
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
+
+Plugins are experimental and off by default: Preferences ▸ this window ▸
+experimental features turns on a Plugins menu that runs a plan-in, plan-out
+folder of Python you drop into the plugin folder, one folder per plugin so
+one can be more than a single file. One example is already there the first
+time you turn this on: it adds a note to every region. Configuring a plugin
+beyond editing its own source is not built yet.
 
 Chapters can arrive as one file and leave as one: `extract` reads CBZ, CBR
 and PDF by unpacking them into a folder of pages first, and `apply --output
@@ -74,8 +93,9 @@ alone on purpose.
   `bsdtar` or `7z`. None of them ships with comictrans, and the reason is in
   **Chapter files**. CBZ and PDF need nothing beyond the install below.
 
-Everything runs locally. There are no network calls anywhere in the pipeline —
-translation is manual by design.
+Everything runs locally. There are no network calls anywhere in the
+pipeline — translation is manual by design. That covers this project; it
+does not cover a plugin you choose to install — see **Disclaimer**.
 
 ## Install
 

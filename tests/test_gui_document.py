@@ -354,6 +354,49 @@ def test_a_reordered_plan_still_reads_back_in_that_order(tmp_path: Path) -> None
     assert reopened.ordered_ids() == ("r4", "r1", "r2", "r3")
 
 
+def test_apply_plugin_is_one_undo_step_covering_every_region_it_touched() -> None:
+    doc = _three_pages()
+    before = doc.plan
+    touched = replace(before, regions=tuple(replace(r, notes="checked") for r in before.regions))
+
+    assert doc.apply_plugin(touched)
+
+    assert all(r.notes == "checked" for r in doc.plan.regions)
+    assert doc.dirty
+    assert doc.undo()
+    assert doc.plan == before
+    assert not doc.dirty
+
+
+def test_apply_plugin_is_a_no_op_when_nothing_changed() -> None:
+    doc = _three_pages()
+
+    assert not doc.apply_plugin(doc.plan)
+
+    assert not doc.dirty
+    assert not doc.can_undo
+
+
+def test_apply_plugin_breaks_whatever_typing_run_was_open() -> None:
+    """A plugin run is a deliberate act, not a continuation of typing in a field.
+
+    ``set_notes`` on the same region and field the plugin also touches would
+    coalesce with a second manual edit; it must not coalesce with this.
+    """
+    doc = _three_pages()
+    doc.set_notes("r1", "x")  # one short edit; no space typed, so its run stays open
+
+    touched = replace(
+        doc.plan, regions=tuple(replace(r, notes="from a plugin") for r in doc.plan.regions)
+    )
+    doc.apply_plugin(touched)
+
+    assert doc.undo()
+    assert doc.region("r1").notes == "x"
+    assert doc.undo()
+    assert doc.region("r1").notes == ""
+
+
 def test_ordered_ids_is_the_plans_own_order() -> None:
     doc = _document(_apart(1), _apart(2), _apart(3))
     assert doc.ordered_ids() == ("r1", "r2", "r3")

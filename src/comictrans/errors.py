@@ -51,3 +51,7 @@ class FontError(ComictransError):
 
 class GuiUnavailableError(ComictransError):
     """PySide6 is not installed, or a display could not be opened."""
+
+
+class PluginError(ComictransError):
+    """A plugin failed to run, or returned a plan it was not allowed to."""

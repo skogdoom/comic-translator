@@ -34,7 +34,7 @@
 <context>
     <name>MainWindow</name>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1014"/>
+        <location filename="../../main_window.py" line="1062"/>
         <source>{0}: %n region(s), {1} flagged</source>
         <translation>
             <numerusform>{0}: %n region, {1} flagged</numerusform>
@@ -42,7 +42,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1767"/>
+        <location filename="../../main_window.py" line="1836"/>
         <source>preview: %n problem(s) — {0}</source>
         <translation>
             <numerusform>preview: %n problem — {0}</numerusform>
@@ -50,7 +50,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1799"/>
+        <location filename="../../main_window.py" line="1868"/>
         <source>rendering %n page(s) — {0}</source>
         <translation>
             <numerusform>rendering %n page — {0}</numerusform>
@@ -58,8 +58,8 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1828"/>
-        <location filename="../../main_window.py" line="1840"/>
+        <location filename="../../main_window.py" line="1897"/>
+        <location filename="../../main_window.py" line="1909"/>
         <source>reading %n page(s) — {0}</source>
         <translation>
             <numerusform>reading %n page — {0}</numerusform>
@@ -67,7 +67,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1889"/>
+        <location filename="../../main_window.py" line="1958"/>
         <source>cancelled after %n page(s) to {0}</source>
         <translation>
             <numerusform>cancelled after %n page to {0}</numerusform>
@@ -75,7 +75,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1891"/>
+        <location filename="../../main_window.py" line="1960"/>
         <source>rendered %n page(s) to {0}</source>
         <translation>
             <numerusform>rendered %n page to {0}</numerusform>
@@ -83,7 +83,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1894"/>
+        <location filename="../../main_window.py" line="1963"/>
         <source>packed %n page(s) into {0}</source>
         <translation>
             <numerusform>packed %n page into {0}</numerusform>
@@ -91,7 +91,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1904"/>
+        <location filename="../../main_window.py" line="1973"/>
         <source>{0} — %n to check</source>
         <translation>
             <numerusform>{0} — %n to check</numerusform>
@@ -99,7 +99,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1924"/>
+        <location filename="../../main_window.py" line="1993"/>
         <source>cancelled after %n page(s)</source>
         <translation>
             <numerusform>cancelled after %n page</numerusform>
@@ -107,11 +107,19 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1982"/>
+        <location filename="../../main_window.py" line="2051"/>
         <source>%n font family/families available</source>
         <translation>
             <numerusform>%n font family available</numerusform>
             <numerusform>%n font families available</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../../main_window.py" line="2083"/>
+        <source>%n plugin(s) available</source>
+        <translation>
+            <numerusform>%n plugin available</numerusform>
+            <numerusform>%n plugins available</numerusform>
         </translation>
     </message>
 </context>
