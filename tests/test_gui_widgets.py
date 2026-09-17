@@ -5848,3 +5848,371 @@ def test_closing_down_twice_is_not_a_crash(qapp: object) -> None:
     window = MainWindow()
     close_down(window)
     close_down(window)
+
+
+# -- typing into a region, and getting back out --------------------------
+
+
+def _undo_key() -> tuple[Qt.Key, Qt.KeyboardModifier]:
+    sequence = QKeySequence(QKeySequence.StandardKey.Undo)
+    return Qt.Key(sequence[0].key()), sequence[0].keyboardModifiers()
+
+
+def test_undo_reaches_the_document_from_inside_a_translation(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """It did not. The field claimed Cmd+Z and, having no undo of its own,
+    did nothing with it — so the window's action never fired and typing
+    could not be taken back without first clicking somewhere else."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._go_to_region("page-001-001")
+    field = window._inspector._translation
+    field.setFocus()
+    QApplication.processEvents()
+    field.setPlainText("ONE TWO")
+    QApplication.processEvents()
+    assert window.document.region("page-001-001").translation == "ONE TWO"  # type: ignore[union-attr]
+
+    QTest.keyClick(field, *_undo_key())
+    QApplication.processEvents()
+
+    assert window.document.region("page-001-001").translation != "ONE TWO"  # type: ignore[union-attr]
+    assert field.toPlainText() == window.document.region("page-001-001").translation  # type: ignore[union-attr]
+
+
+def test_clicking_a_region_puts_the_caret_in_its_translation(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Clicking a balloon means "I am about to write", when nothing else
+    was already focused to carry over instead."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    QApplication.processEvents()
+
+    window._canvas.region_selected.emit("page-001-002")
+    QApplication.processEvents()
+
+    assert window._current_region == "page-001-002"
+    assert QApplication.focusWidget() is window._inspector._translation
+
+
+def test_clicking_a_region_carries_over_a_field_already_focused(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A click is only the *default* to the translation, not a demand for
+    it — typing in notes and then clicking another balloon is "carry on
+    taking notes", the same as stepping there with Next Region would be."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._notes.setFocus()
+    QApplication.processEvents()
+    assert window._inspector._notes.hasFocus(), "sanity: focus is there before clicking"
+
+    window._canvas.region_selected.emit("page-001-002")
+    QApplication.processEvents()
+
+    assert window._current_region == "page-001-002"
+    field = window._inspector._notes
+    assert field.hasFocus()
+    assert field.textCursor().position() == len(field.toPlainText())
+
+
+def test_walking_to_a_region_leaves_the_arrow_keys_where_they_were(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The conflict this design exists for.
+
+    Arrow keys nudge the selected region a pixel, twenty with Shift. Focusing
+    a text field takes all four away, and walking the flagged regions from
+    the keyboard is exactly when somebody is nudging polygons — so only a
+    click moves the caret.
+    """
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.setFocus()
+    QApplication.processEvents()
+
+    for walk in (
+        lambda: window._go_to_region("page-001-002"),
+        lambda: window._step_region(forward=True),
+        lambda: window._pages.select_image("page-002.png"),
+    ):
+        walk()
+        QApplication.processEvents()
+        assert QApplication.focusWidget() is not window._inspector._translation, walk
+
+
+def test_escape_hands_the_page_back(qapp: object, two_page_plan: Path) -> None:
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is window._inspector._translation
+
+    QTest.keyClick(window._inspector._translation, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+
+    assert QApplication.focusWidget() is window._canvas
+
+
+def test_the_caret_lands_at_the_end_rather_than_over_the_text(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Nothing is selected: the same gesture on a translation somebody has
+    written would otherwise put one keystroke between them and losing it."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+
+    field = window._inspector._translation
+    assert not field.textCursor().hasSelection()
+    assert field.textCursor().position() == len(field.toPlainText())
+
+
+def test_walking_the_regions_works_with_the_caret_in_a_translation(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Previous and Next Region are Cmd+Up and Cmd+Down, which on macOS are
+    also a text field's "go to the start and the end of the document" — so
+    the field claimed them and walking stopped working as soon as somebody
+    had clicked a balloon."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+    field = window._inspector._translation
+    assert QApplication.focusWidget() is field
+
+    for action in (window._previous_region_action, window._next_region_action):
+        claim = QKeyEvent(
+            QEvent.Type.ShortcutOverride,
+            Qt.Key(action.shortcut()[0].key()),
+            action.shortcut()[0].keyboardModifiers(),
+        )
+        QApplication.sendEvent(field, claim)
+        assert not claim.isAccepted(), f"{action.text()} never reaches the window"
+
+
+def test_walking_to_a_region_leaves_the_caret_where_typing_continues(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The panel repopulates under a caret that never moved, and
+    ``setPlainText`` puts it at the start — the wrong end of a translation
+    somebody is about to add to."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+
+    window._step_region(forward=True)
+    QApplication.processEvents()
+
+    for name, field in (
+        ("translation", window._inspector._translation),
+        ("source text", window._inspector._source_text),
+        ("notes", window._inspector._notes),
+    ):
+        assert field.textCursor().position() == len(field.toPlainText()), name
+
+
+@pytest.mark.parametrize(
+    "field_name", ["_source_text", "_translation", "_notes"], ids=["source", "translation", "notes"]
+)
+@pytest.mark.parametrize(
+    "start,step",
+    [
+        ("page-001-002", lambda window: window._on_next_region()),
+        ("page-001-002", lambda window: window._on_previous_region()),
+        ("page-001-001", lambda window: window._on_next_flagged_region()),
+    ],
+    ids=["next", "previous", "next-flagged"],
+)
+def test_stepping_regions_keeps_whichever_field_was_focused(
+    qapp: object, two_page_plan: Path, field_name: str, start: str, step: object
+) -> None:
+    """Previous, Next and Next Flagged Region are keyboard shortcuts and
+    toolbar buttons reached without leaving a field somebody is typing in —
+    stepping should not knock the caret out of it."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region(start)
+    field = getattr(window._inspector, field_name)
+    field.setFocus()
+    QApplication.processEvents()
+    assert field.hasFocus(), "sanity: focus is there before stepping"
+
+    step(window)  # type: ignore[operator]
+    QApplication.processEvents()
+
+    field = getattr(window._inspector, field_name)  # same widget, repopulated
+    assert field.hasFocus()
+    assert field.textCursor().position() == len(field.toPlainText())
+
+
+def test_stepping_onto_another_page_keeps_the_field_focused(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Crossing onto another page reloads it, which disables the inspector's
+    fields for a moment while it does — long enough, before this was fixed,
+    for Qt to push focus onto the canvas instead of leaving it where
+    somebody was typing."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")  # the last region on the first page
+    window._inspector._translation.setFocus()
+    QApplication.processEvents()
+
+    window._on_next_region()
+    QApplication.processEvents()
+
+    assert window._current_region == "page-002-001"
+    assert window._current_image == "page-002.png"
+    assert window._inspector._translation.hasFocus()
+    field = window._inspector._translation
+    assert field.textCursor().position() == len(field.toPlainText())
+
+
+def test_tab_walks_out_of_the_prose_fields(qapp: object, two_page_plan: Path) -> None:
+    """It used to be typed into them, which stopped Tab walking the panel."""
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window.show()
+    QApplication.processEvents()
+
+    for field in (
+        window._inspector._source_text,
+        window._inspector._translation,
+        window._inspector._notes,
+    ):
+        before = field.toPlainText()
+        field.setFocus()
+        QTest.keyClick(field, Qt.Key.Key_Tab)
+        QApplication.processEvents()
+        assert field.toPlainText() == before, "Tab was not typed into it"
+        assert QApplication.focusWidget() is not field, "and it moved on"
+
+
+def test_undoing_another_region_s_edit_brings_that_region_into_view(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The hazard, solved by showing rather than refusing.
+
+    The panel shows one region while undo walks back through a history that
+    covers the whole plan, so an edit made somewhere else was taken back
+    where nobody could see it happen. Now the step still happens and the
+    region it happened to is selected first.
+    """
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setPlainText("SECOND")
+    QApplication.processEvents()
+
+    window._on_undo()
+    assert window._current_region == "page-001-002", "its own edit, where it already was"
+
+    window._on_undo()
+
+    assert window._current_region == "page-001-001", "and now the region that changed"
+    assert window.document.region("page-001-001").translation != "FIRST"  # type: ignore[union-attr]
+    assert window._inspector._translation.toPlainText() == (
+        window.document.region("page-001-001").translation  # type: ignore[union-attr]
+    )
+
+
+def test_following_a_change_onto_another_page(qapp: object, two_page_plan: Path) -> None:
+    """Selecting a region on another page has to bring the page with it."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-002-001")
+    window._inspector._translation.setPlainText("ON THE SECOND PAGE")
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("ON THE FIRST")
+    QApplication.processEvents()
+
+    window._on_undo()
+    window._on_undo()
+
+    assert window._current_image == "page-002.png"
+    assert window._current_region == "page-002-001"
+
+
+def test_redo_follows_the_change_as_well(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setPlainText("SECOND")
+    window._on_undo()
+    window._on_undo()
+    assert window._current_region == "page-001-001"
+
+    window._on_redo()
+
+    assert window._current_region == "page-001-001", "its own step, put back"
+
+    window._on_redo()
+
+    assert window._current_region == "page-001-002"
+    assert window.document.region("page-001-002").translation == "SECOND"  # type: ignore[union-attr]
+
+
+def test_the_change_does_not_hop_off_a_region_already_shown(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Several regions touched, one of them already on screen: stay there.
+
+    A step that touches more than one region — a merge — shows the first
+    in the plan's own order when none of them is selected. That is a
+    different case from this one: the region on screen already is among
+    the touched, just not the first of them, and it should be left alone
+    rather than swapped for the first merely because the first is touched
+    too.
+    """
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    before = window.document.plan  # type: ignore[union-attr]
+    window.document.set_translation("page-001-001", "A CHANGED")  # type: ignore[union-attr]
+    window.document.set_translation("page-001-002", "B CHANGED")  # type: ignore[union-attr]
+
+    window._follow_the_change(before)
+
+    assert window._current_region == "page-001-002"
+
+
+def test_a_step_about_no_region_leaves_the_selection_alone(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """There is nothing a header edit could usefully select."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    window.document.set_header_font("Marker Felt")  # type: ignore[union-attr]
+
+    window._on_undo()
+
+    assert window._current_region == "page-001-002"
+
+
+def test_with_the_caret_on_the_page_undo_is_the_whole_plan(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._translation.setPlainText("FIRST")
+    window._go_to_region("page-001-002")
+    window._inspector._translation.setPlainText("SECOND")
+    window._canvas.setFocus()
+    QApplication.processEvents()
+
+    window._on_undo()
+    window._on_undo()
+
+    assert window.document.region("page-001-001").translation != "FIRST"  # type: ignore[union-attr]

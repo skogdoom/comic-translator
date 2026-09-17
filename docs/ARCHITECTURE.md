@@ -1951,6 +1951,91 @@ positional so it can be applied without judgement: the two checkboxes that
 had drifted into sentence case were the only places it was ambiguous, and
 they are lowercase now.
 
+**A key the window has bound belongs to the window, not to the text field
+the caret happens to be in.** The inspector's prose fields are `ProseEdit`,
+which keeps no undo history — the document keeps one for everything — and
+which, the part that is not obvious, does not *claim* the window's
+shortcuts. `QPlainTextEdit` accepts the `ShortcutOverride` for keys it has a
+use for whether or not that use is switched on (measured: Undo is accepted
+with the widget's own undo disabled), and accepting that event means
+"deliver this to me as an ordinary key press". The window's action then
+never fires.
+
+It cost two rounds to find the rule. The first fix named Undo and Redo and
+stopped there, and the keys that walk between regions went the same way the
+moment the caret started landing in a translation: **Cmd+Up and Cmd+Down are
+Previous and Next Region here, and on macOS they are also a text field's "go
+to the start and the end of the document"** — where every other platform
+binds those to `Ctrl+Home` and `Ctrl+End`, which is why it could not be seen
+from here. Naming offenders one at a time means finding each by being bitten
+by it, so `ProseEdit` asks the window instead: any sequence bound to an
+action of its window is given back, everything else is the field's. Cut,
+copy, paste and select-all stay because nothing here binds them, and a
+shortcut added later cannot be quietly swallowed. The lookup is guarded by a
+modifier check, because `ShortcutOverride` arrives for ordinary typing too.
+
+Tab is the exception in the other direction and not a shortcut at all: a
+text field takes it as a character, which stopped it walking the panel.
+These fields hold two lines of prose, so they let it past.
+
+**Undo brings the region it is about into view.** One history over the whole
+plan is what makes a drag, a merge and a plugin rewriting every region one
+step each — and it is also why holding Ctrl+Z down in one balloon walks out
+of it, into an edit made to another region, on another page. None of that is
+on screen while the panel is showing this region, so none of it could be
+noticed.
+
+Refusing to cross the boundary was tried first and is the worse answer: it
+fixes the surprise by making the rest of the history unreachable from
+wherever somebody happens to be typing, and it turns a key into one that
+sometimes does nothing. Following the step costs nothing instead. It happens
+as it always did, in order, and `MainWindow._follow_the_change` selects the
+region it happened to, changing page if that is where it is.
+`document.regions_touched` compares the two plans rather than remembering
+what each step was for: the same question either way, and one of the two
+answers can go stale.
+
+A region added or deleted by the step counts as touched — it is the thing
+that changed, and Ctrl+Z after drawing a balloon means that balloon. A step
+that touched no region at all, the header or a page moved, leaves the
+selection alone, because there is nothing it could usefully select. A step
+that touched several is a merge, and the first in the plan's own order is
+shown, because showing one of them beats showing none.
+
+**Typing is undone a word at a time.** A run of edits collapses into one undo
+step, keyed by region and field, and it used to end only when the selection
+moved — so one Cmd+Z threw away everything typed since the field was entered.
+`document.finished_a_word` closes the step when an edit puts whitespace into a
+piece of text, which makes each word its own step and a pasted sentence one of
+its own. A word rather than a pause, which was the other candidate: a timer
+makes what Cmd+Z does depend on how fast you type, which nobody can predict
+while typing and no test can pin down.
+
+**Focus carries over, and only defaults to the translation.** Clicking a
+region and stepping to one with Next, Previous or Next Flagged Region both go
+through `_carry_the_caret`: whichever field, source text, translation or
+notes, held the caret stays focused, now showing the region just selected,
+caret at the end — even across a page. What the two disagree on is what
+happens with nothing focused to carry over. A click still wants the
+translation, because it is picking a balloon to type into. Stepping instead
+leaves the keyboard on the page, where the arrow keys nudge the selected
+region a pixel, twenty with Shift, and walking flagged regions from the
+keyboard is exactly when somebody is nudging polygons. Arriving by the Pages
+panel calls `_go_to_region` directly and is the same as stepping with
+nothing focused: the keyboard stays where it was.
+
+`_carry_the_caret` reads which field the inspector has focused before
+calling `_go_to_region` and restores it afterwards, because crossing onto
+another page reloads it, which disables the fields for a moment — long
+enough for Qt to push focus onto the canvas if nothing put it back. Escape
+gives the page back either way.
+
+**The caret goes to the end of each field whenever the panel is repopulated**,
+not to the start `setPlainText` leaves it at. Walking to the next region
+refills the fields under a caret that never moved, so without this the first
+thing typed after Next Region landed in front of the text rather than after
+it.
+
 **Nothing of ours is alive when the interpreter finalises.** `app.run` calls
 `close_down` on the window after `app.exec()` returns, and every dialog is
 opened inside `main_window.transient`, which `deleteLater`s it when the

@@ -13,7 +13,7 @@ at the others' state.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -52,7 +52,7 @@ from ..config import DEFAULT_LANGUAGES, DetectConfig, ExtractConfig, OcrConfig
 from ..errors import ComictransError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
-from ..model import Color, Geometry, Point, Polygon, Region, convex_hull
+from ..model import Color, Geometry, Plan, Point, Polygon, Region, convex_hull
 from ..ocr.grouping import looks_like_text
 from ..pack import archive_kind
 from ..sources import is_container
@@ -69,7 +69,7 @@ from .canvas import (
     ViewState,
     mode_hint,
 )
-from .document import PlanDocument
+from .document import PlanDocument, regions_touched
 from .extract_dialog import ExtractDialog
 from .header_dialog import HeaderDialog
 from .help_dialog import HelpDialog
@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
 
         self._pages.image_selected.connect(self._on_image_selected)
         self._pages.order_changed.connect(self._on_pages_reordered)
-        self._canvas.region_selected.connect(self._on_region_selected)
+        self._canvas.region_selected.connect(self._on_region_clicked)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._canvas.polygon_edited.connect(self._on_polygon_edited)
         self._canvas.polygon_nudged.connect(self._on_polygon_nudged)
@@ -305,6 +305,7 @@ class MainWindow(QMainWindow):
         self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
+        self._inspector.escaped.connect(self._on_inspector_escaped)
         self._run_panel.row_activated.connect(self._on_run_row_activated)
         self._run_panel.cancel_requested.connect(self._on_run_cancel)
 
@@ -1027,6 +1028,34 @@ class MainWindow(QMainWindow):
         self._inspector.set_region(self.document, region_id)
         self._update_actions_enabled()
 
+    def _on_inspector_escaped(self) -> None:
+        """Escape in a prose field puts focus back on the page.
+
+        The one key that undoes what clicking a balloon does. Without it the
+        arrow keys stay inside a translation for as long as the caret does,
+        and nudging a polygon means reaching for the mouse to click somewhere
+        else first.
+        """
+        self._canvas.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _on_region_clicked(self, region_id: str) -> None:
+        """A region chosen on the page, which usually means "I am about to write".
+
+        Focus carries over exactly the way it does stepping to another
+        region with Next, Previous or Next Flagged Region: a field already
+        focused stays focused, caret at the end, now showing this region.
+        The two part ways when nothing was focused — stepping leaves the
+        keyboard on the page, because the arrow keys nudge the selected
+        region there, a pixel at a time, twenty with Shift, and walking the
+        flagged regions with the keyboard is exactly when somebody is
+        nudging polygons. A click is not that: it is picking a balloon to
+        type into, so with nothing already focused this puts the caret in
+        the translation instead.
+
+        Escape comes back — see :attr:`RegionInspector.escaped`.
+        """
+        self._carry_the_caret(region_id, otherwise=self._inspector.focus_translation)
+
     def _go_to_region(self, region_id: str) -> None:
         """Select a region anywhere in the plan, changing page if it is on another.
 
@@ -1042,6 +1071,30 @@ class MainWindow(QMainWindow):
             self._pages.select_image(image)
         self._on_region_selected(region_id)
 
+    def _carry_the_caret(
+        self, region_id: str, *, otherwise: Callable[[], None] | None = None
+    ) -> None:
+        """Select a region without interrupting whichever field had the caret.
+
+        Crossing onto another page reloads it, which disables the
+        inspector's fields for a moment while it does — long enough for Qt
+        to push focus off whichever one somebody was typing in. Put it
+        straight back: ``_go_to_region`` has already repopulated the field
+        with the new region's text, caret at the end, so this is the only
+        thing still missing.
+
+        ``otherwise`` runs when nothing was focused to begin with. Stepping
+        between regions leaves the keyboard where it was, on the page; a
+        click wants the translation focused regardless, so it passes
+        :meth:`RegionInspector.focus_translation` here.
+        """
+        typing_in = self._inspector.focused_prose_field()
+        self._go_to_region(region_id)
+        if typing_in is not None:
+            typing_in.setFocus(Qt.FocusReason.OtherFocusReason)
+        elif otherwise is not None:
+            otherwise()
+
     def _step_region(self, *, forward: bool, flagged_only: bool = False) -> None:
         if self.document is None:
             return
@@ -1051,7 +1104,7 @@ class MainWindow(QMainWindow):
         if target is None:
             self.statusBar().showMessage(self.tr("no more regions in that direction"), 3000)
             return
-        self._go_to_region(target)
+        self._carry_the_caret(target)
 
     def _on_previous_region(self) -> None:
         self._step_region(forward=False)
@@ -1511,12 +1564,51 @@ class MainWindow(QMainWindow):
         self._update_actions_enabled()
 
     def _on_undo(self) -> None:
-        if self.document is not None and self.document.undo():
+        if self.document is None:
+            return
+        before = self.document.plan
+        if self.document.undo():
             self._reload_from_document()
+            self._follow_the_change(before)
 
     def _on_redo(self) -> None:
-        if self.document is not None and self.document.redo():
+        if self.document is None:
+            return
+        before = self.document.plan
+        if self.document.redo():
             self._reload_from_document()
+            self._follow_the_change(before)
+
+    def _follow_the_change(self, before: Plan) -> None:
+        """Select whatever the step was about, so that it is on screen.
+
+        One history covers the whole plan, which is what makes a drag, a
+        merge and a plugin rewriting every region one step each. The cost is
+        that holding Ctrl+Z down in one balloon walks out of it — past the
+        typing and into an edit made to another region, on another page —
+        and none of that is visible while the panel is showing this one.
+
+        Refusing to cross would fix the surprise by making the rest of the
+        history unreachable from where somebody is typing. Following it
+        costs nothing instead: the step happens as it always did, and the
+        region it happened to comes into view, changing page if it is on
+        another. What was hidden is the whole problem, and this is what
+        stops it being hidden.
+
+        A step that touched no region — the header, or a page moved — leaves
+        the selection alone; there is nothing it could usefully select. A
+        step that touched several, which is a merge, shows the first in the
+        plan's own order, because showing one of them beats showing none.
+        """
+        if self.document is None:
+            return
+        touched = regions_touched(before, self.document.plan)
+        if self._current_region in touched:
+            return
+        for region in self.document.plan.regions:
+            if region.id in touched:
+                self._go_to_region(region.id)
+                return
 
     def _reload_from_document(self) -> None:
         """After undo or redo, when the plan changed under everything at once.
