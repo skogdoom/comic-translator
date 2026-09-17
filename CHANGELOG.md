@@ -184,6 +184,14 @@ for themselves. See **Build the application** in `README.md`.
   where the arrow keys nudge the region; a click puts the caret in the
   translation instead, since it means you are about to type. **Escape** hands
   the page back either way.
+- **Plugins, experimental.** Preferences ▸ this window ▸ experimental
+  features turns on a Plugins menu that runs a plan-in, plan-out `.py` file
+  from a plugin folder — a translation, a note, a flag, anything on a region
+  already in the plan, as one undo step, never a region added, removed or
+  moved. One example ships: Plugins ▸ Install Example Plugin adds a note to
+  every region. Off by default, and always third-party code once turned on —
+  see the disclaimer in `README.md`. Configuring a plugin beyond its own
+  source is not built yet.
 
 ### Known limitations
 

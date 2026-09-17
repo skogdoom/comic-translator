@@ -52,7 +52,6 @@ one section can refer to another without ambiguity.
 | 19 | ComicInfo.xml, read and written | M |
 | 20 | EPUB output | L |
 | 6 | PDF output | L |
-| 21 | Plugins: the runtime, and one example | L |
 | 22 | Plugins: configuring them | M |
 | 23 | An empty plan, and pages added by hand | M |
 | 24 | The guide, checked against the window | S |
@@ -78,10 +77,11 @@ done once first, 19 and 20 are each a file format wrapped around a header
 that already holds the answers. 6 sits with them because it is the third
 member of the same family and the least urgent of the three.
 
-The plugin pair can be started any time after 13, because the experimental
-flag means an unfinished plugin runtime is invisible to anyone who has not
-switched it on — the one milestone here that cannot destabilise what already
-works. It is last in the table only because it is the largest.
+22 could be started any time after 13 and after 21 shipped, because the
+experimental flag means an unfinished plugin feature is invisible to anyone
+who has not switched it on — the one milestone here that cannot destabilise
+what already works. It sits late in the table only because it is one of the
+larger ones.
 
 24 is late on purpose. The guide goes stale against window changes, and
 checking it before 4.27, 4.28, 16 and 17 land would mean checking it twice. Each of those milestones still updates the guide for its own change,
@@ -390,43 +390,6 @@ What is already known: it extends `render_dialog`'s format choice and
 today. And it is the other milestone that makes the page order mean
 something on disk rather than only in the window.
 
-## 21 Plugins: the runtime, and one example
-
-Promoted from *Ideas*, where the shape and the costs were already worked out;
-what follows is what changed now that it is scheduled, and why it is two
-milestones rather than one.
-
-**The experimental flag changes the risk.** The Plugin menu appears only when
-**Preferences ▸ this window ▸ experimental features** is on, and it is off in
-a fresh installation. That is the difference between "this tool runs
-third-party code" and "this tool can be asked to", and it is what lets this
-be built in the open without the disclaimer and the network invariant having
-to be settled first — though they still have to be settled before it is
-recommended to anybody. `Preferences.experimental_on` already exists and
-nothing reads it; this is what it was put there for.
-
-**What the idea already established**, and still holds: plan in, plan out, so
-plugins never touch images and "source images are never modified" survives
-without enforcement; the reader rejects unknown keys, so a plugin cannot
-invent plan fields; undo is whole-plan snapshots, so a plugin rewriting every
-region is one step like any other edit.
-
-**What it still costs.** "No network calls anywhere in the pipeline" is an
-invariant in `CLAUDE.md` today and becomes "this tool makes none; a plugin you
-installed might" — a different sentence that has to be written in `README.md`
-as well as here. Discovery needs a directory to read plugins from, which is a
-new read location. And the disclaimer, already about unreviewed code, earns a
-paragraph rather than a footnote.
-
-**The example.** Add a note to every region in the open plan, with the note's
-text configurable. It is a good example precisely because it is not case
-switching — the header already has `case`, and an example that duplicates a
-built-in teaches the wrong thing. `Region.notes` exists, so it needs no schema
-change, and running it over a chapter is one undo step.
-
-This milestone ends with plugins that run and one that ships. Their
-configuration is a file they read; the window for editing it is 22.
-
 ## 22 Plugins: configuring them
 
 **Configure Plugins…** in the Plugin menu opens a list of what is installed;
@@ -580,8 +543,8 @@ than a parameter to it. Vertical CJK is more again: line breaking and
 hyphenation are not the same algorithm turned sideways. Worth knowing which
 of the two is actually wanted before either is designed.
 
-**A plugin system (experimental).** Scheduled — milestones 21 and 22. The
-costs worked out here are kept there rather than in two places.
+**A plugin system (experimental).** The runtime and one example shipped; what
+is left is scheduled as milestone 22, configuring what is already there.
 
 **Extracting and rendering emphasis, italic and bold.** This one is not a
 feature, it is a change to an invariant, and should be decided as one.

@@ -12,6 +12,13 @@ so nothing in the analysis would have found them, and all three fail quietly:
 a warning in the log and an empty icon, or a Help window saying the guide
 could not be read.
 
+It excludes ``.py`` files by default, which is right for everything above —
+none of it is source — and wrong for ``gui/resources/plugins/``, whose one
+file *is* Python, meant to be copied out and run as a plugin rather than
+imported here. A second, narrower call with ``include_py_files=True`` carries
+that one directory; without it, Plugins > Install Example Plugin would ask
+for a file that shipped everywhere except inside the bundle.
+
 ``copy_metadata`` carries the installed distribution's own metadata. The About
 dialog reads its version, author and licence from it at run time rather than
 repeating them, and lists every declared dependency that is actually
@@ -111,6 +118,9 @@ analysis = Analysis(  # noqa: F821 - PyInstaller injects this
     binaries=[],
     datas=(
         collect_data_files("comictrans")
+        + collect_data_files(
+            "comictrans", subdir="gui/resources/plugins", include_py_files=True
+        )
         + copy_metadata("comictrans", recursive=True)
         + extra_metadata()
         + localizations()

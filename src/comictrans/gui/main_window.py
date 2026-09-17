@@ -49,12 +49,13 @@ from PySide6.QtWidgets import (
 from .. import fonts
 from ..apply import ApplyReport
 from ..config import DEFAULT_LANGUAGES, DetectConfig, ExtractConfig, OcrConfig
-from ..errors import ComictransError
+from ..errors import ComictransError, PluginError
 from ..extract import ExtractReport
 from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Plan, Point, Polygon, Region, convex_hull
 from ..ocr.grouping import looks_like_text
 from ..pack import archive_kind
+from ..plugins import LoadedPlugin, discover_plugins, plugin_directory, run_plugin
 from ..sources import is_container
 from . import about, alerts, help_dialog, icons, recent, translations
 from .about_dialog import AboutDialog
@@ -143,6 +144,15 @@ def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
 RECENT_MENU_TITLE = QCoreApplication.translate("MainWindow", "Open &Recent")
 CLEAR_RECENT_TEXT = QCoreApplication.translate("MainWindow", "Clear Menu")
 """Named so the menu and its test cannot drift apart, as with the toolbar."""
+
+EXAMPLE_PLUGIN_SOURCE = Path(__file__).parent / "resources" / "plugins" / "add_a_note.py"
+"""What Install Example Plugin copies into the plugin directory.
+
+Ships inside the application rather than being written there on its own —
+nothing here creates a file in ``plugin_directory()`` unless this, or Open
+Plugin Folder, is asked for by name, the same as every other place this
+window only writes when told to.
+"""
 
 
 @contextmanager
@@ -238,6 +248,16 @@ class MainWindow(QMainWindow):
         actions that start one are disabled while one is going, so there is
         never a second thread to keep track of or a second report arriving
         out of order."""
+
+        self._plugins: list[LoadedPlugin] = []
+        """What Rescan Plugins, or switching experimental features on, last
+        found. Discovered once and kept rather than rescanned on every menu
+        open: importing a plugin runs it, so merely opening the menu must
+        not be something with side effects."""
+
+        self._plugin_run_actions: list[QAction] = []
+        """One action per entry in ``_plugins``, rebuilt alongside it."""
+
         self._settings = settings
         self._preferences: Preferences = load_preferences(settings)
         """What a new run starts from. Read once at construction; a window
@@ -582,6 +602,32 @@ class MainWindow(QMainWindow):
         self._reset_layout_action.triggered.connect(self._on_reset_layout)
         window_menu.addAction(self._reset_layout_action)
 
+        # Hidden by default, and only Preferences > this window > experimental
+        # features ever shows it — see _on_preferences_changed. This is "the
+        # window can be asked to run third-party code", which is a different
+        # thing from every other menu here and earns being off until asked
+        # for by name, not just tucked away.
+        self._plugins_menu = self.menuBar().addMenu(self.tr("Pl&ugins"))
+        self._plugins_menu.menuAction().setVisible(self._preferences.experimental_on)
+
+        self._install_example_plugin_action = QAction(self.tr("&Install Example Plugin"), self)
+        self._install_example_plugin_action.triggered.connect(self._on_install_example_plugin)
+        self._plugins_menu.addAction(self._install_example_plugin_action)
+
+        self._open_plugin_folder_action = QAction(self.tr("&Open Plugin Folder"), self)
+        self._open_plugin_folder_action.triggered.connect(self._on_open_plugin_folder)
+        self._plugins_menu.addAction(self._open_plugin_folder_action)
+
+        # Not automatic on every menu open: reading the directory imports
+        # whatever is in it, which runs it. See _refresh_plugin_menu.
+        self._rescan_plugins_action = QAction(self.tr("&Rescan Plugins"), self)
+        self._rescan_plugins_action.triggered.connect(self._on_rescan_plugins)
+        self._plugins_menu.addAction(self._rescan_plugins_action)
+
+        self._plugins_menu.addSeparator()
+        if self._preferences.experimental_on:
+            self._refresh_plugin_menu()
+
         help_menu = self.menuBar().addMenu(self.tr("&Help"))
         # First, and named for the application: what macOS puts at the top
         # of every Help menu. HelpContents is Cmd+? there and F1 elsewhere.
@@ -779,6 +825,10 @@ class MainWindow(QMainWindow):
             and idle
         )
         self._extract_action.setEnabled(idle)
+        # A plugin rewrites the plan a render or an extract is reading, so it
+        # waits its turn the same way they wait each other's.
+        for action in self._plugin_run_actions:
+            action.setEnabled(has_document and idle)
         has_image = has_document and self._current_image is not None
         self._preview_action.setEnabled(has_image)
         self._preview_action.setText(OVERLAY_TEXT if self._showing_preview else PREVIEW_TEXT)
@@ -2003,6 +2053,107 @@ class MainWindow(QMainWindow):
             self.tr("%n font family/families available", None, count), 5000
         )
 
+    # -- plugins (experimental) -------------------------------------------
+
+    def _refresh_plugin_menu(self) -> None:
+        """(Re)import every plugin in the plugin directory and rebuild the menu.
+
+        Called once when experimental features are switched on and again on
+        request from Rescan Plugins, never automatically on every menu open:
+        importing a plugin runs its module-level code, so opening the menu
+        to look at it would otherwise be a thing with side effects.
+        """
+        for action in self._plugin_run_actions:
+            self._plugins_menu.removeAction(action)
+        self._plugin_run_actions.clear()
+        self._plugins = discover_plugins()
+        for plugin in self._plugins:
+            action = QAction(plugin.name, self)
+            # The plugin rides on the action as its path, not in a partial
+            # bound to this window — see _on_recent_triggered for the crash
+            # that shape caused here once already.
+            action.setData(str(plugin.path))
+            action.triggered.connect(self._on_plugin_action_triggered)
+            self._plugins_menu.addAction(action)
+            self._plugin_run_actions.append(action)
+        self._update_actions_enabled()
+
+    def _on_rescan_plugins(self) -> None:
+        self._refresh_plugin_menu()
+        self.statusBar().showMessage(
+            self.tr("%n plugin(s) available", None, len(self._plugins)), 5000
+        )
+
+    def _on_open_plugin_folder(self) -> None:
+        """Show the folder plugins are read from, creating it if it is not there yet.
+
+        The same bargain Open Log Folder strikes: nobody should need to know
+        ``~/Library/Application Support`` exists to find where a plugin goes.
+        """
+        directory = plugin_directory()
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self._report_failure(self.tr("opening the plugin folder"), exc)
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory))):
+            self.statusBar().showMessage(self.tr("plugins are in {0}").format(directory), 10000)
+
+    def _on_install_example_plugin(self) -> None:
+        """Copy the bundled example into the plugin directory, overwriting any copy there.
+
+        Explicit and repeatable rather than automatic: turning experimental
+        features on must not itself write a file nobody asked for, and
+        asking again is how you get back the original after editing
+        ``NOTE_TEXT`` to see what changing it does.
+        """
+        directory = plugin_directory()
+        target = directory / EXAMPLE_PLUGIN_SOURCE.name
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            target.write_text(EXAMPLE_PLUGIN_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError as exc:
+            self._report_failure(self.tr("installing the example plugin"), exc)
+            return
+        self._refresh_plugin_menu()
+        self.statusBar().showMessage(self.tr("installed {0}").format(target), 5000)
+
+    def _on_plugin_action_triggered(self) -> None:
+        """Run whichever plugin's menu item was clicked, read off the action itself.
+
+        See ``_on_recent_triggered`` for why the plugin is looked up by a
+        path on the action rather than carried in a bound closure.
+        """
+        action = self.sender()
+        if not isinstance(action, QAction) or not isinstance(action.data(), str):
+            return
+        path = Path(action.data())
+        plugin = next((candidate for candidate in self._plugins if candidate.path == path), None)
+        if plugin is not None:
+            self._on_run_plugin(plugin)
+
+    def _on_run_plugin(self, plugin: LoadedPlugin) -> None:
+        """Run one plugin over the open plan, as a single undo step.
+
+        The same shape as undo and redo: the plan before is kept so the
+        selection can follow whatever the plugin touched, wherever that
+        turns out to be — see ``_follow_the_change``.
+        """
+        if self.document is None:
+            return
+        before = self.document.plan
+        try:
+            after = run_plugin(plugin, before)
+        except PluginError as exc:
+            self._report_failure(self.tr("running {0}").format(plugin.name), exc)
+            return
+        if self.document.apply_plugin(after):
+            self._reload_from_document()
+            self._follow_the_change(before)
+            self.statusBar().showMessage(self.tr("{0} ran").format(plugin.name), 3000)
+        else:
+            self.statusBar().showMessage(self.tr("{0} made no change").format(plugin.name), 3000)
+
     def _on_edit_header(self) -> None:
         """Edit the settings every region is drawn under.
 
@@ -2053,6 +2204,10 @@ class MainWindow(QMainWindow):
         save_preferences(self._settings, preferences)
         if preferences.language != was.language:
             self._say_the_language_waits()
+        if preferences.experimental_on != was.experimental_on:
+            self._plugins_menu.menuAction().setVisible(preferences.experimental_on)
+            if preferences.experimental_on:
+                self._refresh_plugin_menu()
 
     def _say_the_language_waits(self) -> None:
         """A language chosen here is the language of the next window.

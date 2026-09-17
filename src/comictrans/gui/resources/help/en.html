@@ -10,6 +10,7 @@ and only when you save it.</p>
 <a href="#flags">The flags</a><br>
 <a href="#preview">What the preview tells you</a><br>
 <a href="#around">Getting around</a><br>
+<a href="#plugins">Plugins</a><br>
 <a href="#running">Saving, reverting and running</a></p>
 
 <h2><a name="work"></a>How the work goes</h2>
@@ -170,6 +171,33 @@ Mac's own language settings; either way it applies the next time the
 application starts. This guide follows the same language, with English behind
 it, so help is here either way. The plan file itself is never translated: its
 languages are the comic's.</p>
+
+<h2><a name="plugins"></a>Plugins</h2>
+
+<p>Experimental, and off in a fresh installation. Turn it on under
+<b>Preferences ▸ this window ▸ experimental features</b> to get a <b>Plugins</b>
+menu; turn it off and the menu goes away again. Nothing here is read from disk
+until you do.</p>
+
+<p>A plugin is a small program, not something this application wrote or
+reviewed. <b>Read one before you install it</b>, the same as you would any
+other script from somewhere else &mdash; see the disclaimer that comes with
+this application for what that means.</p>
+
+<p><b>Open Plugin Folder</b> shows where a plugin goes &mdash; a folder that
+starts empty. <b>Install Example Plugin</b> puts one there for you: it adds
+the same note to every region in the open plan, and its own file says how to
+change what the note says. <b>Rescan Plugins</b> reads the folder again, for a
+file you added or changed since the window last looked; the window does not
+do this on its own; each plugin it finds gets its own line below in the menu,
+named for what it does, and choosing it runs it.</p>
+
+<p>Running a plugin changes translations, notes, flags, even an outline, on
+any region already in the plan &mdash; never one it adds or removes, and
+never the pages themselves. It is one <b>Ctrl+Z</b> to take back, the same as
+a drag or a merge, whatever it touched. One that fails, or asks for something
+it should not, changes nothing and says so; what it already did stays exactly
+as it was.</p>
 
 <h2><a name="running"></a>Saving, reverting and running</h2>
 

@@ -485,6 +485,20 @@ class PlanDocument:
         self._record(with_image_order(self.plan, names), run=None)
         return True
 
+    def apply_plugin(self, plan: Plan) -> bool:
+        """Move to ``plan``, as one whole-plan undo step. False when nothing changed.
+
+        What a plugin run becomes once it is trusted: ``plugins.run_plugin``
+        has already refused anything that changed the plan's shape, so the
+        only question left here is the one ``reorder_images`` asks too — did
+        this actually change anything, since a plugin whose ``run`` is a
+        no-op should not cost an undo step or mark the plan dirty.
+        """
+        if plan == self.plan:
+            return False
+        self._record(plan, run=None)
+        return True
+
     def set_translation(self, region_id: str, translation: str) -> Region:
         return self._update(region_id, translation=translation)
 

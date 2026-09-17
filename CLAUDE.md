@@ -27,14 +27,21 @@ Spec, not preference. Breaking one of these is never a refactor:
 
 - Source images are never modified, moved, or written to; they are opened
   read-only. The only things ever written are `--debug-dir`, `--output` (both
-  refuse to write inside the source tree), and a plan file, by `extract` or by
+  refuse to write inside the source tree), a plan file, by `extract` or by
   `review`'s Save / Save As — a plan file is not image data, so it living
-  beside the images it describes, the usual case, is expected and fine.
+  beside the images it describes, the usual case, is expected and fine — and
+  the plugin directory (`plugins.plugin_directory()`), only when Install
+  Example Plugin or Open Plugin Folder is asked for by name.
 - `apply` runs no detection and no OCR. Every polygon, colour and font
   decision comes from the plan file, which is what makes the pass
   deterministic and re-runnable: edit a translation, run it again, and only
   that text changes.
 - No network calls anywhere in the pipeline. Translation is manual by design.
+  A plugin is not bound by this: it is off by default (Preferences ▸ this
+  window ▸ experimental features) and always third-party code the user chose
+  to install. `plugins.py` itself makes no network call and never touches
+  the network on a plugin's behalf, but nothing stops a plugin's own code
+  from doing so — see the disclaimer in `README.md`.
 - Emphasis renders as bold, never italic. A bold face is never synthesised and
   the oblique face is never used.
 - A font is never silently substituted for the one the plan file names.

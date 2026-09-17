@@ -2370,6 +2370,61 @@ translating it is translating a file rather than running it through
 machine asked for — so a window that fell back to English does not open a
 Swedish guide.
 
+### The plugin runtime
+
+Experimental, and reached only through Preferences ▸ this window ▸
+experimental features — `Preferences.experimental_on` existed before this did
+and nothing read it until now. Off, nothing here runs: the Plugins menu is
+hidden, and hidden means unbuilt, not just invisible — the window never lists
+the plugin directory unless that menu is actually shown.
+
+**`plugins.py` sits at the bottom, beside `model`.** It imports `model` and
+`errors` and nothing else of ours — no Pillow, no OpenCV, no Qt — the same
+promise `gui.document` already keeps, extended one module further. A plugin
+never sees an image and never calls back into the window; it is handed a
+`Plan` and hands one back.
+
+**Plan in, plan out, and one shape only.** A plugin is a `.py` file
+declaring `PLUGIN_NAME` and `run(plan) -> Plan`. `plugins.run_plugin` wraps
+the call: an exception the plugin raises, a return value that is not a
+`Plan`, or a `Plan` whose header, pages, or region ids and page assignments
+differ from what it was handed all become `PluginError` before anything
+reaches the document — plugin authors get one failure mode, not three, and
+the plan already open is never touched by a call that fails. What is allowed
+is everything else: any field on any region already there, including its
+polygon. That is the same "one whole plan, one undo step" bargain `reorder_images`
+already strikes — see `PlanDocument.apply_plugin`, which is `_record(plan,
+run=None)` behind the same no-op check `reorder_images` makes, so a plugin
+whose `run` changes nothing costs no undo step either.
+
+**Discovery is deliberately not automatic.** Importing a `.py` file runs it,
+so a plugin's directory is scanned once — when experimental features are
+switched on, or when Rescan Plugins is asked for by name — never on every
+menu open. The directory itself follows `logfile.log_directory` and
+`fonts.SEARCH_DIRS`'s own convention: a platform default (`~/Library/
+Application Support/comictrans/plugins` on macOS, the XDG data directory
+elsewhere) with a `COMICTRANS_PLUGIN_PATH` override for the suite, and
+`plugin_directory()` itself never creates it — only Install Example Plugin
+and Open Plugin Folder do, and only because they were asked to.
+
+**The action carries a path, not a closure.** Each plugin gets one `QAction`
+in the menu, and the plugin it runs is read off `QAction.data()` in a shared
+slot rather than bound with `functools.partial(self._on_run_plugin, plugin)`
+— see `_on_recent_triggered`'s docstring in `main_window.py` for the
+teardown segfault a `partial` closed over `self` caused here once already for
+the recent-files menu. The shape is identical, so the fix is the same one,
+applied before the bug had a chance to recur.
+
+**The example ships as data, not as an importable module.** `gui/resources/
+plugins/add_a_note.py` is never imported by comictrans itself; Install
+Example Plugin copies its text into the plugin directory, where discovery
+finds it the same way it would find any other file dropped there by hand.
+`collect_data_files` excludes `.py` files by default — right for every other
+resource, since none of them is source, and wrong for this one directory,
+whose file exists to be copied out and run rather than read here. The spec
+collects it separately with `include_py_files=True`; see the note on
+`collect_data_files` in **The application bundle**, below.
+
 ### The application bundle
 
 `tools/build_app.py` and `tools/comictrans.spec` build `Comic Translator.app`
@@ -2406,7 +2461,12 @@ reaches the two collections the analysis cannot find on its own.
 Those two are `collect_data_files`, which carries `gui/resources/` — nothing
 imports the toolbar drawings, the application icon or the guide, and all
 three fail as a warning in a log — and `copy_metadata`, which carries the
-distribution metadata the About dialog reads itself from. `recursive=True`
+distribution metadata the About dialog reads itself from. A second,
+narrower `collect_data_files` call carries `gui/resources/plugins/` with
+`include_py_files=True`: the general call excludes `.py` files, right for
+everything else under `resources/` and wrong for the one file there that is
+meant to be copied out and run — see **The plugin runtime**, above.
+`recursive=True`
 walks the *required* dependencies, which is not all of them: PySide6 is an
 extra, so it is required by nothing and its metadata was simply absent from
 a build until it was named. Extras are asked for one at a time and skipped
