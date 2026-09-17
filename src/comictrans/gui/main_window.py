@@ -1083,7 +1083,16 @@ class MainWindow(QMainWindow):
         if target is None:
             self.statusBar().showMessage(self.tr("no more regions in that direction"), 3000)
             return
+        # Crossing onto another page reloads it, which disables the
+        # inspector's fields for a moment while it does — long enough for
+        # Qt to push focus off whichever one somebody was typing in. Put it
+        # straight back: _go_to_region has already repopulated the field
+        # with the new region's text, caret at the end, so this is the only
+        # thing still missing.
+        typing_in = self._inspector.focused_prose_field()
         self._go_to_region(target)
+        if typing_in is not None:
+            typing_in.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _on_previous_region(self) -> None:
         self._step_region(forward=False)

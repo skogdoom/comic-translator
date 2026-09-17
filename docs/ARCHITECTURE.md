@@ -2011,16 +2011,24 @@ its own. A word rather than a pause, which was the other candidate: a timer
 makes what Cmd+Z does depend on how fast you type, which nobody can predict
 while typing and no test can pin down.
 
-**Focus follows a click, and nothing else.** Clicking a region on the page
-puts the caret in its translation; arriving by Next Region, Next Flagged
-Region or the Pages panel does not. That is not a nicety — the arrow keys
-nudge the selected region a pixel, twenty with Shift, and a focused text
-field takes all four away. Walking the flagged regions from the keyboard is
-exactly when somebody is nudging polygons; clicking a balloon is when they
-are about to type into it. The canvas emits `region_selected` from its mouse
-press and nowhere else, so the distinction was already in the code, and
-`_on_region_clicked` is the only path that focuses. Escape gives the page
-back.
+**Focus follows a click, or stays wherever it already was.** Clicking a
+region on the page puts the caret in its translation — `_on_region_clicked`
+is the only path that does that unconditionally, because the canvas emits
+`region_selected` from its mouse press and nowhere else. Arriving by the
+Pages panel leaves the keyboard on the page: the arrow keys nudge the
+selected region a pixel, twenty with Shift, and a focused text field takes
+all four away, so walking flagged regions from the keyboard is exactly when
+somebody is nudging polygons.
+
+Next Region, Previous Region and Next Flagged Region are not that gesture —
+they are also how typing continues once it has started, so stepping with the
+caret already in a field, source text, translation or notes, leaves it in
+that same field of the next region; stepping from the page leaves the
+keyboard there too. `_step_region` reads which field the inspector has
+focused before calling `_go_to_region` and restores it afterwards, because
+crossing onto another page reloads it, which disables the fields for a
+moment — long enough for Qt to push focus onto the canvas if nothing put it
+back. Escape gives the page back either way.
 
 **The caret goes to the end of each field whenever the panel is repopulated**,
 not to the start `setPlainText` leaves it at. Walking to the next region

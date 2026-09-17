@@ -6003,6 +6003,61 @@ def test_walking_to_a_region_leaves_the_caret_where_typing_continues(
         assert field.textCursor().position() == len(field.toPlainText()), name
 
 
+@pytest.mark.parametrize(
+    "field_name", ["_source_text", "_translation", "_notes"], ids=["source", "translation", "notes"]
+)
+@pytest.mark.parametrize(
+    "start,step",
+    [
+        ("page-001-002", lambda window: window._on_next_region()),
+        ("page-001-002", lambda window: window._on_previous_region()),
+        ("page-001-001", lambda window: window._on_next_flagged_region()),
+    ],
+    ids=["next", "previous", "next-flagged"],
+)
+def test_stepping_regions_keeps_whichever_field_was_focused(
+    qapp: object, two_page_plan: Path, field_name: str, start: str, step: object
+) -> None:
+    """Previous, Next and Next Flagged Region are keyboard shortcuts and
+    toolbar buttons reached without leaving a field somebody is typing in —
+    stepping should not knock the caret out of it."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region(start)
+    field = getattr(window._inspector, field_name)
+    field.setFocus()
+    QApplication.processEvents()
+    assert field.hasFocus(), "sanity: focus is there before stepping"
+
+    step(window)  # type: ignore[operator]
+    QApplication.processEvents()
+
+    field = getattr(window._inspector, field_name)  # same widget, repopulated
+    assert field.hasFocus()
+    assert field.textCursor().position() == len(field.toPlainText())
+
+
+def test_stepping_onto_another_page_keeps_the_field_focused(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Crossing onto another page reloads it, which disables the inspector's
+    fields for a moment while it does — long enough, before this was fixed,
+    for Qt to push focus onto the canvas instead of leaving it where
+    somebody was typing."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")  # the last region on the first page
+    window._inspector._translation.setFocus()
+    QApplication.processEvents()
+
+    window._on_next_region()
+    QApplication.processEvents()
+
+    assert window._current_region == "page-002-001"
+    assert window._current_image == "page-002.png"
+    assert window._inspector._translation.hasFocus()
+    field = window._inspector._translation
+    assert field.textCursor().position() == len(field.toPlainText())
+
+
 def test_tab_walks_out_of_the_prose_fields(qapp: object, two_page_plan: Path) -> None:
     """It used to be typed into them, which stopped Tab walking the panel."""
     window = MainWindow()

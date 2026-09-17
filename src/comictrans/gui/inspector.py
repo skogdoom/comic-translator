@@ -321,6 +321,18 @@ class RegionInspector(QWidget):
         """Put the cursor where a newly drawn region needs typing first."""
         self._source_text.setFocus()
 
+    def focused_prose_field(self) -> ProseEdit | None:
+        """Which of source text, translation or notes has the caret, if any.
+
+        Used to put focus back in the same field after the region
+        underneath it changes — stepping to the next region with the
+        keyboard should not interrupt typing.
+        """
+        for prose in (self._source_text, self._translation, self._notes):
+            if prose.hasFocus():
+                return prose
+        return None
+
     def _fields(self) -> tuple[QWidget, ...]:
         """Every widget that writes to the document when it changes."""
         return (
