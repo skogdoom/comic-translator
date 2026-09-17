@@ -2480,15 +2480,23 @@ dialog's child until the event loop actually gets to it — is detached with
 `setParent(None)` immediately rather than left for a stale lookup to find.
 
 **The example ships as data, not as an importable module, and installs
-itself.** `gui/resources/plugins/add_a_note/` is never imported by
-comictrans itself; the first time the plugin directory is scanned with
-experimental features on, `_ensure_example_plugin_installed` copies the
-whole folder into it with `shutil.copytree`, unless a folder of that name
-is already there — so editing the installed copy, or deleting it outright,
-sticks, and turning the preference off and back on does not undo either.
-There is deliberately no separate "install" action: the point of shipping
-one example is that it is there to try the moment the feature is, not
-another step to find and take first. `collect_data_files` excludes `.py`
+itself — every time, not only once.** `gui/resources/plugins/add_a_note/`
+is never imported by comictrans itself; every time the plugin directory is
+scanned with experimental features on, `_ensure_example_plugin_installed`
+copies the whole folder over it with `shutil.copytree(...,
+dirs_exist_ok=True)`. Deleting it outright still sticks — nothing recreates
+a folder that is not there except this same call, which only ever writes
+to the one name it owns — but an *older* installed copy does not: it is
+brought up to date, which is exactly what let a machine that turned this
+on before `SETTINGS` was added to the example end up with a plugin that
+had nothing to configure, `note_text` and all, until the next scan.
+Overwriting the file is safe because there is nothing in it left for a
+person to edit that matters: the one thing worth changing, the note's
+text, moved to `QSettings` the moment Configure Plugins gave it somewhere
+proper to live, and this never touches that. There is deliberately no
+separate "install" action: the point of shipping one example is that it is
+there to try the moment the feature is, not another step to find and take
+first. `collect_data_files` excludes `.py`
 files by default — right for every other resource, since none of them is
 source, and wrong for this one directory, whose files exist to be copied
 out and run rather than read here. The spec collects it separately with

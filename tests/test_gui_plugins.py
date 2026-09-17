@@ -22,6 +22,7 @@ from comictrans import plugins
 from comictrans.gui.preferences import Preferences
 from comictrans.model import Box, Color, Geometry, PlanHeader, Region, TextCase
 from comictrans.planfile import write_plan
+from comictrans.plugins import LoadedPlugin
 from comictrans.util import sha256_file
 
 from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, make_page_array, make_plan, save_page
@@ -214,20 +215,45 @@ def test_turning_on_experimental_features_installs_the_example_automatically(
     assert any(a.text() == EXAMPLE_NAME for a in window._plugin_run_actions)
 
 
-def test_it_does_not_overwrite_an_edited_copy_of_the_example(
+def test_an_older_installed_copy_of_the_example_is_brought_up_to_date(
     qapp: object, _empty_plugin_directory: Path
 ) -> None:
-    """Editing the installed example and rescanning must not lose the edit."""
+    """A machine that turned this on before a change to the example must still get it.
+
+    The example is a demonstration of what a plugin looks like today, not a
+    personal fork — its one configurable value has lived in Configure
+    Plugins, not the file, since that shipped.
+    """
     _write(
         _empty_plugin_directory,
         "add_a_note",
-        'PLUGIN_NAME = "Edited"\n\n\ndef run(plan, settings):\n    return plan\n',
+        'PLUGIN_NAME = "Add a Note to Every Region"\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
     )
     window = MainWindow()
 
     window._on_preferences_changed(Preferences(experimental="yes"))
 
-    assert [p.name for p in window._plugins] == ["Edited"]
+    plugin = next(p for p in window._plugins if isinstance(p, LoadedPlugin))
+    assert plugin.settings, "the installed copy should now be the current one, settings and all"
+
+
+def test_a_setting_chosen_in_configure_plugins_survives_being_brought_up_to_date(
+    qapp: object, tmp_path: Path, _empty_plugin_directory: Path
+) -> None:
+    from comictrans.gui import plugin_settings
+
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window._on_preferences_changed(Preferences(experimental="yes"))
+    plugin = next(p for p in window._plugins if isinstance(p, LoadedPlugin))
+    plugin_settings.set_setting(window._settings, plugin, "note_text", "chosen earlier")
+
+    window._on_rescan_plugins()  # re-installs the example over itself
+
+    plugin = next(p for p in window._plugins if isinstance(p, LoadedPlugin))
+    assert plugin_settings.resolved_settings(window._settings, plugin) == {
+        "note_text": "chosen earlier"
+    }
 
 
 # -- the plugin folder ------------------------------------------------------
@@ -363,6 +389,31 @@ def test_the_configure_plugins_action_is_in_the_menu(qapp: object) -> None:
 
     assert window._configure_plugins_action.text() == "&Configure Plugins…"
     assert window._configure_plugins_action in window._plugins_menu.actions()
+
+
+def test_no_action_in_this_menu_is_left_to_the_menu_role_heuristic(
+    qapp: object, _empty_plugin_directory: Path
+) -> None:
+    """ "Configure Plugins…" once read as "Preferences" to macOS and replaced it.
+
+    ``test_every_menu_role_macos_moves_is_spelled_out`` in test_gui_widgets.py
+    checks that only About, Preferences and Quit carry an explicit role —
+    it does not, and cannot from this platform, catch an action left at
+    the default ``TextHeuristicRole`` that a real Cocoa menu bar would have
+    folded into one of those anyway. Every action in this menu, including
+    one named for a plugin's own arbitrary ``PLUGIN_NAME``, has to rule
+    that out explicitly instead.
+    """
+    from PySide6.QtGui import QAction
+
+    _write(_empty_plugin_directory, "uppercase", UPPERCASE_NOTES)
+    window = MainWindow()
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    for action in window._plugins_menu.actions():
+        if action.isSeparator():
+            continue
+        assert action.menuRole() == QAction.MenuRole.NoRole, action.text()
 
 
 def test_an_inactive_plugin_has_no_run_action(
