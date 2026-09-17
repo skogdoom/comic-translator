@@ -13,7 +13,7 @@ at the others' state.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -1039,25 +1039,22 @@ class MainWindow(QMainWindow):
         self._canvas.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _on_region_clicked(self, region_id: str) -> None:
-        """A region chosen on the page, which means "I am about to write".
+        """A region chosen on the page, which usually means "I am about to write".
 
-        So the translation takes focus. **Only from a click**: the canvas
-        emits ``region_selected`` from its mouse press and nowhere else, and
-        every other way of arriving at a region — the page list, Tab, Next
-        Flagged Region, an extract finishing — calls
-        :meth:`_on_region_selected` instead and leaves focus where it was.
-
-        That distinction is the whole design, and it is there because the
-        arrow keys already mean something on the page: they nudge the
-        selected region a pixel, twenty with Shift, accelerating while held.
-        Focusing a text field takes all four away, and walking the flagged
-        regions with the keyboard is exactly when somebody is nudging
-        polygons. Clicking a balloon is when they are about to type into it.
+        Focus carries over exactly the way it does stepping to another
+        region with Next, Previous or Next Flagged Region: a field already
+        focused stays focused, caret at the end, now showing this region.
+        The two part ways when nothing was focused — stepping leaves the
+        keyboard on the page, because the arrow keys nudge the selected
+        region there, a pixel at a time, twenty with Shift, and walking the
+        flagged regions with the keyboard is exactly when somebody is
+        nudging polygons. A click is not that: it is picking a balloon to
+        type into, so with nothing already focused this puts the caret in
+        the translation instead.
 
         Escape comes back — see :attr:`RegionInspector.escaped`.
         """
-        self._on_region_selected(region_id)
-        self._inspector.focus_translation()
+        self._carry_the_caret(region_id, otherwise=self._inspector.focus_translation)
 
     def _go_to_region(self, region_id: str) -> None:
         """Select a region anywhere in the plan, changing page if it is on another.
@@ -1074,6 +1071,30 @@ class MainWindow(QMainWindow):
             self._pages.select_image(image)
         self._on_region_selected(region_id)
 
+    def _carry_the_caret(
+        self, region_id: str, *, otherwise: Callable[[], None] | None = None
+    ) -> None:
+        """Select a region without interrupting whichever field had the caret.
+
+        Crossing onto another page reloads it, which disables the
+        inspector's fields for a moment while it does — long enough for Qt
+        to push focus off whichever one somebody was typing in. Put it
+        straight back: ``_go_to_region`` has already repopulated the field
+        with the new region's text, caret at the end, so this is the only
+        thing still missing.
+
+        ``otherwise`` runs when nothing was focused to begin with. Stepping
+        between regions leaves the keyboard where it was, on the page; a
+        click wants the translation focused regardless, so it passes
+        :meth:`RegionInspector.focus_translation` here.
+        """
+        typing_in = self._inspector.focused_prose_field()
+        self._go_to_region(region_id)
+        if typing_in is not None:
+            typing_in.setFocus(Qt.FocusReason.OtherFocusReason)
+        elif otherwise is not None:
+            otherwise()
+
     def _step_region(self, *, forward: bool, flagged_only: bool = False) -> None:
         if self.document is None:
             return
@@ -1083,16 +1104,7 @@ class MainWindow(QMainWindow):
         if target is None:
             self.statusBar().showMessage(self.tr("no more regions in that direction"), 3000)
             return
-        # Crossing onto another page reloads it, which disables the
-        # inspector's fields for a moment while it does — long enough for
-        # Qt to push focus off whichever one somebody was typing in. Put it
-        # straight back: _go_to_region has already repopulated the field
-        # with the new region's text, caret at the end, so this is the only
-        # thing still missing.
-        typing_in = self._inspector.focused_prose_field()
-        self._go_to_region(target)
-        if typing_in is not None:
-            typing_in.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._carry_the_caret(target)
 
     def _on_previous_region(self) -> None:
         self._step_region(forward=False)

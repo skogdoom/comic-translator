@@ -176,16 +176,14 @@ for themselves. See **Build the application** in `README.md`.
   as everywhere else in the window — one history over the whole plan — and
   typing is now taken back a word at a time rather than everything since you
   entered the field.
-- **Click a balloon and start typing.** Clicking a region puts the caret in
-  its translation. Getting there through the Pages panel leaves the keyboard
-  on the page instead, where the arrow keys nudge the region; **Escape** hands
-  the page back.
-- **Next, Previous and Next Flagged Region no longer interrupt typing when
-  they cross a page.** Stepping with the caret in a field kept it there as
-  long as the next region was on the same page; reaching one on another page
-  reloaded it, which knocked the caret out to the page regardless. Now it
-  stays in the same field, source text, translation or notes, caret at the
-  end, whether or not the page changes underneath it.
+- **Clicking a balloon, or stepping to one, no longer interrupts typing.**
+  With the caret in source text, translation or notes, clicking a region and
+  Next, Previous and Next Flagged Region all now carry it into that same
+  field of the region you land on, caret at the end, even one on another
+  page. With nothing focused, stepping leaves the keyboard on the page,
+  where the arrow keys nudge the region; a click puts the caret in the
+  translation instead, since it means you are about to type. **Escape** hands
+  the page back either way.
 
 ### Known limitations
 

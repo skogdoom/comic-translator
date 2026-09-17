@@ -5885,7 +5885,8 @@ def test_undo_reaches_the_document_from_inside_a_translation(
 def test_clicking_a_region_puts_the_caret_in_its_translation(
     qapp: object, two_page_plan: Path
 ) -> None:
-    """Clicking a balloon means "I am about to write"."""
+    """Clicking a balloon means "I am about to write", when nothing else
+    was already focused to carry over instead."""
     window = MainWindow()
     window.open_plan(two_page_plan)
     window.show()
@@ -5896,6 +5897,27 @@ def test_clicking_a_region_puts_the_caret_in_its_translation(
 
     assert window._current_region == "page-001-002"
     assert QApplication.focusWidget() is window._inspector._translation
+
+
+def test_clicking_a_region_carries_over_a_field_already_focused(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A click is only the *default* to the translation, not a demand for
+    it — typing in notes and then clicking another balloon is "carry on
+    taking notes", the same as stepping there with Next Region would be."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._inspector._notes.setFocus()
+    QApplication.processEvents()
+    assert window._inspector._notes.hasFocus(), "sanity: focus is there before clicking"
+
+    window._canvas.region_selected.emit("page-001-002")
+    QApplication.processEvents()
+
+    assert window._current_region == "page-001-002"
+    field = window._inspector._notes
+    assert field.hasFocus()
+    assert field.textCursor().position() == len(field.toPlainText())
 
 
 def test_walking_to_a_region_leaves_the_arrow_keys_where_they_were(
