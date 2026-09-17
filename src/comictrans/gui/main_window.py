@@ -56,9 +56,9 @@ from ..imaging import PageImage, load_page
 from ..model import Color, Geometry, Plan, Point, Polygon, Region, convex_hull
 from ..ocr.grouping import looks_like_text
 from ..pack import archive_kind
-from ..plugins import LoadedPlugin, discover_plugins, plugin_directory, run_plugin
+from ..plugins import FailedPlugin, LoadedPlugin, discover_plugins, plugin_directory, run_plugin
 from ..sources import is_container
-from . import about, alerts, help_dialog, icons, recent, translations
+from . import about, alerts, help_dialog, icons, plugin_settings, recent, translations
 from .about_dialog import AboutDialog
 from .busy_bar import BusyBar
 from .canvas import (
@@ -79,6 +79,7 @@ from .hint_line import HintLine
 from .inspector import RegionInspector
 from .logfile import log_directory, set_notifier
 from .page_list import PageList
+from .plugin_config_dialog import PluginConfigDialog
 from .preferences import Preferences, load_preferences, save_preferences
 from .preferences_dialog import PreferencesDialog, language_name
 from .preview import Preview
@@ -251,14 +252,21 @@ class MainWindow(QMainWindow):
         never a second thread to keep track of or a second report arriving
         out of order."""
 
-        self._plugins: list[LoadedPlugin] = []
+        self._plugins: list[LoadedPlugin | FailedPlugin] = []
         """What Rescan Plugins, or switching experimental features on, last
         found. Discovered once and kept rather than rescanned on every menu
         open: importing a plugin runs it, so merely opening the menu must
-        not be something with side effects."""
+        not be something with side effects. A plugin that failed to load is
+        in here too, for Configure Plugins to show; only the active,
+        loaded ones ever reach ``_plugin_run_actions``."""
 
         self._plugin_run_actions: list[QAction] = []
-        """One action per entry in ``_plugins``, rebuilt alongside it."""
+        """One action per active, loaded entry in ``_plugins``.
+
+        Rebuilt on its own by ``_rebuild_plugin_actions`` — which does not
+        import anything, just re-reads what discovery and Configure Plugins
+        already found — as well as alongside ``_plugins`` by a real rescan.
+        """
 
         self._settings = settings
         self._preferences: Preferences = load_preferences(settings)
@@ -611,6 +619,10 @@ class MainWindow(QMainWindow):
         # for by name, not just tucked away.
         self._plugins_menu = self.menuBar().addMenu(self.tr("Pl&ugins"))
         self._plugins_menu.menuAction().setVisible(self._preferences.experimental_on)
+
+        self._configure_plugins_action = QAction(self.tr("&Configure Plugins…"), self)
+        self._configure_plugins_action.triggered.connect(self._on_configure_plugins)
+        self._plugins_menu.addAction(self._configure_plugins_action)
 
         self._open_plugin_folder_action = QAction(self.tr("&Open Plugin Folder"), self)
         self._open_plugin_folder_action.triggered.connect(self._on_open_plugin_folder)
@@ -2057,16 +2069,34 @@ class MainWindow(QMainWindow):
         """(Re)import every plugin in the plugin directory and rebuild the menu.
 
         Called once when experimental features are switched on and again on
-        request from Rescan Plugins, never automatically on every menu open:
-        importing a plugin runs its module-level code, so opening the menu
-        to look at it would otherwise be a thing with side effects.
+        request from Rescan Plugins or Configure Plugins, never
+        automatically on every menu open: importing a plugin runs its
+        module-level code, so opening a menu to look at it would otherwise
+        be a thing with side effects. Toggling a plugin active or inactive
+        does not come through here — see ``_rebuild_plugin_actions``, which
+        this also calls, but which does not import anything on its own.
         """
         self._ensure_example_plugin_installed()
+        self._plugins = discover_plugins()
+        self._rebuild_plugin_actions()
+
+    def _rebuild_plugin_actions(self) -> None:
+        """Rebuild the run-one-now actions from ``_plugins``, as it now stands.
+
+        Reads what the last discovery (or Configure Plugins, editing the
+        active flag) found — imports nothing itself, so this is also what
+        runs right after a checkbox in Configure Plugins is toggled, where
+        re-importing every plugin over a click would be exactly the
+        surprise ``_refresh_plugin_menu`` exists to avoid.
+        """
         for action in self._plugin_run_actions:
             self._plugins_menu.removeAction(action)
         self._plugin_run_actions.clear()
-        self._plugins = discover_plugins()
         for plugin in self._plugins:
+            if not isinstance(plugin, LoadedPlugin) or not plugin_settings.is_active(
+                self._settings, plugin
+            ):
+                continue
             action = QAction(plugin.name, self)
             # The plugin rides on the action as its path, not in a partial
             # bound to this window — see _on_recent_triggered for the crash
@@ -2080,8 +2110,20 @@ class MainWindow(QMainWindow):
     def _on_rescan_plugins(self) -> None:
         self._refresh_plugin_menu()
         self.statusBar().showMessage(
-            self.tr("%n plugin(s) available", None, len(self._plugins)), 5000
+            self.tr("%n plugin(s) available", None, len(self._plugin_run_actions)), 5000
         )
+
+    def _on_configure_plugins(self) -> None:
+        """Open the list of installed plugins: what each is set to, and whether it runs at all.
+
+        Rescanned first, the same as Rescan Plugins, so a plugin dropped in
+        since the window last looked is here to configure without a second
+        trip to that menu item first.
+        """
+        self._refresh_plugin_menu()
+        with transient(PluginConfigDialog(self._settings, self._plugins, self)) as dialog:
+            dialog.changed.connect(self._rebuild_plugin_actions)
+            dialog.exec()
 
     def _on_open_plugin_folder(self) -> None:
         """Show the folder plugins are read from, creating it if it is not there yet.
@@ -2125,7 +2167,14 @@ class MainWindow(QMainWindow):
         if not isinstance(action, QAction) or not isinstance(action.data(), str):
             return
         path = Path(action.data())
-        plugin = next((candidate for candidate in self._plugins if candidate.path == path), None)
+        plugin = next(
+            (
+                candidate
+                for candidate in self._plugins
+                if isinstance(candidate, LoadedPlugin) and candidate.path == path
+            ),
+            None,
+        )
         if plugin is not None:
             self._on_run_plugin(plugin)
 
@@ -2139,8 +2188,9 @@ class MainWindow(QMainWindow):
         if self.document is None:
             return
         before = self.document.plan
+        settings = plugin_settings.resolved_settings(self._settings, plugin)
         try:
-            after = run_plugin(plugin, before)
+            after = run_plugin(plugin, before, settings)
         except PluginError as exc:
             self._report_failure(self.tr("running {0}").format(plugin.name), exc)
             return

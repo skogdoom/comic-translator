@@ -52,7 +52,6 @@ one section can refer to another without ambiguity.
 | 19 | ComicInfo.xml, read and written | M |
 | 20 | EPUB output | L |
 | 6 | PDF output | L |
-| 22 | Plugins: configuring them | M |
 | 23 | An empty plan, and pages added by hand | M |
 | 24 | The guide, checked against the window | S |
 | 10 | Code quality review | M |
@@ -76,12 +75,6 @@ old shape. Done separately that is two bumps and two migrations for one idea;
 done once first, 19 and 20 are each a file format wrapped around a header
 that already holds the answers. 6 sits with them because it is the third
 member of the same family and the least urgent of the three.
-
-22 could be started any time after 13 and after 21 shipped, because the
-experimental flag means an unfinished plugin feature is invisible to anyone
-who has not switched it on — the one milestone here that cannot destabilise
-what already works. It sits late in the table only because it is one of the
-larger ones.
 
 24 is late on purpose. The guide goes stale against window changes, and
 checking it before 4.27, 4.28, 16 and 17 land would mean checking it twice. Each of those milestones still updates the guide for its own change,
@@ -390,30 +383,6 @@ What is already known: it extends `render_dialog`'s format choice and
 today. And it is the other milestone that makes the page order mean
 something on disk rather than only in the window.
 
-## 22 Plugins: configuring them
-
-**Configure Plugins…** in the Plugin menu opens a list of what is installed;
-selecting one shows its settings; a checkbox says whether it is active.
-Inactive plugins stay in the list and leave the menu.
-
-Split from 21 because it is the half with a design problem in it. **A generic
-dialog cannot build a form for a configuration it knows nothing about.** Each
-plugin has to declare its settings in a shape the window can render — a name,
-a type, a default, a label — and that declaration is an interface this project
-then has to keep, which is exactly the kind of commitment worth making
-separately from "can a plugin run at all". Options run from "a handful of
-typed fields" to "a schema", and the smallest thing that works for the example
-is the right starting point.
-
-Where the settings live: `QSettings` under a `plugins/` prefix, beside
-`preferences/` and `window/`, keyed by plugin. Active-or-not is one more
-setting of the same kind, which is why the checkbox belongs in this milestone
-and not in 21.
-
-Worth deciding here: whether a plugin that fails to load appears in the list
-greyed with its error, which is the friendly answer and the one consistent
-with how this window reports a failed run, or is silently absent.
-
 ## 23 An empty plan, and pages added by hand
 
 Create a plan with no pages; add pages to one; remove pages from one.
@@ -542,9 +511,6 @@ stop thinking in horizontal bands, which is the shape of `typeset` rather
 than a parameter to it. Vertical CJK is more again: line breaking and
 hyphenation are not the same algorithm turned sideways. Worth knowing which
 of the two is actually wanted before either is designed.
-
-**A plugin system (experimental).** The runtime and one example shipped; what
-is left is scheduled as milestone 22, configuring what is already there.
 
 **Extracting and rendering emphasis, italic and bold.** This one is not a
 feature, it is a change to an invariant, and should be decided as one.

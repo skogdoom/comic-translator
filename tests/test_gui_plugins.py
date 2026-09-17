@@ -1,11 +1,15 @@
 """The Plugins menu: hidden by default, and what it does once switched on.
 
 The plugin runtime itself — discovery, and what a plugin is and is not
-allowed to change — is covered without Qt in test_plugins.py. What is worth
-testing here is the window's side of it: the menu only exists when
-Preferences says so, the example plugin is there the first time without
-being asked for, it is not rescanned just by being looked at, and running a
-plugin from it reaches the open document the same way undo does.
+allowed to change — is covered without Qt in test_plugins.py. Where a
+plugin's active flag and settings values are stored is covered without Qt
+in test_gui_plugin_settings.py. What is worth testing here is the window's
+side of it: the menu only exists when Preferences says so, the example
+plugin is there the first time without being asked for, it is not
+rescanned just by being looked at, running a plugin from it reaches the
+open document the same way undo does, and Configure Plugins can turn one
+off, edit its settings, and show a broken one's error — without any of
+that re-importing a single plugin.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from .conftest import ART_DARK, BALLOON_WHITE, INK_BLACK, make_page_array, make_
 
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import QSettings
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMenu
 
@@ -40,7 +45,7 @@ from dataclasses import replace
 PLUGIN_NAME = "Uppercase Notes"
 
 
-def run(plan):
+def run(plan, settings):
     return replace(
         plan, regions=tuple(replace(r, notes=r.notes.upper()) for r in plan.regions)
     )
@@ -129,6 +134,10 @@ def _plugins_menu(window: MainWindow) -> QMenu:
     raise AssertionError("no Plugins menu")
 
 
+def _settings_in(tmp_path: Path) -> QSettings:
+    return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+
 # -- visibility -----------------------------------------------------------
 
 
@@ -212,7 +221,7 @@ def test_it_does_not_overwrite_an_edited_copy_of_the_example(
     _write(
         _empty_plugin_directory,
         "add_a_note",
-        'PLUGIN_NAME = "Edited"\n\n\ndef run(plan):\n    return plan\n',
+        'PLUGIN_NAME = "Edited"\n\n\ndef run(plan, settings):\n    return plan\n',
     )
     window = MainWindow()
 
@@ -278,7 +287,7 @@ def test_a_plugin_that_makes_no_change_says_so_and_costs_no_undo_step(
     _write(
         _empty_plugin_directory,
         "noop",
-        'PLUGIN_NAME = "No Op"\n\n\ndef run(plan):\n    return plan\n',
+        'PLUGIN_NAME = "No Op"\n\n\ndef run(plan, settings):\n    return plan\n',
     )
     window = MainWindow()
     window.open_plan(one_page_plan)
@@ -297,7 +306,7 @@ def test_a_plugin_that_throws_is_reported_and_the_plan_is_untouched(
     _write(
         _empty_plugin_directory,
         "explodes",
-        'PLUGIN_NAME = "Explodes"\n\n\ndef run(plan):\n    raise ValueError("nope")\n',
+        'PLUGIN_NAME = "Explodes"\n\n\ndef run(plan, settings):\n    raise ValueError("nope")\n',
     )
     window = MainWindow()
     window.open_plan(one_page_plan)
@@ -320,7 +329,7 @@ def test_a_plugin_that_restructures_the_plan_is_refused_and_the_plan_is_untouche
         "removes",
         "from dataclasses import replace\n\n"
         'PLUGIN_NAME = "Removes A Region"\n\n\n'
-        "def run(plan):\n    return replace(plan, regions=())\n",
+        "def run(plan, settings):\n    return replace(plan, regions=())\n",
     )
     window = MainWindow()
     window.open_plan(one_page_plan)
@@ -344,3 +353,166 @@ def test_plugin_actions_are_disabled_without_a_document(
     action = next(a for a in window._plugin_run_actions if a.text() == "Uppercase Notes")
 
     assert action.isEnabled() is False
+
+
+# -- configuring: active, inactive, and failed -------------------------
+
+
+def test_the_configure_plugins_action_is_in_the_menu(qapp: object) -> None:
+    window = MainWindow()
+
+    assert window._configure_plugins_action.text() == "&Configure Plugins…"
+    assert window._configure_plugins_action in window._plugins_menu.actions()
+
+
+def test_an_inactive_plugin_has_no_run_action(
+    qapp: object, tmp_path: Path, _empty_plugin_directory: Path
+) -> None:
+    from comictrans.gui import plugin_settings
+
+    _write(_empty_plugin_directory, "uppercase", UPPERCASE_NOTES)
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window._on_preferences_changed(Preferences(experimental="yes"))
+    plugin = next(p for p in window._plugins if p.name == "Uppercase Notes")
+
+    plugin_settings.set_active(window._settings, plugin, False)
+    window._rebuild_plugin_actions()
+
+    assert not any(a.text() == "Uppercase Notes" for a in window._plugin_run_actions)
+    # Still discovered, and still Configure Plugins' to show — just not runnable.
+    assert any(p.name == "Uppercase Notes" for p in window._plugins)
+
+
+def test_rebuilding_actions_does_not_reimport_anything(
+    qapp: object, tmp_path: Path, _empty_plugin_directory: Path
+) -> None:
+    """Toggling active in Configure Plugins must not re-run every plugin's top level."""
+    marker = _empty_plugin_directory / "ran.txt"
+    _write(
+        _empty_plugin_directory,
+        "sideeffect",
+        f"""\
+with open({str(marker)!r}, "a") as _f:
+    _f.write("x")
+
+PLUGIN_NAME = "Side Effect"
+
+
+def run(plan, settings):
+    return plan
+""",
+    )
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window._on_preferences_changed(Preferences(experimental="yes"))
+    ran_once = marker.read_text()
+
+    window._rebuild_plugin_actions()
+    window._rebuild_plugin_actions()
+
+    assert marker.read_text() == ran_once
+
+
+def test_a_failed_plugin_has_no_run_action(qapp: object, _empty_plugin_directory: Path) -> None:
+    _write(_empty_plugin_directory, "broken", "not python at all (")
+    window = MainWindow()
+
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    assert not any(a.text() == "broken" for a in window._plugin_run_actions)
+    from comictrans.plugins import FailedPlugin
+
+    assert any(isinstance(p, FailedPlugin) for p in window._plugins)
+
+
+def test_configure_plugins_opens_with_every_discovered_plugin_listed(
+    qapp: object, _empty_plugin_directory: Path
+) -> None:
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    _write(_empty_plugin_directory, "uppercase", UPPERCASE_NOTES)
+    _write(_empty_plugin_directory, "broken", "not python at all (")
+    window = MainWindow()
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+
+    shown = {dialog._list.item(row).text() for row in range(dialog._list.count())}
+    assert shown == {EXAMPLE_NAME, "Uppercase Notes", "broken"}
+
+
+def test_toggling_active_in_the_dialog_rebuilds_the_run_menu(
+    qapp: object, tmp_path: Path, _empty_plugin_directory: Path
+) -> None:
+    from PySide6.QtWidgets import QCheckBox
+
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    _write(_empty_plugin_directory, "uppercase", UPPERCASE_NOTES)
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+    dialog.changed.connect(window._rebuild_plugin_actions)
+    row = next(
+        row
+        for row in range(dialog._list.count())
+        if dialog._list.item(row).text() == "Uppercase Notes"
+    )
+    dialog._list.setCurrentRow(row)
+    checkbox = dialog.findChild(QCheckBox)
+    assert checkbox is not None
+
+    checkbox.setChecked(False)
+
+    assert not any(a.text() == "Uppercase Notes" for a in window._plugin_run_actions)
+
+
+def test_editing_a_setting_in_the_dialog_is_used_the_next_time_the_plugin_runs(
+    qapp: object, tmp_path: Path, one_page_plan: Path, _empty_plugin_directory: Path
+) -> None:
+    from PySide6.QtWidgets import QLineEdit
+
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    window = MainWindow(settings=_settings_in(tmp_path))
+    window.open_plan(one_page_plan)
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+    row = next(
+        row for row in range(dialog._list.count()) if dialog._list.item(row).text() == EXAMPLE_NAME
+    )
+    dialog._list.setCurrentRow(row)
+    edit = dialog.findChild(QLineEdit)
+    assert edit is not None
+
+    edit.setText("a note chosen in the dialog")
+
+    action = next(a for a in window._plugin_run_actions if a.text() == EXAMPLE_NAME)
+    action.trigger()
+
+    assert window.document.region("page-001-001").notes == "a note chosen in the dialog"  # type: ignore[union-attr]
+
+
+def test_a_failed_plugin_shows_its_error_instead_of_settings(
+    qapp: object, _empty_plugin_directory: Path
+) -> None:
+    from PySide6.QtWidgets import QLabel
+
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    _write(_empty_plugin_directory, "broken", "not python at all (")
+    window = MainWindow()
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+    row = next(
+        row for row in range(dialog._list.count()) if dialog._list.item(row).text() == "broken"
+    )
+    assert dialog._list.item(row).toolTip()  # the raw error, from discover_plugins
+
+    dialog._list.setCurrentRow(row)
+
+    detail = dialog._detail.itemAt(0).widget()
+    assert isinstance(detail, QLabel)
+    assert "could not be loaded" in detail.text()

@@ -15,15 +15,20 @@ more than one file can import its own siblings the way any package does —
 and declares two names at module level::
 
     PLUGIN_NAME = "..."
-    def run(plan: Plan) -> Plan: ...
+    def run(plan: Plan, settings: dict[str, str]) -> Plan: ...
 
-``run`` gets the plan as it stands and returns the plan it should become.
-It may change field values on regions already in the plan — a translation,
-a note, a flag, even a polygon — but not add, remove, reorder, or move a
-region between pages, and not touch the header or the page list. That is
-what keeps a plugin's result one checkable, whole-plan undo step rather
-than a second place the plan's *shape* can change: see
-:func:`run_plugin`.
+``run`` gets the plan as it stands, and the plugin's own settings resolved
+to their current values — see :class:`SettingField` for how a plugin
+declares what it takes, and ``gui.plugin_settings`` for where a value a
+person chose is kept. A plugin with nothing to configure still takes
+``settings``; it is simply handed an empty dict.
+
+``run`` returns the plan it should become. It may change field values on
+regions already in the plan — a translation, a note, a flag, even a
+polygon — but not add, remove, reorder, or move a region between pages,
+and not touch the header or the page list. That is what keeps a plugin's
+result one checkable, whole-plan undo step rather than a second place the
+plan's *shape* can change: see :func:`run_plugin`.
 
 Loading a plugin runs whatever top-level code its ``__init__.py`` has, same
 as any ``import`` would; nothing here sandboxes that, because nothing in
@@ -56,6 +61,18 @@ PLUGIN_PATH_ENV = "COMICTRANS_PLUGIN_PATH"
 directories, and for the same reason: the suite must not read whatever is
 sitting in the directory of whoever runs it."""
 
+SETTING_TYPES = frozenset({"str"})
+"""Every type a :class:`SettingField` may declare.
+
+One member today — the smallest thing that works for the one plugin that
+ships — checked at runtime rather than typed as a ``Literal``: a plugin is
+loaded from an arbitrary file, so an unknown type is exactly the kind of
+fact this has to catch rather than trust a type checker to have already
+ruled out. Adding a second kind of field later is additive: a new member
+here, a new widget in ``gui.plugin_config_dialog``, nothing about a plugin
+that only ever declared ``"str"`` changes underneath it.
+"""
+
 
 def plugin_directory() -> Path:
     """Where plugins are read from, by the convention of the platform.
@@ -80,46 +97,85 @@ def plugin_directory() -> Path:
 
 
 @dataclass(frozen=True, slots=True)
+class SettingField:
+    """One value a plugin lets a person configure, and what the dialog needs to show it.
+
+    ``key`` is what ``run`` finds it under in ``settings``, and what
+    ``gui.plugin_settings`` stores it under — stable, so renaming ``label``
+    to reword a form does not lose a value someone already set. ``default``
+    is a plain string like every other stored value here, on the same
+    "empty means unset" terms ``gui.preferences`` uses.
+    """
+
+    key: str
+    label: str
+    default: str = ""
+    type: str = "str"
+
+
+@dataclass(frozen=True, slots=True)
 class LoadedPlugin:
     """One plugin folder that imported cleanly and declared what it needed to."""
 
     name: str
     path: Path
     """The plugin's own folder — not the ``__init__.py`` inside it."""
-    run: Callable[[Plan], Plan]
+    run: Callable[[Plan, dict[str, str]], Plan]
+    settings: tuple[SettingField, ...] = ()
+    """What this plugin lets a person configure, in declaration order.
+    Empty for a plugin with nothing to set — ``run`` still takes a
+    ``settings`` dict, just an empty one."""
 
 
-def discover_plugins(directory: Path | None = None) -> list[LoadedPlugin]:
+@dataclass(frozen=True, slots=True)
+class FailedPlugin:
+    """A folder that looked like a plugin but did not become one, and why.
+
+    Kept distinct from being silently left out — a folder with no
+    ``__init__.py`` at all is not this, see :func:`discover_plugins` — so
+    that Configure Plugins can say a folder is there and broken rather than
+    making it indistinguishable from nothing having been dropped in yet.
+    """
+
+    path: Path
+    error: str
+
+
+def discover_plugins(directory: Path | None = None) -> list[LoadedPlugin | FailedPlugin]:
     """Import every plugin in ``directory``, in folder-name order.
 
-    A plugin is a folder, not a loose file — ``_load_one`` explains why, and
-    is where a folder missing ``__init__.py`` (or a loose file sitting where
-    a plugin folder would be) is caught and skipped; nothing here needs to
-    tell a folder from anything else in the directory first. One that fails
-    to import, or does not declare a ``PLUGIN_NAME`` string and a callable
-    ``run``, is left out and logged rather than raised: one broken plugin
-    next to two working ones should not hide the two that work. That is a
+    A plugin is a folder, not a loose file. One with no ``__init__.py`` —
+    ``__pycache__``, a stray file, a folder that is not a plugin at all —
+    is left out entirely: nothing was ever dropped in to report on. One
+    whose ``__init__.py`` exists but fails to import, or does not declare a
+    usable ``PLUGIN_NAME``, ``run`` and ``SETTINGS``, comes back as a
+    :class:`FailedPlugin` instead of being dropped — worth a line in
+    Configure Plugins, since somebody did put something here. Either way
+    one broken plugin never hides a working one next to it. This is a
     *load* failure; see :func:`run_plugin` for what happens when a plugin
-    runs and fails instead, which is a different thing reported a different
-    way.
+    runs and fails instead, which is a different thing reported a
+    different way.
     """
     directory = directory or plugin_directory()
     if not directory.is_dir():
         return []
     entries = sorted(directory.iterdir())
-    return [plugin for entry in entries if (plugin := _load_one(entry)) is not None]
+    return [result for entry in entries if (result := _load_one(entry)) is not None]
 
 
-def _load_one(folder: Path) -> LoadedPlugin | None:
+def _load_one(folder: Path) -> LoadedPlugin | FailedPlugin | None:
     """Import one plugin folder as a package, ``__init__.py`` its entry point.
 
-    A package rather than a bare module because a plugin may be more than
-    one file: naming the entry point ``__init__.py`` is what lets it say
-    ``from . import helper`` and find a sibling in the same folder, exactly
-    as it would in any other Python package — ``importlib`` infers
+    ``None`` when ``folder`` plainly never claimed to be a plugin — nothing
+    to report. A package rather than a bare module because a plugin may be
+    more than one file: naming the entry point ``__init__.py`` is what lets
+    it say ``from . import helper`` and find a sibling in the same folder,
+    exactly as it would in any other Python package — ``importlib`` infers
     ``submodule_search_locations`` from that name on its own.
     """
     entry = folder / "__init__.py"
+    if not entry.is_file():
+        return None
     # A name unique to this call, not to the folder: re-discovering must not
     # collide with a package the same folder was loaded as last time, and a
     # plugin's own sibling modules must not collide with another plugin's.
@@ -127,7 +183,7 @@ def _load_one(folder: Path) -> LoadedPlugin | None:
     spec = importlib.util.spec_from_file_location(module_name, entry)
     if spec is None or spec.loader is None:
         log.warning("%s: could not be read as a Python package", folder)
-        return None
+        return FailedPlugin(folder, "could not be read as a Python package")
     module = importlib.util.module_from_spec(spec)
     # Registered before exec: a relative import in __init__.py needs its own
     # package findable in sys.modules while that import runs, the same as
@@ -135,22 +191,56 @@ def _load_one(folder: Path) -> LoadedPlugin | None:
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
-    except Exception as exc:  # folder isn't a plugin, or its own code is broken
+    except Exception as exc:  # entirely unknown code — the plugin's own top level
         log.warning("%s: failed to load: %s", folder, exc)
         del sys.modules[module_name]
-        return None
+        return FailedPlugin(folder, str(exc))
 
     name = getattr(module, "PLUGIN_NAME", None)
     run = getattr(module, "run", None)
     if not isinstance(name, str) or not name or not callable(run):
         log.warning("%s: missing PLUGIN_NAME or run()", folder)
         del sys.modules[module_name]
-        return None
-    return LoadedPlugin(name=name, path=folder, run=run)
+        return FailedPlugin(folder, "missing PLUGIN_NAME or run()")
+
+    settings, error = _read_settings(module)
+    if error is not None:
+        del sys.modules[module_name]
+        return FailedPlugin(folder, error)
+
+    return LoadedPlugin(name=name, path=folder, run=run, settings=settings)
 
 
-def run_plugin(plugin: LoadedPlugin, plan: Plan) -> Plan:
+def _read_settings(module: object) -> tuple[tuple[SettingField, ...], str | None]:
+    """The plugin's ``SETTINGS``, validated, or an error naming what was wrong.
+
+    Absent entirely is fine — that is a plugin with nothing to configure,
+    the common case today. Present and malformed is not: a plugin whose
+    declared settings the dialog cannot render is a plugin the dialog
+    cannot trust, the same standard ``PLUGIN_NAME`` and ``run`` are held to.
+    """
+    declared = getattr(module, "SETTINGS", ())
+    if not isinstance(declared, tuple | list) or not all(
+        isinstance(field, SettingField) for field in declared
+    ):
+        return (), "SETTINGS must be a tuple of SettingField"
+    fields = tuple(declared)
+    keys = [field.key for field in fields]
+    if len(keys) != len(set(keys)):
+        return (), "SETTINGS has two fields with the same key"
+    for field in fields:
+        if field.type not in SETTING_TYPES:
+            return (), f"SETTINGS field {field.key!r} has an unknown type {field.type!r}"
+    return fields, None
+
+
+def run_plugin(plugin: LoadedPlugin, plan: Plan, settings: dict[str, str] | None = None) -> Plan:
     """Run one plugin over ``plan`` and hand back the plan it returned.
+
+    ``settings`` is what ``run`` sees; left out, it is built from the
+    plugin's own declared defaults, which is what every caller that does
+    not care about a person's overrides wants — ``gui.main_window`` passes
+    the resolved values it read out of ``QSettings`` instead.
 
     Raises :class:`PluginError` rather than letting anything through
     unchecked: the plugin's own exception, a return value that is not a
@@ -160,8 +250,10 @@ def run_plugin(plugin: LoadedPlugin, plan: Plan) -> Plan:
     this call either way; nothing here writes anything back, that is the
     caller's decision once it trusts the result.
     """
+    if settings is None:
+        settings = {field.key: field.default for field in plugin.settings}
     try:
-        result = plugin.run(plan)
+        result = plugin.run(plan, settings)
     except Exception as exc:
         raise PluginError(f"{plugin.name}: {exc}") from exc
     if not isinstance(result, Plan):
@@ -186,7 +278,10 @@ def _check_same_shape(name: str, before: Plan, after: Plan) -> None:
 __all__ = [
     "APPLICATION",
     "PLUGIN_PATH_ENV",
+    "SETTING_TYPES",
+    "FailedPlugin",
     "LoadedPlugin",
+    "SettingField",
     "discover_plugins",
     "plugin_directory",
     "run_plugin",

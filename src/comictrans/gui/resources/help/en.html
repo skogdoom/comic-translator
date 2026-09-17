@@ -187,11 +187,22 @@ application for what that means.</p>
 <p>A plugin is a folder, not a single file, so it can be made of more than
 one &mdash; <b>Open Plugin Folder</b> shows where they live. One example is
 already there the first time you turn this on: it adds the same note to
-every region in the open plan, and its own file says how to change what the
-note says. <b>Rescan Plugins</b> reads the folder again, for a plugin you
-added, changed or removed since the window last looked; the window does not
-do this on its own; each plugin it finds gets its own line below in the menu,
-named for what it does, and choosing it runs it.</p>
+every region in the open plan. <b>Rescan Plugins</b> reads the folder again,
+for a plugin you added, changed or removed since the window last looked; the
+window does not do this on its own; each plugin it finds gets its own line
+below in the menu, named for what it does, and choosing it runs it.</p>
+
+<p><b>Configure Plugins&hellip;</b> lists everything the folder holds,
+including one that would not load &mdash; shown greyed, with the reason,
+rather than simply left out, so a plugin sitting there broken is something
+you find out about rather than wonder over. Selecting a working one shows
+whatever it lets you set &mdash; the example's note, for instance &mdash;
+and a checkbox marked <b>Active</b>: unticking it takes a plugin out of the
+list above without touching the folder it came from, and ticking it again
+puts it straight back. Every field here writes as you type, the same as the
+plan header does; there is nothing to apply and nothing to cancel. None of
+it re-reads the plugin folder on its own &mdash; that is still what Rescan
+Plugins is for.</p>
 
 <p>Running a plugin changes translations, notes, flags, even an outline, on
 any region already in the plan &mdash; never one it adds or removes, and

@@ -69,8 +69,10 @@ Plugins are experimental and off by default: Preferences ▸ this window ▸
 experimental features turns on a Plugins menu that runs a plan-in, plan-out
 folder of Python you drop into the plugin folder, one folder per plugin so
 one can be more than a single file. One example is already there the first
-time you turn this on: it adds a note to every region. Configuring a plugin
-beyond editing its own source is not built yet.
+time you turn this on: it adds a note to every region. Plugins ▸ Configure
+Plugins… lists what is installed, including one that failed to load, lets
+you edit what a plugin declared as its own settings, and turns one off
+without removing it.
 
 Chapters can arrive as one file and leave as one: `extract` reads CBZ, CBR
 and PDF by unpacking them into a folder of pages first, and `apply --output
