@@ -2389,17 +2389,31 @@ entry point named `__init__.py` — which makes it an ordinary Python
 package, so a plugin that needs more than one file can say `from . import
 helper` and find a sibling in the same folder, `importlib` inferring
 `submodule_search_locations` from that filename with nothing extra needed
-here. It declares `PLUGIN_NAME` and `run(plan) -> Plan`. `plugins.run_plugin`
-wraps the call: an exception the plugin raises, a return value that is not a
-`Plan`, or a `Plan` whose header, pages, or region ids and page assignments
-differ from what it was handed all become `PluginError` before anything
-reaches the document — plugin authors get one failure mode, not three, and
-the plan already open is never touched by a call that fails. What is allowed
+here. It declares `PLUGIN_NAME` and `run(plan, settings) -> Plan` —
+`settings` is that plugin's own values, resolved outside `plugins.py`
+entirely; see **Configuring one**, below. `plugins.run_plugin` wraps the
+call: an exception the plugin raises, a return value that is not a `Plan`,
+or a `Plan` whose header, pages, or region ids and page assignments differ
+from what it was handed all become `PluginError` before anything reaches
+the document — plugin authors get one failure mode, not three, and the
+plan already open is never touched by a call that fails. What is allowed
 is everything else: any field on any region already there, including its
 polygon. That is the same "one whole plan, one undo step" bargain `reorder_images`
 already strikes — see `PlanDocument.apply_plugin`, which is `_record(plan,
 run=None)` behind the same no-op check `reorder_images` makes, so a plugin
 whose `run` changes nothing costs no undo step either.
+
+**A load failure is a value, not a dropped result.** `discover_plugins`
+returns `LoadedPlugin | FailedPlugin` for every folder that ever claimed to
+be one — a `FailedPlugin` names its folder and carries the exception text,
+rather than the folder simply not appearing, which is what Configure
+Plugins needs to grey one out and say why instead of leaving somebody to
+wonder whether they dropped it in the wrong place. A folder that was never
+a plugin at all — no `__init__.py`, `__pycache__`, a stray file — is
+neither: `_load_one` returns `None` for that case, because there is
+nothing to report on something nobody dropped in. Reused for the run menu
+too: `_rebuild_plugin_actions` in `main_window.py` only ever builds an
+action from a `LoadedPlugin`, so a `FailedPlugin` simply has none.
 
 **Discovery is deliberately not automatic.** Importing a plugin runs it, so
 the plugin directory is scanned once — when experimental features are
@@ -2420,16 +2434,69 @@ teardown segfault a `partial` closed over `self` caused here once already for
 the recent-files menu. The shape is identical, so the fix is the same one,
 applied before the bug had a chance to recur.
 
+**Configuring one.** A plugin declares what it takes as `SETTINGS`, a tuple
+of `SettingField(key, label, default, type="str")` — checked against
+`SETTING_TYPES` at discovery time rather than trusted, because a plugin's
+own file is exactly the kind of thing that cannot be trusted to have
+declared itself correctly, and a malformed `SETTINGS` becomes a
+`FailedPlugin` the same as a missing `PLUGIN_NAME` would. `"str"` is the
+whole of `SETTING_TYPES` for now — the smallest thing that works for the
+one plugin that ships, one field, one kind — and a second type is meant to
+be additive: a new member there, a new widget in `plugin_config_dialog.py`,
+nothing about a plugin that only ever declared `"str"` changing underneath
+it.
+
+Where a value lives is a question `plugins.py` never answers, on purpose:
+it is Qt-free, and `QSettings` is not. `gui/plugin_settings.py` owns it
+instead — a `plugins/<folder name>/` prefix beside `preferences/` and
+`window/`, keyed by the plugin's own folder name rather than `PLUGIN_NAME`,
+since a folder is what discovery already uses as identity and a display
+name can be edited without moving anything. Unlike `Preferences`, a
+plugin's fields are not a fixed dataclass `load_preferences` can just walk,
+so this reads and writes one field at a time: `resolved_settings` merges
+whatever is stored over each field's own declared default, the same
+"empty means unset" rule `preferences.py` already reads by. `is_active`
+follows the opposite default from a checkbox's usual "unset means off":
+nothing stored means active, because the one plugin that ships already
+being installed is the whole point of shipping it that way, not something
+to come here and turn on first.
+
+**Configure Plugins rebuilds the menu without re-importing anything.**
+Toggling a plugin's active checkbox has to change what the Plugins menu
+offers to run, immediately — but re-running `discover_plugins` to get
+there would mean importing every plugin's top-level code again over a
+single click, exactly the surprise the "not automatic" rule in Discovery,
+above, exists to rule out. So `MainWindow._rebuild_plugin_actions` is split
+from `_refresh_plugin_menu`: the first only re-reads `is_active` over the
+plugins already discovered and sitting in `self._plugins`, the second
+actually rescans. `PluginConfigDialog.changed` fires on the checkbox alone
+and is wired to the cheap one; editing a settings field does not fire it
+at all; nothing needs to change about the menu when a value most `run`
+will read fresh the next time it is asked for. The dialog itself writes
+straight through to `QSettings` as each field is edited, the header
+dialog's own bargain: nothing to apply, nothing to cancel, and a plugin
+folder taken off the list — a `deleteLater`'d widget is still this
+dialog's child until the event loop actually gets to it — is detached with
+`setParent(None)` immediately rather than left for a stale lookup to find.
+
 **The example ships as data, not as an importable module, and installs
-itself.** `gui/resources/plugins/add_a_note/` is never imported by
-comictrans itself; the first time the plugin directory is scanned with
-experimental features on, `_ensure_example_plugin_installed` copies the
-whole folder into it with `shutil.copytree`, unless a folder of that name
-is already there — so editing the installed copy, or deleting it outright,
-sticks, and turning the preference off and back on does not undo either.
-There is deliberately no separate "install" action: the point of shipping
-one example is that it is there to try the moment the feature is, not
-another step to find and take first. `collect_data_files` excludes `.py`
+itself — every time, not only once.** `gui/resources/plugins/add_a_note/`
+is never imported by comictrans itself; every time the plugin directory is
+scanned with experimental features on, `_ensure_example_plugin_installed`
+copies the whole folder over it with `shutil.copytree(...,
+dirs_exist_ok=True)`. Deleting it outright still sticks — nothing recreates
+a folder that is not there except this same call, which only ever writes
+to the one name it owns — but an *older* installed copy does not: it is
+brought up to date, which is exactly what let a machine that turned this
+on before `SETTINGS` was added to the example end up with a plugin that
+had nothing to configure, `note_text` and all, until the next scan.
+Overwriting the file is safe because there is nothing in it left for a
+person to edit that matters: the one thing worth changing, the note's
+text, moved to `QSettings` the moment Configure Plugins gave it somewhere
+proper to live, and this never touches that. There is deliberately no
+separate "install" action: the point of shipping one example is that it is
+there to try the moment the feature is, not another step to find and take
+first. `collect_data_files` excludes `.py`
 files by default — right for every other resource, since none of them is
 source, and wrong for this one directory, whose files exist to be copied
 out and run rather than read here. The spec collects it separately with

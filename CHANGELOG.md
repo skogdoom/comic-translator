@@ -191,8 +191,14 @@ for themselves. See **Build the application** in `README.md`.
   one undo step, never a region added, removed or moved. One example is
   already there the first time you turn this on: it adds a note to every
   region. Off by default, and always third-party code once turned on — see
-  the disclaimer in `README.md`. Configuring a plugin beyond its own source
-  is not built yet.
+  the disclaimer in `README.md`.
+- **Plugins can be configured, and turned off one at a time.** Plugins ▸
+  Configure Plugins… lists what is installed — a plugin that failed to load
+  too, greyed, with its own error rather than just being absent — and lets
+  you edit whatever it declared as settings, or untick it to leave it out of
+  the Plugins menu without removing it. A plugin that declares nothing to
+  configure just says so. Turning one off costs no re-import of anything;
+  neither does changing a value, which the next run simply reads fresh.
 
 ### Known limitations
 
