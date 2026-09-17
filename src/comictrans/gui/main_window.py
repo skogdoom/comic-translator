@@ -13,6 +13,7 @@ at the others' state.
 from __future__ import annotations
 
 import logging
+import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
@@ -145,13 +146,14 @@ RECENT_MENU_TITLE = QCoreApplication.translate("MainWindow", "Open &Recent")
 CLEAR_RECENT_TEXT = QCoreApplication.translate("MainWindow", "Clear Menu")
 """Named so the menu and its test cannot drift apart, as with the toolbar."""
 
-EXAMPLE_PLUGIN_SOURCE = Path(__file__).parent / "resources" / "plugins" / "add_a_note.py"
-"""What Install Example Plugin copies into the plugin directory.
+EXAMPLE_PLUGIN_SOURCE_DIR = Path(__file__).parent / "resources" / "plugins" / "add_a_note"
+"""The example plugin's own folder, shipped inside the application.
 
-Ships inside the application rather than being written there on its own —
-nothing here creates a file in ``plugin_directory()`` unless this, or Open
-Plugin Folder, is asked for by name, the same as every other place this
-window only writes when told to.
+Copied into ``plugin_directory()`` — never imported from here directly — the
+first time plugins are discovered with experimental features on, so it is
+already there the first time anyone looks rather than something to go and
+install. Never overwritten once present, so editing the installed copy to
+try a change sticks.
 """
 
 
@@ -609,10 +611,6 @@ class MainWindow(QMainWindow):
         # for by name, not just tucked away.
         self._plugins_menu = self.menuBar().addMenu(self.tr("Pl&ugins"))
         self._plugins_menu.menuAction().setVisible(self._preferences.experimental_on)
-
-        self._install_example_plugin_action = QAction(self.tr("&Install Example Plugin"), self)
-        self._install_example_plugin_action.triggered.connect(self._on_install_example_plugin)
-        self._plugins_menu.addAction(self._install_example_plugin_action)
 
         self._open_plugin_folder_action = QAction(self.tr("&Open Plugin Folder"), self)
         self._open_plugin_folder_action.triggered.connect(self._on_open_plugin_folder)
@@ -2063,6 +2061,7 @@ class MainWindow(QMainWindow):
         importing a plugin runs its module-level code, so opening the menu
         to look at it would otherwise be a thing with side effects.
         """
+        self._ensure_example_plugin_installed()
         for action in self._plugin_run_actions:
             self._plugins_menu.removeAction(action)
         self._plugin_run_actions.clear()
@@ -2099,24 +2098,22 @@ class MainWindow(QMainWindow):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory))):
             self.statusBar().showMessage(self.tr("plugins are in {0}").format(directory), 10000)
 
-    def _on_install_example_plugin(self) -> None:
-        """Copy the bundled example into the plugin directory, overwriting any copy there.
+    def _ensure_example_plugin_installed(self) -> None:
+        """Copy the bundled example into the plugin directory, unless it is there already.
 
-        Explicit and repeatable rather than automatic: turning experimental
-        features on must not itself write a file nobody asked for, and
-        asking again is how you get back the original after editing
-        ``NOTE_TEXT`` to see what changing it does.
+        Only when it is missing, so this never overwrites an installed copy
+        somebody has edited. Best-effort and silent either way: this is a
+        courtesy, not something asked for by name, so a failure here is
+        logged rather than put in front of whoever just turned a preference
+        on or asked to rescan.
         """
-        directory = plugin_directory()
-        target = directory / EXAMPLE_PLUGIN_SOURCE.name
-        try:
-            directory.mkdir(parents=True, exist_ok=True)
-            target.write_text(EXAMPLE_PLUGIN_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
-        except OSError as exc:
-            self._report_failure(self.tr("installing the example plugin"), exc)
+        target = plugin_directory() / EXAMPLE_PLUGIN_SOURCE_DIR.name
+        if target.exists():
             return
-        self._refresh_plugin_menu()
-        self.statusBar().showMessage(self.tr("installed {0}").format(target), 5000)
+        try:
+            shutil.copytree(EXAMPLE_PLUGIN_SOURCE_DIR, target)
+        except OSError as exc:
+            log.warning("could not install the example plugin: %s", exc)
 
     def _on_plugin_action_triggered(self) -> None:
         """Run whichever plugin's menu item was clicked, read off the action itself.

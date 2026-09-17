@@ -13,11 +13,12 @@ a warning in the log and an empty icon, or a Help window saying the guide
 could not be read.
 
 It excludes ``.py`` files by default, which is right for everything above —
-none of it is source — and wrong for ``gui/resources/plugins/``, whose one
-file *is* Python, meant to be copied out and run as a plugin rather than
-imported here. A second, narrower call with ``include_py_files=True`` carries
-that one directory; without it, Plugins > Install Example Plugin would ask
-for a file that shipped everywhere except inside the bundle.
+none of it is source — and wrong for ``gui/resources/plugins/``, whose
+files *are* Python, meant to be copied out and run as a plugin rather than
+imported here. A second, narrower call with ``include_py_files=True``
+carries that one directory; without it, the example plugin installed the
+first time experimental features are turned on would be a folder that
+shipped everywhere except inside the bundle.
 
 ``copy_metadata`` carries the installed distribution's own metadata. The About
 dialog reads its version, author and licence from it at run time rather than

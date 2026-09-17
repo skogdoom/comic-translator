@@ -30,8 +30,10 @@ Spec, not preference. Breaking one of these is never a refactor:
   refuse to write inside the source tree), a plan file, by `extract` or by
   `review`'s Save / Save As — a plan file is not image data, so it living
   beside the images it describes, the usual case, is expected and fine — and
-  the plugin directory (`plugins.plugin_directory()`), only when Install
-  Example Plugin or Open Plugin Folder is asked for by name.
+  the plugin directory (`plugins.plugin_directory()`), which is written to
+  only when experimental features are turned on (the bundled example is
+  installed there, unless already present) or Open Plugin Folder is asked
+  for by name.
 - `apply` runs no detection and no OCR. Every polygon, colour and font
   decision comes from the plan file, which is what makes the pass
   deterministic and re-runnable: edit a translation, run it again, and only

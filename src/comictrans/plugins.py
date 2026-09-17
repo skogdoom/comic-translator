@@ -8,8 +8,11 @@ plan out**. A plugin never sees an image and never touches the filesystem
 through anything here, so "source images are never modified" survives a
 plugin without this module having to enforce it.
 
-A plugin is one ``.py`` file, discovered by dropping it into
-:func:`plugin_directory`. It declares two names at module level::
+A plugin is a folder, discovered by dropping it into
+:func:`plugin_directory`. ``__init__.py`` inside it is the entry point —
+which makes the folder an ordinary Python package, so a plugin that needs
+more than one file can import its own siblings the way any package does —
+and declares two names at module level::
 
     PLUGIN_NAME = "..."
     def run(plan: Plan) -> Plan: ...
@@ -22,10 +25,11 @@ what keeps a plugin's result one checkable, whole-plan undo step rather
 than a second place the plan's *shape* can change: see
 :func:`run_plugin`.
 
-Loading a plugin runs whatever top-level code its file has, same as any
-``import`` would; nothing here sandboxes that, because nothing in Python
-does. Only the disclaimer stands between a plugin and the interpreter it
-runs in, which is why the menu this hides behind spells that out.
+Loading a plugin runs whatever top-level code its ``__init__.py`` has, same
+as any ``import`` would; nothing here sandboxes that, because nothing in
+Python does. Only the disclaimer stands between a plugin and the
+interpreter it runs in, which is why the menu this hides behind spells
+that out.
 """
 
 from __future__ import annotations
@@ -77,53 +81,72 @@ def plugin_directory() -> Path:
 
 @dataclass(frozen=True, slots=True)
 class LoadedPlugin:
-    """One plugin file that imported cleanly and declared what it needed to."""
+    """One plugin folder that imported cleanly and declared what it needed to."""
 
     name: str
     path: Path
+    """The plugin's own folder — not the ``__init__.py`` inside it."""
     run: Callable[[Plan], Plan]
 
 
 def discover_plugins(directory: Path | None = None) -> list[LoadedPlugin]:
-    """Import every plugin in ``directory``, in filename order.
+    """Import every plugin in ``directory``, in folder-name order.
 
-    A file that fails to import, or does not declare a ``PLUGIN_NAME`` string
-    and a callable ``run``, is left out and logged rather than raised — one
-    broken file next to two working ones should not hide the two that work.
-    That is a *load* failure; see :func:`run_plugin` for what happens when a
-    plugin runs and fails instead, which is a different thing reported a
-    different way.
+    A plugin is a folder, not a loose file — ``_load_one`` explains why, and
+    is where a folder missing ``__init__.py`` (or a loose file sitting where
+    a plugin folder would be) is caught and skipped; nothing here needs to
+    tell a folder from anything else in the directory first. One that fails
+    to import, or does not declare a ``PLUGIN_NAME`` string and a callable
+    ``run``, is left out and logged rather than raised: one broken plugin
+    next to two working ones should not hide the two that work. That is a
+    *load* failure; see :func:`run_plugin` for what happens when a plugin
+    runs and fails instead, which is a different thing reported a different
+    way.
     """
     directory = directory or plugin_directory()
     if not directory.is_dir():
         return []
-    return [
-        plugin for path in sorted(directory.glob("*.py")) if (plugin := _load_one(path)) is not None
-    ]
+    entries = sorted(directory.iterdir())
+    return [plugin for entry in entries if (plugin := _load_one(entry)) is not None]
 
 
-def _load_one(path: Path) -> LoadedPlugin | None:
-    # A name unique to this call, not to the file: re-discovering must not
-    # collide with a module the same path was loaded as last time, and must
-    # not reuse another plugin's name either.
+def _load_one(folder: Path) -> LoadedPlugin | None:
+    """Import one plugin folder as a package, ``__init__.py`` its entry point.
+
+    A package rather than a bare module because a plugin may be more than
+    one file: naming the entry point ``__init__.py`` is what lets it say
+    ``from . import helper`` and find a sibling in the same folder, exactly
+    as it would in any other Python package — ``importlib`` infers
+    ``submodule_search_locations`` from that name on its own.
+    """
+    entry = folder / "__init__.py"
+    # A name unique to this call, not to the folder: re-discovering must not
+    # collide with a package the same folder was loaded as last time, and a
+    # plugin's own sibling modules must not collide with another plugin's.
     module_name = f"comictrans._plugin_{uuid.uuid4().hex}"
-    spec = importlib.util.spec_from_file_location(module_name, path)
+    spec = importlib.util.spec_from_file_location(module_name, entry)
     if spec is None or spec.loader is None:
-        log.warning("%s: could not be read as a Python module", path)
+        log.warning("%s: could not be read as a Python package", folder)
         return None
     module = importlib.util.module_from_spec(spec)
+    # Registered before exec: a relative import in __init__.py needs its own
+    # package findable in sys.modules while that import runs, the same as
+    # any Python package being imported for the first time.
+    sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
-    except Exception as exc:  # a plugin's own top level: entirely unknown code
-        log.warning("%s: failed to load: %s", path, exc)
+    except Exception as exc:  # folder isn't a plugin, or its own code is broken
+        log.warning("%s: failed to load: %s", folder, exc)
+        del sys.modules[module_name]
         return None
 
     name = getattr(module, "PLUGIN_NAME", None)
     run = getattr(module, "run", None)
     if not isinstance(name, str) or not name or not callable(run):
-        log.warning("%s: missing PLUGIN_NAME or run()", path)
+        log.warning("%s: missing PLUGIN_NAME or run()", folder)
+        del sys.modules[module_name]
         return None
-    return LoadedPlugin(name=name, path=path, run=run)
+    return LoadedPlugin(name=name, path=folder, run=run)
 
 
 def run_plugin(plugin: LoadedPlugin, plan: Plan) -> Plan:

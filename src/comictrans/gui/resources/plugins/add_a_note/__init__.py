@@ -1,17 +1,18 @@
 """Example plugin: writes the same note onto every region in the open plan.
 
-Installed by Plugins > Install Example Plugin, or copy this file into the
-plugin directory by hand (Plugins > Open Plugin Folder shows where that is).
-Then Plugins > Rescan Plugins to see it in the menu.
+Ships already installed — Plugins > Open Plugin Folder shows where this
+lives once it is turned on, and Plugins > Rescan Plugins picks up any change
+made to this copy or to a plugin dropped in beside it.
 
 It is a good example of what a plugin is for precisely because it is not
 case switching — the plan header already has ``case`` — and because
 ``notes`` already exists on every region, so nothing about the plan file's
-shape has to change for this to work.
+shape has to change for this to work. It is also the smallest possible
+plugin folder: one file, no siblings, though a plugin is free to have both.
 
 There is no settings window for a plugin yet — that is milestone 22 — so for
-now the text below is the whole of "configurable": edit ``NOTE_TEXT`` and
-reinstall, or edit your own copy in the plugin directory directly.
+now the constant below is the whole of "configurable": edit ``NOTE_TEXT`` in
+your own installed copy directly.
 """
 
 from __future__ import annotations

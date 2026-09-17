@@ -2384,9 +2384,13 @@ promise `gui.document` already keeps, extended one module further. A plugin
 never sees an image and never calls back into the window; it is handed a
 `Plan` and hands one back.
 
-**Plan in, plan out, and one shape only.** A plugin is a `.py` file
-declaring `PLUGIN_NAME` and `run(plan) -> Plan`. `plugins.run_plugin` wraps
-the call: an exception the plugin raises, a return value that is not a
+**Plan in, plan out, and one shape only.** A plugin is a folder, its own
+entry point named `__init__.py` — which makes it an ordinary Python
+package, so a plugin that needs more than one file can say `from . import
+helper` and find a sibling in the same folder, `importlib` inferring
+`submodule_search_locations` from that filename with nothing extra needed
+here. It declares `PLUGIN_NAME` and `run(plan) -> Plan`. `plugins.run_plugin`
+wraps the call: an exception the plugin raises, a return value that is not a
 `Plan`, or a `Plan` whose header, pages, or region ids and page assignments
 differ from what it was handed all become `PluginError` before anything
 reaches the document — plugin authors get one failure mode, not three, and
@@ -2397,15 +2401,16 @@ already strikes — see `PlanDocument.apply_plugin`, which is `_record(plan,
 run=None)` behind the same no-op check `reorder_images` makes, so a plugin
 whose `run` changes nothing costs no undo step either.
 
-**Discovery is deliberately not automatic.** Importing a `.py` file runs it,
-so a plugin's directory is scanned once — when experimental features are
+**Discovery is deliberately not automatic.** Importing a plugin runs it, so
+the plugin directory is scanned once — when experimental features are
 switched on, or when Rescan Plugins is asked for by name — never on every
 menu open. The directory itself follows `logfile.log_directory` and
 `fonts.SEARCH_DIRS`'s own convention: a platform default (`~/Library/
 Application Support/comictrans/plugins` on macOS, the XDG data directory
 elsewhere) with a `COMICTRANS_PLUGIN_PATH` override for the suite, and
-`plugin_directory()` itself never creates it — only Install Example Plugin
-and Open Plugin Folder do, and only because they were asked to.
+`plugin_directory()` itself never creates it — only turning experimental
+features on (to install the bundled example) and Open Plugin Folder do,
+and only because one of those was asked for.
 
 **The action carries a path, not a closure.** Each plugin gets one `QAction`
 in the menu, and the plugin it runs is read off `QAction.data()` in a shared
@@ -2415,15 +2420,21 @@ teardown segfault a `partial` closed over `self` caused here once already for
 the recent-files menu. The shape is identical, so the fix is the same one,
 applied before the bug had a chance to recur.
 
-**The example ships as data, not as an importable module.** `gui/resources/
-plugins/add_a_note.py` is never imported by comictrans itself; Install
-Example Plugin copies its text into the plugin directory, where discovery
-finds it the same way it would find any other file dropped there by hand.
-`collect_data_files` excludes `.py` files by default — right for every other
-resource, since none of them is source, and wrong for this one directory,
-whose file exists to be copied out and run rather than read here. The spec
-collects it separately with `include_py_files=True`; see the note on
-`collect_data_files` in **The application bundle**, below.
+**The example ships as data, not as an importable module, and installs
+itself.** `gui/resources/plugins/add_a_note/` is never imported by
+comictrans itself; the first time the plugin directory is scanned with
+experimental features on, `_ensure_example_plugin_installed` copies the
+whole folder into it with `shutil.copytree`, unless a folder of that name
+is already there — so editing the installed copy, or deleting it outright,
+sticks, and turning the preference off and back on does not undo either.
+There is deliberately no separate "install" action: the point of shipping
+one example is that it is there to try the moment the feature is, not
+another step to find and take first. `collect_data_files` excludes `.py`
+files by default — right for every other resource, since none of them is
+source, and wrong for this one directory, whose files exist to be copied
+out and run rather than read here. The spec collects it separately with
+`include_py_files=True`; see the note on `collect_data_files` in **The
+application bundle**, below.
 
 ### The application bundle
 

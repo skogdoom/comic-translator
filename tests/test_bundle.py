@@ -455,14 +455,15 @@ def test_the_bundle_carries_the_files_nothing_imports(monkeypatch: pytest.Monkey
     )
 
 
-def test_the_example_plugin_is_carried_with_its_py_file_included(
+def test_the_example_plugin_is_carried_with_its_py_files_included(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The one directory under ``resources/`` whose file *is* Python.
+    """The one directory under ``resources/`` whose files *are* Python.
 
     ``collect_data_files`` excludes ``.py`` by default, which is right for
     everything else under ``resources/`` — none of it is source — and wrong
-    here, since Install Example Plugin needs an actual file to copy out.
+    here, since the example plugin needs its actual files to copy out and
+    install the first time experimental features are turned on.
     """
     carried = [source for source, _destination in _run_spec(monkeypatch)["Analysis"]["datas"]]
 
