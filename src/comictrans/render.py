@@ -20,7 +20,7 @@ from .erase import erase
 from .fonts import FontFace
 from .imaging import PageImage
 from .markup import MarkupError, tokenize
-from .model import Color, Region, TextCase
+from .model import Color, Region, TextCase, boxes_overlap
 from .progress import CancelCheck
 from .typeset import FitFailure, Layout, layout_text
 
@@ -216,11 +216,7 @@ def _warn_about_overlaps(planned: list[PlannedRegion]) -> None:
     """
     for index, first in enumerate(planned):
         for second in planned[index + 1 :]:
-            shared = first.region.bounds.intersection(second.region.bounds)
-            if shared is None:
-                continue
-            smaller = min(first.region.bounds.area, second.region.bounds.area)
-            if smaller > 0 and shared.area / smaller > 0.15:
+            if boxes_overlap(first.region.bounds, second.region.bounds):
                 log.warning(
                     "regions %s and %s overlap; their text will be drawn over each other",
                     first.region.id,

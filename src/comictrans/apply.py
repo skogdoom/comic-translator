@@ -20,7 +20,7 @@ from .config import ApplyConfig
 from .errors import ComictransError, FontError, InputError
 from .fonts import FontFace, resolve
 from .imaging import check_writable, load_page, output_path, save_page
-from .model import Plan, Region
+from .model import Plan, Region, source_path
 
 # Aliased: imaging.check_writable asks whether a source page can be written
 # back out at all, which is a different question about a different file.
@@ -97,11 +97,6 @@ class ApplyReport:
             and not self.page_failures
             and not any(o.unfinished for _, o in self.outcomes)
         )
-
-
-def source_for(plan_path: Path, region_image: str) -> Path:
-    """Absolute path of a plan file's source image."""
-    return (plan_path.parent / region_image).resolve()
 
 
 def check_output_dir(output: Path, sources: list[Path]) -> None:
@@ -195,7 +190,7 @@ def apply_plan(
     # chapter is minutes of work, and "there is nothing here to write a CBR
     # with" is an answer that costs nothing to give first.
     check_can_pack(output, rar_tool)
-    sources = sorted({source_for(plan_path, image).parent for image in plan.image_names()})
+    sources = sorted({source_path(plan_path, image).parent for image in plan.image_names()})
     check_output_dir(output.parent, sources)
     if output.exists() and not force:
         raise InputError(f"{output} already exists; pass --force to overwrite it")
@@ -257,7 +252,7 @@ def _render_pages(
     complete run would have written for them, and re-running finishes the job.
     """
     images = plan.image_names()
-    sources = [source_for(plan_path, image) for image in images]
+    sources = [source_path(plan_path, image) for image in images]
     check_output_dir(output, sorted({path.parent for path in sources}))
 
     try:

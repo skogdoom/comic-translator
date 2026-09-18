@@ -33,15 +33,17 @@ _ORGANIZATION = "comictrans"
 _APPLICATION = "review"
 """Where ``QSettings`` keeps what this tool remembers between sessions.
 
-Three things, and no more: the window layout, the preferences a new run
-starts from, and the list of plans opened lately. What a review *means* is
-not among them — that lives in the plan file, which is the thing you can
+Four things, and no more: the window layout, the preferences a new run
+starts from, the list of plans opened lately, and what each installed plugin
+is set to (``plugin_settings``, under ``plugins/``). What a review *means*
+is not among them — that lives in the plan file, which is the thing you can
 read, diff and hand to someone else.
 
-The three are kept under separate keys rather than in one blob, because
-they are wanted and unwanted separately: Reset Layout puts the docks back
-without touching the preferences, and Clear Menu empties the history
-without touching either.
+They are kept under separate keys rather than in one blob, because they are
+wanted and unwanted separately: Reset Layout puts the docks back without
+touching the preferences, Clear Menu empties the history without touching
+either, and turning experimental features off leaves a plugin's settings
+where they were for when it is turned back on.
 """
 
 _IMPORT_ERROR: str | None

@@ -162,8 +162,10 @@ def discover_plugins(directory: Path | None = None) -> list[LoadedPlugin | Faile
     A plugin is a folder, not a loose file. One with no ``__init__.py`` —
     ``__pycache__``, a stray file, a folder that is not a plugin at all —
     is left out entirely: nothing was ever dropped in to report on. One
-    whose ``__init__.py`` exists but fails to import, or does not declare a
-    usable ``PLUGIN_NAME``, ``run`` and ``SETTINGS``, comes back as a
+    whose ``__init__.py`` exists but fails to import, does not declare a
+    usable ``PLUGIN_NAME``, ``run``, ``PLUGIN_VERSION`` or ``SETTINGS``, or
+    asks for a comictrans newer than this one through
+    ``REQUIRES_APP_VERSION``, comes back as a
     :class:`FailedPlugin` instead of being dropped — worth a line in
     Configure Plugins, since somebody did put something here. Either way
     one broken plugin never hides a working one next to it. This is a
@@ -204,34 +206,41 @@ def _load_one(folder: Path) -> LoadedPlugin | FailedPlugin | None:
     # package findable in sys.modules while that import runs, the same as
     # any Python package being imported for the first time.
     sys.modules[module_name] = module
+
+    def failed(error: str) -> FailedPlugin:
+        """Give up on this folder, taking the half-loaded module back out.
+
+        Every way of not becoming a plugin from here on has to unregister it:
+        the module ran its top level to get this far, and leaving it in
+        ``sys.modules`` would keep it alive under a name nothing can reach —
+        once per rescan, since the name is unique to this call.
+        """
+        del sys.modules[module_name]
+        return FailedPlugin(folder, error)
+
     try:
         spec.loader.exec_module(module)
     except Exception as exc:  # entirely unknown code — the plugin's own top level
         log.warning("%s: failed to load: %s", folder, exc)
-        del sys.modules[module_name]
-        return FailedPlugin(folder, str(exc))
+        return failed(str(exc))
 
     name = getattr(module, "PLUGIN_NAME", None)
     run = getattr(module, "run", None)
     if not isinstance(name, str) or not name or not callable(run):
         log.warning("%s: missing PLUGIN_NAME or run()", folder)
-        del sys.modules[module_name]
-        return FailedPlugin(folder, "missing PLUGIN_NAME or run()")
+        return failed("missing PLUGIN_NAME or run()")
 
     version, error = _read_version(module)
     if error is not None:
-        del sys.modules[module_name]
-        return FailedPlugin(folder, error)
+        return failed(error)
 
     error = _check_app_version(module)
     if error is not None:
-        del sys.modules[module_name]
-        return FailedPlugin(folder, error)
+        return failed(error)
 
     settings, error = _read_settings(module)
     if error is not None:
-        del sys.modules[module_name]
-        return FailedPlugin(folder, error)
+        return failed(error)
 
     return LoadedPlugin(name=name, path=folder, run=run, settings=settings, version=version)
 

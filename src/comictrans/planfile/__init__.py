@@ -1,7 +1,7 @@
 """Plan file read, write, and validate.
 
-Imports no image library and no OCR backend on purpose: the future review GUI
-and any downstream tooling can depend on this package alone.
+Imports no image library and no OCR backend on purpose: the review GUI's
+document layer and any downstream tooling can depend on this package alone.
 """
 
 from __future__ import annotations

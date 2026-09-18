@@ -505,10 +505,11 @@ CBZ, CBR and PDF are **unpacked into a directory beside the file** before
 anything reads them, and nothing downstream knows they existed.
 
 That is the whole design, and the alternative is what makes it one. A plan
-file names its pages relative to itself; `apply.source_for`, the review
-window's `PlanDocument.source_path` and `validate` all resolve them that way,
-and every one of them hashes the file to prove it is still the page the
-polygons were measured on. Reading pages out of a container on demand would
+file names its pages relative to itself; `apply`, the review window and
+`validate` all resolve them the same way — through `model.source_path`,
+which is where that one join lives so that the three cannot drift — and every
+one of them hashes the file to prove it is still the page the polygons were
+measured on. Reading pages out of a container on demand would
 have to be threaded through all three, and the hash check has no meaning
 against a stream that is regenerated each time it is asked for. Unpacking
 costs the disk twice and changes nothing: what comes out is a folder of
@@ -1472,7 +1473,7 @@ them; the twenty-first differs by a near-white tint on a whisper balloon
 (#ebf8f4 against #ffffff).
 
 **A merge is refused unless the outlines share area.** The bounding-box
-ratio `overlapping_region_ids` warns with is deliberately loose — it exists to
+ratio `model.boxes_overlap` warns with is deliberately loose — it exists to
 say "these two will draw over each other", where a false positive costs a
 glance. Merging cannot use it: the merged polygon is the convex hull of both
 outlines, and a hull across two balloons on opposite sides of a panel covers
@@ -1551,11 +1552,12 @@ been done. Moving a shape without reshaping it counts the same: a polygon
 that has been put somewhere by hand is a polygon someone decided on.
 
 **What counts as "something to check" is computed once, in
-`gui.document.RegionFlags`, and nowhere else.** Overlap uses the exact
-threshold `render._warn_about_overlaps` warns at, over actionable regions
-only, so a region the GUI flags as overlapping is exactly one `apply` would
-also warn about — never a surprise the GUI invented on its own reading of
-the plan.
+`gui.document.RegionFlags`, and nowhere else.** Overlap calls
+`model.boxes_overlap`, which is the same call `render._warn_about_overlaps`
+makes at apply time — one threshold and one piece of arithmetic, rather than
+two that agree until one is edited — over actionable regions only. A region
+the GUI flags as overlapping is therefore exactly one `apply` would also warn
+about, never a surprise the GUI invented on its own reading of the plan.
 
 **Both passes run off the UI thread, and both loops stay where they are.** A
 chapter is a second or so a page — apply in Pillow, numpy and OpenCV, extract

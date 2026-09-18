@@ -46,10 +46,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..apply import check_output_dir, source_for
+from ..apply import check_output_dir
 from ..config import EraseConfig
 from ..errors import ComictransError
-from ..model import Plan
+from ..model import Plan, source_path
 from ..pack import RAR_MISSING, archive_kind
 from ..pack import check_writable as check_can_pack
 from ..sources import RAR, ZIP
@@ -160,7 +160,7 @@ def suggested_output(plan_path: Path, preferences: Preferences = DEFAULTS) -> Pa
 
 def source_dirs(plan: Plan, plan_path: Path) -> list[Path]:
     """Every directory the plan reads pages from."""
-    return sorted({source_for(plan_path, name).parent for name in plan.image_names()})
+    return sorted({source_path(plan_path, name).parent for name in plan.image_names()})
 
 
 class RenderDialog(QDialog):
