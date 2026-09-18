@@ -53,7 +53,6 @@ one section can refer to another without ambiguity.
 | 6 | PDF output | L |
 | 23 | An empty plan, and pages added by hand | M |
 | 24 | The guide, checked against the window | S |
-| 10 | Code quality review | M |
 | 7 | Security audit | M |
 
 **1.0.0 is out.** Everything a first release needed has shipped, and the
@@ -413,23 +412,6 @@ can be current in its translations and stale in what it is translating.
 It is last of the window milestones on purpose — see *Why this order* — and it
 is worth having as a milestone at all because the alternative is that it is
 nobody's job.
-
-## 10 Code quality review
-
-A reading of the whole codebase for the things tests do not catch:
-duplication that has crept in, modules that have grown past what their
-docstring claims, names that no longer match what they do, and comments
-that describe an earlier version of the code.
-
-**After the features, before the audit.** Reviewing while milestones are
-still landing means reviewing the same code twice; leaving it until after 7
-means the audit reads code nobody has tidied. Between them is the one place
-it pays for itself.
-
-Worth deciding in advance what it is allowed to change. A quality pass that
-also fixes behaviour is two changes wearing one commit message, and this
-repository has `known-bugs.md` precisely so that "while I was in there" is
-not how a decision gets reversed.
 
 ## 7 Security audit
 

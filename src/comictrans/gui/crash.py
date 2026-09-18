@@ -3,8 +3,8 @@
 An exception in a Qt slot is printed and the event loop carries on; that is
 noisy but survivable. A segfault, or the abort ``qFatal`` raises when Qt gives
 up, is neither: the process dies, the window vanishes, and a review session
-launched from Finder has no stderr for any of it to have gone to. What is left
-behind today is nothing at all.
+launched from Finder has no stderr for any of it to have gone to. Without
+this, nothing at all is left behind.
 
 :mod:`faulthandler` is the only thing that helps. It installs handlers for the
 fatal signals and writes a Python traceback — the exact line, on every thread
@@ -12,10 +12,10 @@ fatal signals and writes a Python traceback — the exact line, on every thread
 does. Measured: ``SIGSEGV`` (exit 139) and ``SIGABRT`` (exit 134) both caught,
 both written to the file rather than a terminal.
 
-This is deliberately not the application log. That comes with milestone 4.17
-and is a different thing with different rules: this file is written from a
-signal handler and must not contend with the logging module's locks, and it
-holds only the last thing the process did before dying.
+This is deliberately not the application log, which is :mod:`.logfile` and a
+different thing with different rules: this file is written from a signal
+handler and must not contend with the logging module's locks, and it holds
+only the last thing the process did before dying.
 
 No Qt, and it shares :func:`comictrans.gui.logfile.log_directory` with the
 application log so the two files sit side by side: whoever finds one finds

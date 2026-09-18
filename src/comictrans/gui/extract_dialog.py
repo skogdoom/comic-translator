@@ -62,6 +62,7 @@ from ..sources import (
     default_unpack_dir,
     is_container,
 )
+from .note import quieten
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
@@ -119,21 +120,6 @@ class ExtractDialog(QDialog):
         someone typed is not a default to overwrite.
         """
 
-        # One question — which pages? — so one button. Which kind of thing it
-        # will ask for is a pair of radio buttons beside it, rather than a
-        # menu on the button: the mode is then visible without clicking
-        # anything, and browsing stays one click. Qt has no file dialog that
-        # accepts either kind (measured: `FileMode.Directory` refuses a file,
-        # `ExistingFile` refuses a directory), and the one route to a panel
-        # that does forces `DontUseNativeDialog` — a Qt-drawn Open panel on
-        # macOS, and the only non-native one in an application whose every
-        # other file dialog is the system's.
-        #
-        # A folder or a file, and not a third for chapter files: a chapter
-        # file and a page are both one file to open, the panel offers both
-        # at once, and what a file turns out to be is read out of it rather
-        # than asked about here — see `sources.chapter_kind`. Asking twice
-        # would be asking a question the answer is already in.
         self._count = QLabel()
         # One line, and left to ask for the width its text needs. Two things
         # this has been through, both of them the layout being clever:
@@ -147,7 +133,7 @@ class ExtractDialog(QDialog):
         # answer; it is on a row of its own, where the only thing a long
         # translation can cost is the dialog's width.
         self._count.setWordWrap(False)
-        self._quieten(self._count)
+        quieten(self._count)
 
         self._source = QLineEdit()
         # Two buttons rather than one and a pair of radio buttons saying
@@ -161,6 +147,12 @@ class ExtractDialog(QDialog):
         # application whose every other file dialog is the system's), so
         # there are two panels. Two buttons say so, without a mode to get
         # wrong, and browsing stays one click.
+        #
+        # Two, and not a third for chapter files: a chapter file and a page
+        # are both one file to open, the File panel offers both at once, and
+        # what a file turns out to be is read out of it rather than asked
+        # about here — see `sources.chapter_kind`. Asking would be asking a
+        # question the answer is already in.
         self._folder_button = QPushButton(self.tr("Folder…"))
         self._folder_button.setAutoDefault(False)
         self._folder_button.clicked.connect(self._on_choose_folder)
@@ -267,15 +259,6 @@ class ExtractDialog(QDialog):
         self._validate()
 
     # -- appearance ------------------------------------------------------
-
-    @staticmethod
-    def _quieten(label: QLabel) -> None:
-        palette = label.palette()
-        palette.setColor(
-            QPalette.ColorRole.WindowText,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-        )
-        label.setPalette(palette)
 
     # -- choosing paths --------------------------------------------------
 

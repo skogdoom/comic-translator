@@ -12,6 +12,18 @@ for themselves. See **Build the application** in `README.md`.
 
 ## 1.1.0 — unreleased
 
+- **A reading of the whole codebase for what the tests cannot see.** One
+  rule per place it is decided: resolving a page's path against its plan was
+  written out five times, the overlap test the window flags with and the one
+  `apply` warns with were two copies of one number, the four erase modes were
+  named in three dialogs and translated twice over, and the quiet grey under
+  a field was mixed in four. Comments that described an earlier version of
+  the code went — among them one promising the review GUI as a future thing
+  and one saying nothing yet read the experimental-features switch. The guide
+  no longer claims the outline colours are the same two the debug overlays
+  draw; they mean the same things in shades picked for what each sits on.
+  Nothing about what the tool does changed, deliberately: a quality pass that
+  also fixes behaviour is two changes wearing one commit message.
 - **The preview renders on a worker thread.** The window stays yours while a
   page renders: keep reading, keep typing, change page. Switching page stops
   the render between regions rather than waiting it out, and a bar in the

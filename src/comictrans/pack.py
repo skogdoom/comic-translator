@@ -47,16 +47,18 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from .errors import InputError
-from .sources import RAR, ZIP
+from .sources import RAR, RAR_SUFFIXES, ZIP, ZIP_SUFFIXES
 
 log = logging.getLogger(__name__)
 
-CBZ_SUFFIXES = frozenset({".cbz", ".zip"})
-CBR_SUFFIXES = frozenset({".cbr", ".rar"})
-ARCHIVE_SUFFIXES = CBZ_SUFFIXES | CBR_SUFFIXES
+ARCHIVE_SUFFIXES = ZIP_SUFFIXES | RAR_SUFFIXES
 """What ``--output`` has to be called for a chapter to come out as one file.
-The plain extensions are here because a chapter is regularly saved under
-them, the same way they are read."""
+
+The reading side's own two sets, not a second pair spelled the same: which
+extensions mean zip and which mean RAR is one fact, and a chapter saved as
+``.zip`` rather than ``.cbz`` is as ordinary to write as it is to read.
+PDF is not among them — this writes chapters, and a PDF of a scan is
+something to read, not something this has any business assembling."""
 
 RAR_ENV = "COMICTRANS_RAR"
 """Names the RAR compressor when it is not on ``PATH``."""
@@ -81,9 +83,9 @@ def archive_kind(path: Path) -> str | None:
     there and what it is called is only a claim.
     """
     suffix = path.suffix.lower()
-    if suffix in CBZ_SUFFIXES:
+    if suffix in ZIP_SUFFIXES:
         return ZIP
-    if suffix in CBR_SUFFIXES:
+    if suffix in RAR_SUFFIXES:
         return RAR
     return None
 
@@ -231,8 +233,6 @@ def pack(
 
 __all__ = [
     "ARCHIVE_SUFFIXES",
-    "CBR_SUFFIXES",
-    "CBZ_SUFFIXES",
     "RAR_ENV",
     "RAR_MISSING",
     "archive_kind",

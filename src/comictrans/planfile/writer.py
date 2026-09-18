@@ -16,7 +16,13 @@ from ruamel.yaml.scalarstring import DoubleQuotedScalarString, LiteralScalarStri
 
 from ..errors import InputError
 from ..model import Plan, PlanHeader, PlanImage, Region
-from .schema import FILE_HEADER_COMMENT, IMAGE_KEY_ORDER, PLAN_VERSION, REGION_KEY_ORDER
+from .schema import (
+    FILE_HEADER_COMMENT,
+    HEADER_KEY_ORDER,
+    IMAGE_KEY_ORDER,
+    PLAN_VERSION,
+    REGION_KEY_ORDER,
+)
 
 
 def _yaml() -> YAML:
@@ -85,21 +91,30 @@ def region_to_node(region: Region) -> CommentedMap:
 
 
 def header_to_node(header: PlanHeader) -> CommentedMap:
+    values: dict[str, object] = {
+        # The number describes the shape of the file, and this writer only
+        # knows how to write one shape, so it says so rather than repeating
+        # whatever the header happens to hold. That is what upgrades a version
+        # 1 plan: read it, save it, and the file on disk is the current form.
+        "version": PLAN_VERSION,
+        "generator": header.generator,
+        "created": header.created,
+        "source_language": header.source_language,
+        "target_language": header.target_language,
+        "ocr_engine": header.ocr_engine,
+        "font": header.font,
+        "case": str(header.case),
+        "font_size_min_ratio": header.font_size_min_ratio,
+        "condense_min": header.condense_min,
+    }
+    # Driven by the schema's own order, the way the regions and the images are
+    # — the point of that module is that the reader and the writer cannot
+    # disagree, and a key order written out again here is a second opinion. A
+    # header field added there and forgotten here now raises rather than
+    # quietly going unwritten.
     node = CommentedMap()
-    # The number describes the shape of the file, and this writer only knows
-    # how to write one shape, so it says so rather than repeating whatever the
-    # header happens to hold. That is what upgrades a version 1 plan: read it,
-    # save it, and the file on disk is the current form.
-    node["version"] = PLAN_VERSION
-    node["generator"] = header.generator
-    node["created"] = header.created
-    node["source_language"] = header.source_language
-    node["target_language"] = header.target_language
-    node["ocr_engine"] = header.ocr_engine
-    node["font"] = header.font
-    node["case"] = str(header.case)
-    node["font_size_min_ratio"] = header.font_size_min_ratio
-    node["condense_min"] = header.condense_min
+    for key in HEADER_KEY_ORDER:
+        node[key] = values[key]
     return node
 
 

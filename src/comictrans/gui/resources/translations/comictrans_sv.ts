@@ -131,6 +131,54 @@
     </message>
 </context>
 <context>
+    <name>EraseChoices</name>
+    <message>
+        <location filename="../../erase_choices.py" line="31"/>
+        <source>the lettering</source>
+        <translation>texten</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="33"/>
+        <source>repaint the original lettering in the fill colour</source>
+        <translation>måla över originaltexten med fyllnadsfärgen</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="38"/>
+        <source>the whole region</source>
+        <translation>hela regionen</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="40"/>
+        <source>flood the whole outline with the fill colour</source>
+        <translation>fyll hela konturen med fyllnadsfärgen</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="43"/>
+        <source>reconstruct</source>
+        <translation>rekonstruera</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="45"/>
+        <source>rebuild the lettering&apos;s pixels from the ones around them</source>
+        <translation>bygg upp textens pixlar från dem runt omkring</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="50"/>
+        <source>nothing</source>
+        <translation>ingenting</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="52"/>
+        <source>paint nothing; letter straight onto the page as it is</source>
+        <translation>måla ingenting; texta direkt på sidan som den är</translation>
+    </message>
+    <message>
+        <location filename="../../erase_choices.py" line="76"/>
+        <source>erase</source>
+        <translation>radera</translation>
+    </message>
+</context>
+<context>
     <name>ExtractDialog</name>
     <message>
         <location filename="../../extract_dialog.py" line="70"/>
@@ -148,12 +196,12 @@
         <translation>Extrahera sidor</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="170"/>
+        <location filename="../../extract_dialog.py" line="161"/>
         <source>One page, or a whole chapter as a .cbz, .cbr or .pdf.</source>
         <translation>En sida, eller ett helt kapitel som .cbz, .cbr eller .pdf.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="164"/>
+        <location filename="../../extract_dialog.py" line="155"/>
         <source>Folder…</source>
         <translation>Mapp…</translation>
     </message>
@@ -163,93 +211,93 @@
         <translation>Inställningar, under ”kapitelfiler”, är där du anger var verktyget finns.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="167"/>
+        <location filename="../../extract_dialog.py" line="158"/>
         <source>File…</source>
         <translation>Fil…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="183"/>
+        <location filename="../../extract_dialog.py" line="174"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="212"/>
+        <location filename="../../extract_dialog.py" line="203"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="215"/>
+        <location filename="../../extract_dialog.py" line="206"/>
         <source>Languages to hand the recogniser, comma-separated. Left empty this is the source language; give a region-qualified tag here if the recogniser needs one, such as pt-BR.</source>
         <translation>Språk att ge textigenkänningen, kommaseparerade. Lämnas fältet tomt används källspråket; ange en regionskvalificerad tagg här om igenkänningen kräver en, till exempel pt-BR.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="226"/>
+        <location filename="../../extract_dialog.py" line="217"/>
         <source>overwrite it, discarding everything in it</source>
         <translation>skriv över den och kasta allt som finns i den</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="237"/>
+        <location filename="../../extract_dialog.py" line="228"/>
         <source>read pages from</source>
         <translation>läs sidor från</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="242"/>
+        <location filename="../../extract_dialog.py" line="233"/>
         <source>write the plan to</source>
         <translation>skriv planen till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="244"/>
+        <location filename="../../extract_dialog.py" line="235"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="245"/>
+        <location filename="../../extract_dialog.py" line="236"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="246"/>
+        <location filename="../../extract_dialog.py" line="237"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="247"/>
+        <location filename="../../extract_dialog.py" line="238"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="378"/>
+        <location filename="../../extract_dialog.py" line="369"/>
         <source>Choose a folder of pages, a chapter file, or one image.</source>
         <translation>Välj en mapp med sidor, en kapitelfil eller en enstaka bild.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="395"/>
-        <location filename="../../extract_dialog.py" line="406"/>
+        <location filename="../../extract_dialog.py" line="386"/>
+        <location filename="../../extract_dialog.py" line="397"/>
         <source>{0} cannot be read: {1}</source>
         <translation>{0} kan inte läsas: {1}</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="410"/>
+        <location filename="../../extract_dialog.py" line="401"/>
         <source>Choose where to write the plan file.</source>
         <translation>Välj var planfilen ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="413"/>
+        <location filename="../../extract_dialog.py" line="404"/>
         <source>{0} is a directory, not a plan file.</source>
         <translation>{0} är en katalog, inte en planfil.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="415"/>
+        <location filename="../../extract_dialog.py" line="406"/>
         <source>{0} already exists.</source>
         <translation>{0} finns redan.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="425"/>
+        <location filename="../../extract_dialog.py" line="416"/>
         <source>counted when unpacked</source>
         <translation>räknas vid uppackning</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="427"/>
+        <location filename="../../extract_dialog.py" line="418"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n sida</numerusform>
@@ -1175,11 +1223,6 @@
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="298"/>
-        <source>erase</source>
-        <translation>radera</translation>
-    </message>
-    <message>
         <location filename="../../preferences_dialog.py" line="299"/>
         <source>format</source>
         <translation>format</translation>
@@ -1213,162 +1256,117 @@
 <context>
     <name>RegionInspector</name>
     <message>
-        <location filename="../../inspector.py" line="56"/>
+        <location filename="../../inspector.py" line="57"/>
         <source>(plan default)</source>
         <translation>(planens standard)</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="58"/>
+        <location filename="../../inspector.py" line="59"/>
         <source>whatever the run is set to erase: --erase, or the render dialog</source>
         <translation>det körningen är inställd på att radera: --erase, eller renderingsdialogen</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="63"/>
-        <source>the lettering</source>
-        <translation>texten</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="65"/>
-        <source>repaint the original lettering in the fill colour</source>
-        <translation>måla över originaltexten med fyllnadsfärgen</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="70"/>
-        <source>the whole region</source>
-        <translation>hela regionen</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="72"/>
-        <source>flood the whole outline with the fill colour</source>
-        <translation>fyll hela konturen med fyllnadsfärgen</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="77"/>
-        <source>reconstruct</source>
-        <translation>rekonstruera</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="79"/>
-        <source>rebuild the lettering&apos;s pixels from the ones around them</source>
-        <translation>bygg upp textens pixlar från dem runt omkring</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="84"/>
-        <source>nothing</source>
-        <translation>ingenting</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="86"/>
-        <source>paint nothing; letter straight onto the page as it is</source>
-        <translation>måla ingenting; texta direkt på sidan som den är</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="133"/>
+        <location filename="../../inspector.py" line="114"/>
         <source>approximate geometry</source>
         <translation>ungefärlig geometri</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="134"/>
+        <location filename="../../inspector.py" line="115"/>
         <source>low confidence</source>
         <translation>låg säkerhet</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="135"/>
+        <location filename="../../inspector.py" line="116"/>
         <source>held back (no translation)</source>
         <translation>hålls tillbaka (ingen översättning)</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="136"/>
+        <location filename="../../inspector.py" line="117"/>
         <source>same as source</source>
         <translation>samma som källan</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="137"/>
+        <location filename="../../inspector.py" line="118"/>
         <source>overlaps another region</source>
         <translation>överlappar en annan region</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="138"/>
+        <location filename="../../inspector.py" line="119"/>
         <source>skipped</source>
         <translation>överhoppad</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="152"/>
+        <location filename="../../inspector.py" line="133"/>
         <source>nothing flagged</source>
         <translation>inget flaggat</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="238"/>
+        <location filename="../../inspector.py" line="219"/>
         <source>what the lettering on the page says</source>
         <translation>vad texten på sidan säger</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="243"/>
+        <location filename="../../inspector.py" line="224"/>
         <source>never rendered; kept when re-extracting</source>
         <translation>renderas aldrig; behålls vid ny extrahering</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="244"/>
+        <location filename="../../inspector.py" line="225"/>
         <source>skip: leave this region untouched</source>
         <translation>hoppa över: lämna regionen orörd</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="254"/>
+        <location filename="../../inspector.py" line="235"/>
         <source>auto</source>
         <translation>auto</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="258"/>
+        <location filename="../../inspector.py" line="239"/>
         <source>region</source>
         <translation>region</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="259"/>
+        <location filename="../../inspector.py" line="240"/>
         <source>flags</source>
         <translation>flaggor</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="260"/>
+        <location filename="../../inspector.py" line="241"/>
         <source>source text</source>
         <translation>källtext</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="261"/>
+        <location filename="../../inspector.py" line="242"/>
         <source>translation</source>
         <translation>översättning</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="262"/>
+        <location filename="../../inspector.py" line="243"/>
         <source>notes</source>
         <translation>anteckningar</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="264"/>
-        <source>erase</source>
-        <translation>radera</translation>
-    </message>
-    <message>
-        <location filename="../../inspector.py" line="265"/>
+        <location filename="../../inspector.py" line="246"/>
         <source>fill colour</source>
         <translation>fyllnadsfärg</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="266"/>
+        <location filename="../../inspector.py" line="247"/>
         <source>text colour</source>
         <translation>textfärg</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="267"/>
+        <location filename="../../inspector.py" line="248"/>
         <source>font override</source>
         <translation>typsnitt (åsidosätt)</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="268"/>
+        <location filename="../../inspector.py" line="249"/>
         <source>font size</source>
         <translation>textstorlek</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="317"/>
+        <location filename="../../inspector.py" line="298"/>
         <source>unused: nothing is painted over in this region</source>
         <translation>används inte: ingenting målas över i den här regionen</translation>
     </message>
@@ -1376,122 +1374,77 @@
 <context>
     <name>RenderDialog</name>
     <message>
-        <location filename="../../render_dialog.py" line="69"/>
+        <location filename="../../render_dialog.py" line="70"/>
         <source>same as the source</source>
         <translation>samma som källan</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="79"/>
-        <source>the lettering</source>
-        <translation>texten</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="81"/>
-        <source>repaint the original lettering in the fill colour</source>
-        <translation>måla över originaltexten med fyllnadsfärgen</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="86"/>
-        <source>the whole region</source>
-        <translation>hela regionen</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="88"/>
-        <source>flood the whole outline with the fill colour</source>
-        <translation>fyll hela konturen med fyllnadsfärgen</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="91"/>
-        <source>reconstruct</source>
-        <translation>rekonstruera</translation>
-    </message>
-    <message>
         <location filename="../../render_dialog.py" line="93"/>
-        <source>rebuild the lettering&apos;s pixels from the ones around them</source>
-        <translation>bygg upp textens pixlar från dem runt omkring</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="98"/>
-        <source>nothing</source>
-        <translation>ingenting</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="100"/>
-        <source>paint nothing; letter straight onto the page as it is</source>
-        <translation>måla ingenting; texta direkt på sidan som den är</translation>
-    </message>
-    <message>
-        <location filename="../../render_dialog.py" line="115"/>
         <source>one .cbz file</source>
         <translation>en .cbz-fil</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="116"/>
+        <location filename="../../render_dialog.py" line="94"/>
         <source>one .cbr file</source>
         <translation>en .cbr-fil</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="141"/>
+        <location filename="../../render_dialog.py" line="119"/>
         <source>Render</source>
         <translation>Rendera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="142"/>
+        <location filename="../../render_dialog.py" line="120"/>
         <source>Save and Render</source>
         <translation>Spara och rendera</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="180"/>
+        <location filename="../../render_dialog.py" line="158"/>
         <source>Render Pages</source>
         <translation>Rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="183"/>
+        <location filename="../../render_dialog.py" line="161"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="223"/>
+        <location filename="../../render_dialog.py" line="201"/>
         <source>as</source>
         <translation>som</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="295"/>
+        <location filename="../../render_dialog.py" line="273"/>
         <source>overwrite the chapter file if it is already there</source>
         <translation>skriv över kapitelfilen om den redan finns</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="297"/>
+        <location filename="../../render_dialog.py" line="275"/>
         <source>overwrite pages already in that directory</source>
         <translation>skriv över sidor som redan finns i katalogen</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="222"/>
+        <location filename="../../render_dialog.py" line="200"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="114"/>
+        <location filename="../../render_dialog.py" line="92"/>
         <source>a folder</source>
         <translation>en katalog</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="127"/>
+        <location filename="../../render_dialog.py" line="105"/>
         <source>Saving as .cbr needs the rar compressor, which is not on this Mac. Say where it is in Preferences ▸ chapter files, or save as .cbz instead.</source>
         <translation>Att spara som .cbr kräver komprimeraren rar, som inte finns på den här datorn. Ange var den finns under Inställningar ▸ kapitelfiler, eller spara som .cbz i stället.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="224"/>
+        <location filename="../../render_dialog.py" line="202"/>
         <source>format</source>
         <translation>format</translation>
     </message>
-    <message>
-        <location filename="../../render_dialog.py" line="225"/>
-        <source>erase</source>
-        <translation>radera</translation>
-    </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="266"/>
+        <location filename="../../render_dialog.py" line="244"/>
         <source>%n region(s)</source>
         <translation>
             <numerusform>%n region</numerusform>
@@ -1499,7 +1452,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="268"/>
+        <location filename="../../render_dialog.py" line="246"/>
         <source>Saves the plan, then renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Sparar planen och renderar sedan %n sida och {0}.</numerusform>
@@ -1507,7 +1460,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="271"/>
+        <location filename="../../render_dialog.py" line="249"/>
         <source>Renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Renderar %n sida och {0}.</numerusform>
@@ -1515,42 +1468,42 @@
         </translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="369"/>
+        <location filename="../../render_dialog.py" line="347"/>
         <source>Save Chapter As</source>
         <translation>Spara kapitel som</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="371"/>
+        <location filename="../../render_dialog.py" line="349"/>
         <source>Chapter file (*{0})</source>
         <translation>Kapitelfil (*{0})</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="374"/>
+        <location filename="../../render_dialog.py" line="352"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="407"/>
+        <location filename="../../render_dialog.py" line="385"/>
         <source>Name the chapter file to write.</source>
         <translation>Ange kapitelfilen som ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="409"/>
+        <location filename="../../render_dialog.py" line="387"/>
         <source>Choose a directory to write the pages into.</source>
         <translation>Välj en katalog att skriva sidorna till.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="415"/>
+        <location filename="../../render_dialog.py" line="393"/>
         <source>{0} is a file, not a directory.</source>
         <translation>{0} är en fil, inte en katalog.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="419"/>
+        <location filename="../../render_dialog.py" line="397"/>
         <source>{0} is a directory, not a file.</source>
         <translation>{0} är en katalog, inte en fil.</translation>
     </message>
     <message>
-        <location filename="../../render_dialog.py" line="430"/>
+        <location filename="../../render_dialog.py" line="408"/>
         <source>{0} cannot be used: {1}</source>
         <translation>{0} kan inte användas: {1}</translation>
     </message>

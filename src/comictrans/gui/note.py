@@ -39,6 +39,26 @@ from PySide6.QtGui import QPalette, QResizeEvent
 from PySide6.QtWidgets import QLabel, QSizePolicy, QWidget
 
 
+def quieten(widget: QWidget) -> None:
+    """Draw this widget's text in the placeholder colour: help, not a field.
+
+    Four widgets want it — this one, the hint line under the canvas, the run
+    panel's tallies and the extract dialog's page count — and all four had
+    their own copy of these four lines. It is one recipe and it belongs in
+    one place, so that "quiet" cannot come to mean two different greys.
+
+    A palette rather than a stylesheet, so it follows a light window and a
+    dark one without a second set of colours: the rule everywhere in this
+    package.
+    """
+    palette = widget.palette()
+    palette.setColor(
+        QPalette.ColorRole.WindowText,
+        palette.color(QPalette.ColorRole.PlaceholderText),
+    )
+    widget.setPalette(palette)
+
+
 class Note(QLabel):
     """Wrapped help text that is never allocated less height than it needs."""
 
@@ -58,17 +78,8 @@ class Note(QLabel):
         self.quieten()
 
     def quieten(self) -> None:
-        """The placeholder colour: help beside a field, not a field.
-
-        A palette rather than a stylesheet, so it follows a light window and
-        a dark one — the rule everywhere in this package.
-        """
-        palette = self.palette()
-        palette.setColor(
-            QPalette.ColorRole.WindowText,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-        )
-        self.setPalette(palette)
+        """The placeholder colour: help beside a field, not a field."""
+        quieten(self)
 
     def setText(self, text: str) -> None:  # noqa: N802 - Qt override
         super().setText(text)
@@ -106,4 +117,4 @@ class Note(QLabel):
             self.setMinimumHeight(needed)
 
 
-__all__ = ["Note"]
+__all__ = ["Note", "quieten"]

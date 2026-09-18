@@ -2,7 +2,8 @@
 
 This module is deliberately dependency-free: no image library, no YAML, no
 OpenCV. Every other stage speaks in these types, which is what lets the stages
-be tested and reused (including by the future review GUI) in isolation.
+be tested and reused in isolation — the review GUI's own view-model layer
+included, which is free of numpy and OpenCV and still speaks in these.
 
 Coordinate convention, enforced everywhere past the OCR adapter boundary:
 pixels, origin top-left, integers.
@@ -13,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from pathlib import Path
 from typing import Self
 
 Point = tuple[int, int]
@@ -164,11 +166,34 @@ class Box:
             return None
         return Box(left, top, right, bottom)
 
-    def vertical_overlap(self, other: Box) -> int:
-        return max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
-
     def horizontal_overlap(self, other: Box) -> int:
         return max(0, min(self.right, other.right) - max(self.left, other.left))
+
+
+OVERLAP_BBOX_RATIO = 0.15
+"""Share of the smaller box that counts as two regions drawing over each other.
+
+Deliberately loose, and deliberately about boxes rather than polygons: the
+question it answers is "will these two draw over each other", which does not
+need the exact shared area, and answering it cheaply is what lets the review
+window ask it of every region on a page as you type.
+"""
+
+
+def boxes_overlap(first: Box, second: Box) -> bool:
+    """True when two boxes share more than :data:`OVERLAP_BBOX_RATIO` of the smaller.
+
+    One implementation, read from both ends of the pipeline: ``render``
+    warns with it at apply time and ``gui.document`` flags with it while you
+    review. A region the window flags is therefore exactly one apply would
+    also warn about — never a surprise the GUI invented and apply does not
+    share, which two copies of this arithmetic could not promise.
+    """
+    shared = first.intersection(second)
+    if shared is None:
+        return False
+    smaller = min(first.area, second.area)
+    return smaller > 0 and shared.area / smaller > OVERLAP_BBOX_RATIO
 
 
 def polygon_bounds(polygon: Polygon) -> Box:
@@ -322,6 +347,23 @@ class Plan:
         return tuple(r for r in self.regions if r.image == image)
 
 
+def source_path(plan_path: Path, image: str) -> Path:
+    """Where a plan's page lives on disk, resolved against the plan's own directory.
+
+    A plan names its images relative to itself — see :attr:`Region.image` —
+    so this join is the one rule turning what the file says into a path, and
+    `apply`, `review` and `validate` all have to follow it identically or
+    they would disagree about which file a region is about.
+
+    Here, at the bottom, because each of them would otherwise write it out
+    again: it is a line of code, and three copies of a line of code is still
+    three places for one rule to live. Nothing but ``pathlib`` is needed for
+    it, so every layer that speaks in these types can reach it without
+    reaching for a layer above.
+    """
+    return (plan_path.parent / image).resolve()
+
+
 def _orientation(a: Point, b: Point, c: Point) -> int:
     """Sign of the cross product (b-a) x (c-a). 0 means collinear."""
     value = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
@@ -457,7 +499,7 @@ def polygon_is_simple(polygon: Polygon) -> bool:
     for i in range(count):
         a1, a2 = polygon[i], polygon[(i + 1) % count]
         for j in range(i + 1, count):
-            if j == i or (j + 1) % count == i or j == (i + 1) % count:
+            if (j + 1) % count == i or j == (i + 1) % count:
                 continue  # adjacent edges legitimately share an endpoint
             b1, b2 = polygon[j], polygon[(j + 1) % count]
             if segments_intersect(a1, a2, b1, b2):

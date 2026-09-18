@@ -382,8 +382,9 @@ def _add_validate(
 def configure_logging(*, verbose: bool, quiet: bool) -> None:
     """Set the root log level. ``-v`` wins if both somehow arrive set."""
     level = logging.DEBUG if verbose else logging.WARNING if quiet else logging.INFO
-    # force: main() can be called more than once in a process (tests, the
-    # future GUI), and basicConfig is otherwise a no-op after the first call.
+    # force: main() can be called more than once in a process (tests, and
+    # `review`, which configures logging and then hands over to the window),
+    # and basicConfig is otherwise a no-op after the first call.
     logging.basicConfig(
         level=level, format="%(levelname)s %(message)s", stream=sys.stderr, force=True
     )

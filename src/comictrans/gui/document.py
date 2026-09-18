@@ -26,9 +26,11 @@ from ..model import (
     Polygon,
     Region,
     TextCase,
+    boxes_overlap,
     convex_hull,
     polygon_is_simple,
     polygons_overlap,
+    source_path,
     with_image_order,
 )
 from ..planfile import load_plan, write_plan
@@ -67,14 +69,6 @@ opposite of the truth, flagging the region as a doubtful reading for as long
 as it exists, when the reading is a person's own and there is nothing to
 doubt. Read the pair together: manual geometry, so the confidence is the
 person's, not the recogniser's.
-"""
-
-OVERLAP_BBOX_RATIO = 0.15
-"""Share of the smaller region's bounding box that counts as an overlap.
-
-The same threshold ``render._warn_about_overlaps`` uses at apply time, so a
-region flagged here is exactly one apply would also warn about — never a
-surprise the GUI invented and apply does not share.
 """
 
 
@@ -119,16 +113,16 @@ def overlapping_region_ids(regions: Sequence[Region]) -> frozenset[str]:
     Over actionable regions only: a skipped region or one with no translation
     is never drawn, so it cannot actually overlap anything on the page,
     however its polygon happens to sit.
+
+    ``model.boxes_overlap`` decides, which is the same call
+    ``render._warn_about_overlaps`` makes at apply time: a region flagged
+    here is exactly one apply would also warn about.
     """
     actionable = [r for r in regions if r.is_actionable]
     hit: set[str] = set()
     for index, first in enumerate(actionable):
         for second in actionable[index + 1 :]:
-            shared = first.bounds.intersection(second.bounds)
-            if shared is None:
-                continue
-            smaller = min(first.bounds.area, second.bounds.area)
-            if smaller > 0 and shared.area / smaller > OVERLAP_BBOX_RATIO:
+            if boxes_overlap(first.bounds, second.bounds):
                 hit.add(first.id)
                 hit.add(second.id)
     return frozenset(hit)
@@ -349,14 +343,15 @@ class PlanDocument:
         return None
 
     def source_path(self, image: str) -> Path:
-        """Where an image lives on disk, resolved against the plan's own directory.
+        """Where an image lives on disk, resolved against this plan's directory.
 
-        The same one-liner as ``apply.source_for``, duplicated rather than
-        imported: ``apply`` pulls in ``imaging``, and with it Pillow and
-        OpenCV, which is exactly what this module exists to stay free of —
-        see the module dependency rule in docs/ARCHITECTURE.md.
+        :func:`model.source_path` with this document's own path filled in —
+        the rule itself lives down in ``model`` so that ``apply`` and this
+        module can share it without this one importing ``apply``, which pulls
+        in Pillow and OpenCV and is exactly what it exists to stay free of.
+        See the module dependency rule in docs/ARCHITECTURE.md.
         """
-        return (self.path.parent / image).resolve()
+        return source_path(self.path, image)
 
     def overlapping_ids(self, image: str) -> frozenset[str]:
         return overlapping_region_ids(self.regions_for(image))
@@ -583,11 +578,14 @@ class PlanDocument:
         a different one makes those quietly wrong.
         """
         stem = slugify(Path(image).stem)
-        highest = self._allocated.get(stem, 0)
-        for region in self.plan.regions:
-            prefix, _, suffix = region.id.rpartition("-")
-            if prefix == stem and suffix.isdigit():
-                highest = max(highest, int(suffix))
+        # ``_allocated`` should already cover the plan: it is seeded from the
+        # file and nothing adds a region except this method, which raises it.
+        # The plan is consulted anyway because that reasoning is about every
+        # caller rather than about this code, and is one new caller away from
+        # being wrong. ``taken`` below is what actually makes a collision
+        # impossible; this is what keeps a deleted region's name from being
+        # handed out again.
+        highest = max(self._allocated.get(stem, 0), _numbers_used(self.plan).get(stem, 0))
         taken = {region.id for region in self.plan.regions}
         while True:
             highest += 1

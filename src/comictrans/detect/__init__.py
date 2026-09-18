@@ -227,23 +227,26 @@ def _cover_lines(page: PageImage, region: DetectedRegion, cfg: DetectConfig) -> 
     stray absorption folds in a line whose box overshot the balloon
     altogether — measured at 86px past the edge on a real page.
 
-    The polygon is unioned with the offending boxes rather than replaced by
-    their hull, so a tail or a burst balloon's spikes are not filled in.
+    The polygon is unioned with its line boxes rather than replaced by their
+    hull, so a tail or a burst balloon's spikes are not filled in.
     """
     if _covers(region.polygon, region.lines):
         return region
     outline = np.array(region.polygon, dtype=np.int32)
-    stray = [line.box for line in region.lines]
+    # Every line's box, not only the ones that stick out: one already inside
+    # the polygon adds nothing to the union, and picking them apart first
+    # would be work to arrive at the same shape.
+    boxes = [line.box for line in region.lines]
 
     window = region.bounds
-    for box in stray:
+    for box in boxes:
         window = window.union(box)
     window = window.expanded(2).clipped(page.width, page.height)
 
     mask: MaskArray = np.zeros((window.height, window.width), dtype=np.uint8)
     shifted = outline - np.array([window.left, window.top], dtype=np.int32)
     cv2.fillPoly(mask, [shifted], 255)
-    for box in stray:
+    for box in boxes:
         clipped = box.clipped(page.width, page.height)
         mask[
             clipped.top - window.top : clipped.bottom - window.top,
@@ -280,7 +283,7 @@ def _cover_lines(page: PageImage, region: DetectedRegion, cfg: DetectConfig) -> 
         # a balloon's tail among them — so it is only taken when it is not
         # much bigger than what it replaces.
         points = np.array(
-            [*region.polygon, *(corner for box in stray for corner in box.corners())],
+            [*region.polygon, *(corner for box in boxes for corner in box.corners())],
             dtype=np.int32,
         )
         hull = tuple((int(p[0][0]), int(p[0][1])) for p in cv2.convexHull(points))
@@ -303,7 +306,7 @@ def _cover_lines(page: PageImage, region: DetectedRegion, cfg: DetectConfig) -> 
         "%s: grew a polygon at %s to cover %d line(s) of its own text",
         page.path.name,
         region.bounds,
-        len(stray),
+        len(boxes),
     )
     # Colours stay as measured from the original outline: the strip just
     # added is there to be erased, not to be sampled as balloon fill.

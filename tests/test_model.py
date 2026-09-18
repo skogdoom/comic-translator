@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from comictrans.model import (
@@ -9,12 +11,14 @@ from comictrans.model import (
     PlanHeader,
     Region,
     TextCase,
+    boxes_overlap,
     convex_hull,
     point_in_polygon,
     polygon_area,
     polygon_bounds,
     polygon_is_simple,
     polygons_overlap,
+    source_path,
     with_image_order,
 )
 
@@ -42,6 +46,39 @@ def test_box_union_and_intersection() -> None:
 
 def test_box_clipping_keeps_inside_page() -> None:
     assert Box(-10, -10, 50, 50).clipped(30, 30) == Box(0, 0, 30, 30)
+
+
+def test_boxes_overlap_measures_the_share_of_the_smaller_box() -> None:
+    # A small region wholly inside a large one draws over it, whatever the
+    # large one's area — which is the whole reason the share is of the
+    # smaller rather than of either box or of their union.
+    assert boxes_overlap(Box(0, 0, 10, 10), Box(0, 0, 100, 100))
+
+
+def test_boxes_overlap_wants_more_than_the_ratio_not_exactly_it() -> None:
+    # 15 shared pixels of a 100-pixel box: the threshold exactly, which is
+    # not past it. One pixel column more is.
+    assert not boxes_overlap(Box(0, 0, 10, 10), Box(7, 0, 30, 5)), (
+        "15/100 is the threshold, not over"
+    )
+    assert boxes_overlap(Box(0, 0, 10, 10), Box(6, 0, 30, 5)), "20/100 is over it"
+
+
+def test_boxes_that_only_touch_do_not_overlap() -> None:
+    assert not boxes_overlap(Box(0, 0, 100, 100), Box(100, 0, 200, 100))
+
+
+def test_source_path_resolves_the_name_a_plan_gives_its_page(tmp_path: Path) -> None:
+    """A plan names its pages relative to itself, and ``..`` is a real answer.
+
+    Unpacked chapters put the plan beside the pages; a hand-written plan can
+    point out of its own directory. Resolving is what makes the two spellings
+    of one file the same path, which is what the per-page hash check and the
+    preview cache both compare on.
+    """
+    plan_path = tmp_path / "chapter" / "comic-plan.yaml"
+    assert source_path(plan_path, "page-001.png") == tmp_path / "chapter" / "page-001.png"
+    assert source_path(plan_path, "../pages/page-001.png") == tmp_path / "pages" / "page-001.png"
 
 
 def test_color_hex_round_trip() -> None:

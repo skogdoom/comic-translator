@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..model import Color, Erase, Region
+from . import erase_choices
 from .color_box import ColorBox
 from .document import PlanDocument, RegionFlags
 from .font_box import FontBox
@@ -59,37 +60,17 @@ ERASE_CHOICES: tuple[tuple[str, Erase | None, str], ...] = (
             "RegionInspector", "whatever the run is set to erase: --erase, or the render dialog"
         ),
     ),
-    (
-        QCoreApplication.translate("RegionInspector", "the lettering"),
-        Erase.FLAT,
-        QCoreApplication.translate(
-            "RegionInspector", "repaint the original lettering in the fill colour"
-        ),
-    ),
-    (
-        QCoreApplication.translate("RegionInspector", "the whole region"),
-        Erase.POLYGON,
-        QCoreApplication.translate(
-            "RegionInspector", "flood the whole outline with the fill colour"
-        ),
-    ),
-    (
-        QCoreApplication.translate("RegionInspector", "reconstruct"),
-        Erase.INPAINT,
-        QCoreApplication.translate(
-            "RegionInspector", "rebuild the lettering's pixels from the ones around them"
-        ),
-    ),
-    (
-        QCoreApplication.translate("RegionInspector", "nothing"),
-        Erase.NONE,
-        QCoreApplication.translate(
-            "RegionInspector", "paint nothing; letter straight onto the page as it is"
-        ),
-    ),
+    *erase_choices.CHOICES,
 )
 """What apply paints over inside this region, in words rather than strategy
-names. Short ones: this box sits in a dock whose width every field's size hint
+names.
+
+The four real ones come from ``erase_choices``, which the render dialog and
+preferences read too, so the three boxes cannot come to call the same thing
+by different names. The row this adds is the one only a region has: a region
+may decline to decide and follow the run, and a run has nothing to follow.
+
+Short words: this box sits in a dock whose width every field's size hint
 pushes at (see 4 in known-bugs.md), and the tooltip carries the detail."""
 
 _FONT_SIZE_AUTO = 0
@@ -261,7 +242,7 @@ class RegionInspector(QWidget):
         form.addRow(self.tr("translation"), self._translation)
         form.addRow(self.tr("notes"), self._notes)
         form.addRow("", self._skip)
-        form.addRow(self.tr("erase"), self._erase)
+        form.addRow(erase_choices.ERASE_FIELD, self._erase)
         form.addRow(self.tr("fill colour"), self._fill_color)
         form.addRow(self.tr("text colour"), self._text_color)
         form.addRow(self.tr("font override"), self._font)

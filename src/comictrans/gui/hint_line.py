@@ -14,8 +14,10 @@ tooltip, the same bargain ``font_box`` strikes with a long family name.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics, QPalette, QResizeEvent
+from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import QLabel, QSizePolicy, QWidget
+
+from .note import quieten
 
 MARGIN = 6
 """Air either side, so the text does not sit against the window's edge."""
@@ -29,11 +31,7 @@ class HintLine(QLabel):
         self._hint = ""
         self.setContentsMargins(MARGIN, 2, MARGIN, 2)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        palette = self.palette()
-        palette.setColor(
-            QPalette.ColorRole.WindowText, palette.color(QPalette.ColorRole.PlaceholderText)
-        )
-        self.setPalette(palette)
+        quieten(self)
 
     def hint(self) -> str:
         """The whole line, elided or not."""

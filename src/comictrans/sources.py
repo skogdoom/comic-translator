@@ -619,10 +619,12 @@ def unpack(
 __all__ = [
     "CONTAINER_SUFFIXES",
     "PDF",
+    "PDF_SUFFIXES",
     "RAR",
     "RAR_SUFFIXES",
     "UNRAR_ENV",
     "ZIP",
+    "ZIP_SUFFIXES",
     "UnpackReport",
     "chapter_kind",
     "check_readable",

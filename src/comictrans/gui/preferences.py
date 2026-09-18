@@ -132,10 +132,13 @@ class Preferences:
     """Whether unfinished work is switched on. ``ON`` or empty, and empty is
     what a fresh installation gets.
 
-    **Nothing reads it yet**, which is deliberate rather than an oversight: it
-    is here so that the first thing that needs it has a flag to hang off and a
-    settled place in the window, instead of one being added in a hurry
-    alongside the feature it gates. Ask :attr:`experimental_on`."""
+    What it gates today is the Plugins menu, and with it everything under
+    ``plugins.py``: the window builds that menu hidden and only this shows
+    it, so a fresh installation reads nothing off disk and imports no
+    third-party code until somebody asks for it by name. It was here before
+    there was anything to gate, so that the first feature that needed it
+    would find a flag and a settled place in the window rather than have one
+    added in a hurry beside it. Ask :attr:`experimental_on`."""
 
     language: str = ""
     """The interface language, empty for whatever this machine asks for.

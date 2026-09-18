@@ -34,7 +34,7 @@ from ..config import (
     TypesetConfig,
 )
 from ..imaging import load_page
-from ..model import Plan
+from ..model import Plan, source_path
 from ..progress import CancelCheck
 from ..render import RegionOutcome, RegionProgress, render_page
 from .document import PlanDocument
@@ -105,17 +105,6 @@ class PreviewRequest:
     def of(cls, document: PlanDocument, image: str) -> PreviewRequest:
         """Take the snapshot, on the thread the document belongs to."""
         return cls(document.plan, document.path, image)
-
-
-def source_path(plan_path: Path, image: str) -> Path:
-    """Where an image lives, resolved against the plan's own directory.
-
-    The same one-liner as ``apply.source_for`` and ``PlanDocument``\'s own,
-    and here rather than borrowed from either: this module may not import
-    ``apply`` (it would pull the whole pipeline in for one join) and must not
-    reach into the document it deliberately no longer holds.
-    """
-    return (plan_path.parent / image).resolve()
 
 
 def render_preview(

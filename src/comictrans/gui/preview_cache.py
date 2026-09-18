@@ -36,8 +36,8 @@ import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..model import PlanHeader, PlanImage, Region
-from .preview import Preview, PreviewRequest, source_path
+from ..model import PlanHeader, PlanImage, Region, source_path
+from .preview import Preview, PreviewRequest
 
 
 @dataclass(frozen=True, slots=True)

@@ -316,6 +316,34 @@ def test_a_missing_run_is_a_failed_plugin(tmp_path: Path) -> None:
     assert "run" in failed.error
 
 
+@pytest.mark.parametrize(
+    ("folder", "source"),
+    [
+        ("nameless", "def run(plan, settings):\n    return plan\n"),
+        ("halfway", 'PLUGIN_NAME = "Halfway"\n\n\nraise RuntimeError("no")\n'),
+        ("badversion", "PLUGIN_VERSION = 2\n" + _named("Bad Version")),
+        ("toonew", 'REQUIRES_APP_VERSION = "99.0"\n' + _named("Too New")),
+        ("badsettings", "SETTINGS = 3\n" + _named("Bad Settings")),
+    ],
+)
+def test_a_plugin_that_fails_to_load_is_taken_back_out_of_sys_modules(
+    tmp_path: Path, folder: str, source: str
+) -> None:
+    """However far it got, the half-loaded module does not stay registered.
+
+    Its top level has already run by the time any of these are found, so
+    leaving it in ``sys.modules`` would keep it alive under a name nothing
+    can reach — and once more per rescan, since the name is unique per load.
+    """
+    before = {name for name in sys.modules if name.startswith("comictrans._plugin_")}
+    _write(tmp_path, folder, source)
+
+    assert isinstance(plugins.discover_plugins(tmp_path)[0], FailedPlugin)
+
+    after = {name for name in sys.modules if name.startswith("comictrans._plugin_")}
+    assert after == before
+
+
 def test_one_broken_plugin_does_not_hide_a_working_one(tmp_path: Path) -> None:
     _write(tmp_path, "broken", "not python at all (")
     _write(tmp_path, "uppercase", UPPERCASE_NOTES)

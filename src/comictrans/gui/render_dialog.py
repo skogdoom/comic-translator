@@ -46,13 +46,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..apply import check_output_dir, source_for
+from ..apply import check_output_dir
 from ..config import EraseConfig
 from ..errors import ComictransError
-from ..model import Plan
+from ..model import Plan, source_path
 from ..pack import RAR_MISSING, archive_kind
 from ..pack import check_writable as check_can_pack
 from ..sources import RAR, ZIP
+from . import erase_choices
 from .document import PlanDocument
 from .note import Note
 from .preferences import DEFAULTS, Preferences
@@ -74,37 +75,14 @@ FORMAT_CHOICES: tuple[tuple[str, str | None], ...] = (
 """``None`` is what ``apply`` does by default: keep the source's format,
 except that JPEG becomes PNG rather than re-compressing lettering."""
 
-STRATEGY_CHOICES: tuple[tuple[str, str, str], ...] = (
-    (
-        QCoreApplication.translate("RenderDialog", "the lettering"),
-        "flat",
-        QCoreApplication.translate(
-            "RenderDialog", "repaint the original lettering in the fill colour"
-        ),
-    ),
-    (
-        QCoreApplication.translate("RenderDialog", "the whole region"),
-        "polygon",
-        QCoreApplication.translate("RenderDialog", "flood the whole outline with the fill colour"),
-    ),
-    (
-        QCoreApplication.translate("RenderDialog", "reconstruct"),
-        "inpaint",
-        QCoreApplication.translate(
-            "RenderDialog", "rebuild the lettering's pixels from the ones around them"
-        ),
-    ),
-    (
-        QCoreApplication.translate("RenderDialog", "nothing"),
-        "none",
-        QCoreApplication.translate(
-            "RenderDialog", "paint nothing; letter straight onto the page as it is"
-        ),
-    ),
-)
-"""Label, strategy name, and what it does. The words are the inspector's own
-words for the same four things, so the box that decides it for one region and
-the box that decides it for the rest do not describe them differently.
+STRATEGY_CHOICES: tuple[tuple[str, str, str], ...] = erase_choices.STRATEGIES
+"""Label, strategy name, and what it does.
+
+The words come from ``erase_choices``, which the inspector reads too, so the
+box that decides this for one region and the box that decides it for the
+rest cannot come to call the same four things by different names. The
+strategy is its plain name here because that is what a ``RenderRequest``
+carries and what ``erase.STRATEGIES`` is keyed by.
 
 A region's own ``erase`` still wins over whichever of these is chosen: this
 is the fallback for the regions that do not name one, exactly as ``--erase``
@@ -160,7 +138,7 @@ def suggested_output(plan_path: Path, preferences: Preferences = DEFAULTS) -> Pa
 
 def source_dirs(plan: Plan, plan_path: Path) -> list[Path]:
     """Every directory the plan reads pages from."""
-    return sorted({source_for(plan_path, name).parent for name in plan.image_names()})
+    return sorted({source_path(plan_path, name).parent for name in plan.image_names()})
 
 
 class RenderDialog(QDialog):
@@ -222,7 +200,7 @@ class RenderDialog(QDialog):
         form.addRow(self.tr("write pages to"), where_widget)
         form.addRow(self.tr("as"), self._container)
         form.addRow(self.tr("format"), self._format)
-        form.addRow(self.tr("erase"), self._erase)
+        form.addRow(erase_choices.ERASE_FIELD, self._erase)
         form.addRow("", self._erase_help)
         form.addRow("", self._force)
 
