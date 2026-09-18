@@ -88,6 +88,15 @@ to score one by accident:
 - The test was skipped: a missing optional dependency, a platform guard. SKIP
   is not PASS
 - The branch you mutated is not reached by that test at all
+- **A cached build ran instead of your edit.** Python's `__pycache__` validates
+  a `.pyc` on the source's mtime *in whole seconds* plus its size, so a
+  scripted loop that edits and re-runs within the same second can silently
+  execute the old bytecode — and a same-length edit (`15.0` to `16.0`, or
+  `"bronze"` to `"silver"`) defeats the size check too. The same hazard lives
+  in any incremental build or test cache. It is the worst variant because it
+  is invisible and non-deterministic: the identical mutation is caught by
+  hand and survives in a loop. Clear the cache between mutations rather than
+  trusting invalidation.
 
 So before counting a mutant as caught, confirm the test **ran** and **failed**.
 And when a mutation produces a pass, ask "did it actually apply?" before
