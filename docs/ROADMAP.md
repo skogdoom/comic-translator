@@ -44,7 +44,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.28 | Region context menu | S |
 | 4.27 | Lock a region | M |
 | 16 | Languages by name, not by code | M |
 | 17 | A shape palette for drawing a region | M |
@@ -63,10 +62,12 @@ Everything in this table is what comes after a release.
 
 The 4.x numbering says these follow milestone 4, the review GUI.
 
-**Why this order.** The window irritations first — 4.28, with 4.27 behind it
-because it is the same corner of the same files even though it is larger.
-They are met every few minutes by the one person using this, they are cheap,
-and doing them apart means reading the inspector and the canvas twice over.
+**Why this order.** The window irritations first. 4.28 has shipped, without
+the lock/unlock command its own section asked for — 4.27 had not landed yet
+when it was built, and it was built without it rather than wait. 4.27 is
+what is left, and it sits ahead of everything below it for the same reason
+4.28 did: met every few minutes by the one person using this, cheap, and in
+the same corner of the same files as the context menu it will now extend.
 
 18 is the one piece of sequencing worth insisting on. **19 and 20 both need
 the plan to know what chapter it is**, and neither can be done without adding
@@ -77,8 +78,9 @@ that already holds the answers. 6 sits with them because it is the third
 member of the same family and the least urgent of the three.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 4.27, 4.28, 16 and 17 land would mean checking it twice. Each of those milestones still updates the guide for its own change,
-as every milestone here does; 24 is the sweep for what that misses.
+checking it before 4.27, 16 and 17 land would mean checking it twice. Each of
+those milestones still updates the guide for its own change, as every
+milestone here does; 24 is the sweep for what that misses.
 
 **Asked for, and half of it was already there.** Rendering a chapter as JPEG
 works for a folder of pages and for a `.cbz`, from the command line and from
@@ -256,24 +258,9 @@ interface review settled.
 **What it has to reach**: every edit path. The inspector's fields,
 reshaping, the arrow keys, merge, delete — and re-extraction, where locked
 regions are the ones that should come through untouched, which is half the
-reason to want it.
-
-## 4.28 Region context menu
-
-Right-click — and Control-click, on macOS — on a region: extract its text,
-lock or unlock it, edit its shape, select it.
-
-**After the commands it lists.** A context menu is a shortcut to things
-that already exist; built before them it is a menu of two items.
-
-**It has to respect one-mode-at-a-time.** The canvas holds a single
-`CanvasMode` precisely because a click means different things in each, and
-a menu offering a command that contradicts the mode in progress is the
-wrong place to find that out.
-
-`contextMenuEvent` on the canvas, choosing the region under the cursor the
-same way a left-click chooses it, so the two cannot disagree about what was
-clicked.
+reason to want it. The region context menu 4.28 built has to reach it too:
+that milestone shipped without a lock/unlock item because this one had not,
+so this is also where the menu gains its third command.
 
 ## 18 Chapter metadata in the plan
 

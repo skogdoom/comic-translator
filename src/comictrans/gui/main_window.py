@@ -25,6 +25,7 @@ from PySide6.QtCore import (
     QByteArray,
     QCoreApplication,
     QEvent,
+    QPoint,
     QSettings,
     QSignalBlocker,
     Qt,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -336,6 +338,7 @@ class MainWindow(QMainWindow):
         self._canvas.region_picked.connect(self._on_region_picked)
         self._canvas.selection_refused.connect(self._on_selection_refused)
         self._canvas.mode_changed.connect(self._on_canvas_mode_changed)
+        self._canvas.region_context_menu_requested.connect(self._on_region_context_menu)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
         self._inspector.escaped.connect(self._on_inspector_escaped)
@@ -1271,6 +1274,27 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             self.tr("added {0} — type the text on the page, then its translation").format(region.id)
         )
+
+    def _region_menu(self, region_id: str) -> QMenu:
+        """The commands one region's own menu offers, built but not shown.
+
+        Selected first, the same as a left click, so a menu opened over a
+        region other than the one last clicked acts on the region under the
+        cursor rather than on whatever a previous click left selected.
+
+        Built and shown as two steps rather than one: exposed this way so a
+        test can see what the menu offers without a real modal loop to
+        escape, the same reason ``PageCanvas.region_at`` is exposed rather
+        than buried inside a mouse handler.
+        """
+        self._on_region_clicked(region_id)
+        menu = QMenu(self)
+        menu.addAction(self._extract_text_action)
+        menu.addAction(self._edit_shape_action)
+        return menu
+
+    def _on_region_context_menu(self, region_id: str, global_pos: QPoint) -> None:
+        self._region_menu(region_id).exec(global_pos)
 
     def _on_selection_refused(self, region_id: str) -> None:
         """Say why a click on another region did nothing, rather than nothing."""

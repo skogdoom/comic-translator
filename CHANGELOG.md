@@ -199,6 +199,13 @@ for themselves. See **Build the application** in `README.md`.
   the Plugins menu without removing it. A plugin that declares nothing to
   configure just says so. Turning one off costs no re-import of anything;
   neither does changing a value, which the next run simply reads fresh.
+- **Right-click a region — Control-click on a Mac with one button — for a
+  menu of what can be done to it.** Extract its text, or edit its shape,
+  offered nowhere new: the menu reuses the same two commands already on the
+  Edit menu. It selects the region under the pointer first, the same as a
+  plain click would, and only appears while simply looking at the page —
+  reshaping, drawing and merging already give a click a meaning of their
+  own, and this does not contradict it.
 
 ### Known limitations
 
