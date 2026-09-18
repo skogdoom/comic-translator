@@ -18,7 +18,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt, Signal
-from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -34,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from ..apply import ApplyReport
 from ..extract import ExtractReport
+from .note import quieten
 from .run_report import (
     RunRow,
     extract_counts,
@@ -66,12 +66,7 @@ class RunPanel(QWidget):
         self._headline.setWordWrap(True)
         self._counts = QLabel()
         self._counts.setWordWrap(True)
-        palette = self._counts.palette()
-        palette.setColor(
-            QPalette.ColorRole.WindowText,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-        )
-        self._counts.setPalette(palette)
+        quieten(self._counts)
 
         self._progress = QProgressBar()
         self._progress.setTextVisible(True)

@@ -62,6 +62,7 @@ from ..sources import (
     default_unpack_dir,
     is_container,
 )
+from .note import quieten
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
@@ -132,7 +133,7 @@ class ExtractDialog(QDialog):
         # answer; it is on a row of its own, where the only thing a long
         # translation can cost is the dialog's width.
         self._count.setWordWrap(False)
-        self._quieten(self._count)
+        quieten(self._count)
 
         self._source = QLineEdit()
         # Two buttons rather than one and a pair of radio buttons saying
@@ -258,15 +259,6 @@ class ExtractDialog(QDialog):
         self._validate()
 
     # -- appearance ------------------------------------------------------
-
-    @staticmethod
-    def _quieten(label: QLabel) -> None:
-        palette = label.palette()
-        palette.setColor(
-            QPalette.ColorRole.WindowText,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-        )
-        label.setPalette(palette)
 
     # -- choosing paths --------------------------------------------------
 

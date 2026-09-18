@@ -322,8 +322,8 @@ class PreferencesDialog(QDialog):
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
 
-        # The form scrolls; the heading and Done do not. There are eleven
-        # settings here and each one's note is as tall as the width it is
+        # The form scrolls; the heading and Done do not. There are a dozen
+        # settings here and each note is as tall as the width it is
         # given, so the honest height of this window depends on the system
         # font and the language it is in — neither of which this can know in
         # advance, and one short screen is all it takes for Done to end up
