@@ -30,9 +30,11 @@ names one that lives somewhere else, and with neither, CBR output is
 unavailable and says which binary would provide it rather than quietly not
 being offered.
 
-That configured path is an executable this module then runs, which is worth
-a hard look when the security audit comes: it is validated here only as far
-as "something executable is there".
+That configured path is an executable this module then runs, and it is
+validated here only as far as "something executable is there". The security
+audit looked and left it at that depth on purpose — the person naming the
+binary is the person running the application — and wrote down what actually
+keeps the argument list safe: see `docs/SECURITY.md`.
 """
 
 from __future__ import annotations
@@ -95,8 +97,8 @@ def rar_compressor(named: str = "") -> str:
 
     ``named`` is a caller that has been told — the window's Preferences, or
     ``COMICTRANS_RAR`` for the command line, which is the fallback. A path
-    given here is checked for being there and runnable and no further; what
-    it turns out to be when it runs is the audit's question.
+    given here is checked for being there and runnable and no further, which
+    is the depth the security audit settled on: see the module docstring.
     """
     configured = named.strip() or os.environ.get(RAR_ENV, "").strip()
     if configured:
@@ -186,6 +188,12 @@ def _pack_rar(pages: Sequence[Path], names: Sequence[str], into: Path, rar_tool:
         try:
             # The tool is the one the caller named, run with arguments this
             # module built: no shell, and nothing from the plan file in them.
+            # Two things keep that list unambiguous, and both are easier to
+            # break than to notice. Every name comes from ``entry_names`` and
+            # so begins with a digit, which is why no page can arrive at rar
+            # looking like a switch — a page called ``-x.png`` is
+            # ``001--x.png`` here. And ``into`` is resolved, so the archive
+            # path begins with a separator for the same reason.
             done = subprocess.run(command, cwd=folder, capture_output=True, text=True, check=False)
         except OSError as exc:
             raise InputError(f"{tool} could not be run: {exc}") from exc

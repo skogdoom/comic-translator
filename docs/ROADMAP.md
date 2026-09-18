@@ -2,11 +2,17 @@
 
 What is planned and not yet built, in the order it is worth building.
 
-This is a different list from the two that already exist. `known-bugs.md`
+This is a different list from the three that already exist. `known-bugs.md`
 records defects that are understood and deliberately left alone;
 **Known weak points on real scans** in `ARCHITECTURE.md` records what
-detection does badly on real pages. Both describe the tool as it stands.
-This file describes what it is not yet.
+detection does badly on real pages; `SECURITY.md` records what the audit
+read and what it decided. All three describe the tool as it stands. This
+file describes what it is not yet.
+
+`SECURITY.md` also holds the one job this file used to carry that does not
+finish: checking the dependencies against published advisories, which goes
+stale on somebody else's schedule rather than on this project's. It is a
+thing to re-run, not a thing to build, so it lives where it is run from.
 
 Nothing here is a commitment, and nothing here is a work item an agent
 should pick up on its own — the same rule `known-bugs.md` carries. Work a
@@ -53,7 +59,6 @@ one section can refer to another without ambiguity.
 | 6 | PDF output | L |
 | 23 | An empty plan, and pages added by hand | M |
 | 24 | The guide, checked against the window | S |
-| 7 | Security audit | M |
 
 **1.0.0 is out.** Everything a first release needed has shipped, and the
 macOS pass that could only happen on a built application has been done.
@@ -412,33 +417,6 @@ can be current in its translations and stale in what it is translating.
 It is last of the window milestones on purpose — see *Why this order* — and it
 is worth having as a milestone at all because the alternative is that it is
 nobody's job.
-
-## 7 Security audit
-
-A pass over this code and over the dependency surface: Pillow, NumPy,
-OpenCV, ruamel.yaml, pyphen, pytesseract, PySide6 and pyobjc-Vision, plus
-`rarfile` and the external `unrar` and `rar` binaries that reading and
-writing chapter files bring in.
-
-**Two halves worth keeping apart.** Dependency CVEs are a tooling question
-— `pip-audit` or equivalent, run on a schedule, reporting versions against
-advisories. The code half is a reading, and it has one thing to check that
-nothing else does: **no network calls anywhere in the pipeline** is an
-invariant in `CLAUDE.md` and is enforced nowhere in the suite. An audit is
-where that stops being a rule people remember and starts being something
-that fails a check.
-
-**Both halves of the chapter-file work are now in.** Reading an archive
-means handing an untrusted file to an unpacker, and for CBR that unpacker is
-an external binary; writing one invokes a second external binary with paths
-someone else chose. Both are genuinely new attack surface — the first this
-tool has had that is not a Python library — and both are in scope. What
-shells out is `sources._unrar_tool` through `rarfile`, and `pack._pack_rar`,
-which builds its own argument list with no shell and validates the
-configured path only as far as "something executable is there".
-
-Last on the list, and the only item here that is a recurring activity
-rather than something that ships once and is deleted from this file.
 
 ## Ideas, not milestones
 

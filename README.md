@@ -82,14 +82,23 @@ and PDF by unpacking them into a folder of pages first, and `apply --output
 chapter.cbz` writes the rendered chapter back as one file. CBR output needs
 the `rar` compressor, which cannot ship here; PDF output does not exist.
 `docs/ROADMAP.md` covers that and everything else planned, in the order it is
-worth building, and `known-bugs.md` records what is known to be wrong and left
-alone on purpose.
+worth building, `known-bugs.md` records what is known to be wrong and left
+alone on purpose, and `docs/SECURITY.md` what an untrusted file is allowed to
+do here.
 
 The whole codebase has had a reading for what tests do not catch —
 duplication, comments describing a version that no longer exists, names that
 had stopped matching what they do. It changed no behaviour, which was the
 rule it was done under: what it found that would have needed to is written
 down rather than folded in.
+
+It has also had a security reading, written up in `docs/SECURITY.md`: what a
+chapter file or a plan file somebody else made is allowed to do, what was
+found sound, and the one thing that was not — an archive could name a page
+larger than memory, and now cannot. The promise that nothing here touches
+the network is a test rather than a habit now, and
+`tools/audit_dependencies.py` is the dependency half, to be re-run rather
+than read.
 
 ## Requirements
 
