@@ -85,6 +85,12 @@ the `rar` compressor, which cannot ship here; PDF output does not exist.
 worth building, and `known-bugs.md` records what is known to be wrong and left
 alone on purpose.
 
+The whole codebase has had a reading for what tests do not catch —
+duplication, comments describing a version that no longer exists, names that
+had stopped matching what they do. It changed no behaviour, which was the
+rule it was done under: what it found that would have needed to is written
+down rather than folded in.
+
 ## Requirements
 
 - macOS on Apple Silicon, Python 3.12 — pinned in `.python-version`, since
