@@ -263,7 +263,7 @@ class ExtractDialog(QDialog):
     # -- choosing paths --------------------------------------------------
 
     def _on_choose_folder(self) -> None:
-        name = QFileDialog.getExistingDirectory(self, "Pages to Read", str(self._start_in))
+        name = QFileDialog.getExistingDirectory(self, self.tr("Pages to Read"), str(self._start_in))
         if name:
             self._source.setText(name)
 
@@ -277,9 +277,9 @@ class ExtractDialog(QDialog):
         everything = _patterns(IMAGE_SUFFIXES | CONTAINER_SUFFIXES)
         name, _filter = QFileDialog.getOpenFileName(
             self,
-            "Page or Chapter to Read",
+            self.tr("Page or Chapter to Read"),
             str(self._start_in),
-            f"Pages and chapters ({everything});;All files (*)",
+            self.tr("Pages and chapters ({0});;All files (*)").format(everything),
         )
         if name:
             self._source.setText(name)
@@ -287,7 +287,10 @@ class ExtractDialog(QDialog):
     def _on_choose_plan(self) -> None:
         start = self._plan.text().strip() or str(self._start_in)
         name, _filter = QFileDialog.getSaveFileName(
-            self, "Write the Plan To", start, "Plan files (*.yaml *.yml)"
+            self,
+            self.tr("Write the Plan To"),
+            start,
+            self.tr("Plan files (*.yaml *.yml)"),
         )
         if name:
             self._plan_edited = True

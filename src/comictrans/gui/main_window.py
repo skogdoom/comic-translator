@@ -2068,7 +2068,8 @@ class MainWindow(QMainWindow):
         if region_id:
             if region_id not in self.document.ordered_ids():
                 self.statusBar().showMessage(
-                    f"{region_id} ({image}) is no longer in this plan", 3000
+                    self.tr("{0} ({1}) is no longer in this plan").format(region_id, image),
+                    3000,
                 )
                 return
             self._go_to_region(region_id)

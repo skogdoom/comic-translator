@@ -314,3 +314,89 @@ def test_the_catalogues_that_ship_are_the_ones_compiled() -> None:
 
     assert set(translations.available()) == compiled
     assert translations.SOURCE_LANGUAGE in compiled
+
+
+# -- nothing user-visible slips past the catalogue ----------------------------
+
+SHOWS_TEXT = frozenset(
+    {
+        "addAction",
+        "addItem",
+        "addRow",
+        "getExistingDirectory",
+        "getOpenFileName",
+        "getSaveFileName",
+        "setHeaderLabels",
+        "setItemText",
+        "setLabelText",
+        "setPlaceholderText",
+        "setSpecialValueText",
+        "setStatusTip",
+        "setText",
+        "setTitle",
+        "setToolTip",
+        "setWindowTitle",
+        "showMessage",
+    }
+)
+"""Qt calls whose string argument a person reads off the window.
+
+Not every way text reaches a screen — a widget built with its text as a
+constructor argument does not come through here, and neither does anything
+assigned to a module-level name. This is the shape the mistake has actually
+taken, five times in one dialog and once in the main window: a literal or an
+f-string handed straight to the call that shows it, a few lines from a
+sibling doing the same job through ``tr``.
+"""
+
+UNTRANSLATED_ON_PURPOSE = frozenset({"Qt"})
+"""Text that is the same in every language because it is a name.
+
+``Qt`` is the library, beside a ``tr("python")`` that is a label rather than
+a name. Add to this only for something that would be wrong to translate, not
+for something nobody has got round to.
+"""
+
+
+def _shown_literally(call: ast.Call) -> list[tuple[int, str]]:
+    """Arguments of ``call`` that are text a person reads and nobody translated."""
+    found: list[tuple[int, str]] = []
+    for argument in call.args:
+        if isinstance(argument, ast.JoinedStr):
+            literal = "".join(
+                part.value for part in argument.values if isinstance(part, ast.Constant)
+            )
+            if any(character.isalpha() for character in literal):
+                found.append((argument.lineno, f"f-string {literal!r}"))
+        elif isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+            text = argument.value
+            if (
+                text
+                and text not in UNTRANSLATED_ON_PURPOSE
+                and any(character.isalpha() for character in text)
+            ):
+                found.append((argument.lineno, repr(text)))
+    return found
+
+
+def test_no_widget_shows_text_the_catalogue_never_saw() -> None:
+    """Every word the window says goes through ``tr`` or a named constant.
+
+    The failure this catches is silent in the only language anybody writes
+    the code in: an English window looks right whatever a string did or did
+    not go through, and the sentence is simply missing from the catalogue,
+    so a translator never sees it and a Swedish window says it in English.
+    Six of these had accumulated before anything went looking.
+    """
+    guilty: list[str] = []
+    for path in sorted(Path("src/comictrans/gui").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else None
+            if name not in SHOWS_TEXT:
+                continue
+            guilty += [f"{path}:{line}: {name}({what})" for line, what in _shown_literally(node)]
+
+    assert not guilty, "user-visible text not going through tr():\n  " + "\n  ".join(guilty)

@@ -12,6 +12,14 @@ for themselves. See **Build the application** in `README.md`.
 
 ## 1.1.0 — unreleased
 
+- **Seven things the window said only in English.** The Extract dialog's
+  three file panels were titled in English whatever language the window was
+  in, along with the kinds of file they offered; so were the line saying a
+  region a report names has since been deleted, and the word *order* beside
+  a region's id. Each had a translated twin doing the same job a few lines
+  away, which is why nothing looked wrong. They are in the catalogue now,
+  and in Swedish — and a test walks the widget code for the next one, since
+  an English window looks right whatever a string did or did not go through.
 - **A reading of the whole codebase for what the tests cannot see.** One
   rule per place it is decided: resolving a page's path against its plan was
   written out five times, the overlap test the window flags with and the one
