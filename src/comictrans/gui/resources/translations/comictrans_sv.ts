@@ -181,123 +181,148 @@
 <context>
     <name>ExtractDialog</name>
     <message>
-        <location filename="../../extract_dialog.py" line="70"/>
+        <location filename="../../extract_dialog.py" line="71"/>
         <source>automatic (Apple Vision, then Tesseract)</source>
         <translation>automatiskt (Apple Vision, sedan Tesseract)</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="79"/>
+        <location filename="../../extract_dialog.py" line="80"/>
         <source>Extract</source>
         <translation>Extrahera</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="111"/>
+        <location filename="../../extract_dialog.py" line="112"/>
         <source>Extract Pages</source>
         <translation>Extrahera sidor</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="161"/>
+        <location filename="../../extract_dialog.py" line="162"/>
         <source>One page, or a whole chapter as a .cbz, .cbr or .pdf.</source>
         <translation>En sida, eller ett helt kapitel som .cbz, .cbr eller .pdf.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="155"/>
+        <location filename="../../extract_dialog.py" line="156"/>
         <source>Folder…</source>
         <translation>Mapp…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="81"/>
+        <location filename="../../extract_dialog.py" line="82"/>
         <source>Preferences, under “chapter files”, is where to say where the tool is.</source>
         <translation>Inställningar, under ”kapitelfiler”, är där du anger var verktyget finns.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="158"/>
+        <location filename="../../extract_dialog.py" line="159"/>
         <source>File…</source>
         <translation>Fil…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="174"/>
+        <location filename="../../extract_dialog.py" line="175"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="203"/>
+        <location filename="../../extract_dialog.py" line="204"/>
         <source>same as the source language</source>
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="206"/>
+        <location filename="../../extract_dialog.py" line="207"/>
         <source>Languages to hand the recogniser, comma-separated. Left empty this is the source language; give a region-qualified tag here if the recogniser needs one, such as pt-BR.</source>
         <translation>Språk att ge textigenkänningen, kommaseparerade. Lämnas fältet tomt används källspråket; ange en regionskvalificerad tagg här om igenkänningen kräver en, till exempel pt-BR.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="217"/>
+        <location filename="../../extract_dialog.py" line="218"/>
         <source>overwrite it, discarding everything in it</source>
         <translation>skriv över den och kasta allt som finns i den</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="228"/>
+        <location filename="../../extract_dialog.py" line="229"/>
         <source>read pages from</source>
         <translation>läs sidor från</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="233"/>
+        <location filename="../../extract_dialog.py" line="234"/>
         <source>write the plan to</source>
         <translation>skriv planen till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="235"/>
+        <location filename="../../extract_dialog.py" line="236"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="236"/>
+        <location filename="../../extract_dialog.py" line="237"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="237"/>
+        <location filename="../../extract_dialog.py" line="238"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="238"/>
+        <location filename="../../extract_dialog.py" line="239"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="369"/>
+        <location filename="../../extract_dialog.py" line="266"/>
+        <source>Pages to Read</source>
+        <translation>Sidor att läsa</translation>
+    </message>
+    <message>
+        <location filename="../../extract_dialog.py" line="280"/>
+        <source>Page or Chapter to Read</source>
+        <translation>Sida eller kapitel att läsa</translation>
+    </message>
+    <message>
+        <location filename="../../extract_dialog.py" line="282"/>
+        <source>Pages and chapters ({0});;All files (*)</source>
+        <translation>Sidor och kapitel ({0});;Alla filer (*)</translation>
+    </message>
+    <message>
+        <location filename="../../extract_dialog.py" line="291"/>
+        <source>Write the Plan To</source>
+        <translation>Skriv planen till</translation>
+    </message>
+    <message>
+        <location filename="../../extract_dialog.py" line="293"/>
+        <source>Plan files (*.yaml *.yml)</source>
+        <translation>Planfiler (*.yaml *.yml)</translation>
+    </message>
+    <message>
+        <location filename="../../extract_dialog.py" line="364"/>
         <source>Choose a folder of pages, a chapter file, or one image.</source>
         <translation>Välj en mapp med sidor, en kapitelfil eller en enstaka bild.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="386"/>
-        <location filename="../../extract_dialog.py" line="397"/>
+        <location filename="../../extract_dialog.py" line="381"/>
+        <location filename="../../extract_dialog.py" line="392"/>
         <source>{0} cannot be read: {1}</source>
         <translation>{0} kan inte läsas: {1}</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="401"/>
+        <location filename="../../extract_dialog.py" line="396"/>
         <source>Choose where to write the plan file.</source>
         <translation>Välj var planfilen ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="404"/>
+        <location filename="../../extract_dialog.py" line="399"/>
         <source>{0} is a directory, not a plan file.</source>
         <translation>{0} är en katalog, inte en planfil.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="406"/>
+        <location filename="../../extract_dialog.py" line="401"/>
         <source>{0} already exists.</source>
         <translation>{0} finns redan.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="416"/>
+        <location filename="../../extract_dialog.py" line="411"/>
         <source>counted when unpacked</source>
         <translation>räknas vid uppackning</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="418"/>
+        <location filename="../../extract_dialog.py" line="413"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n sida</numerusform>
@@ -943,17 +968,22 @@
         <translation>misslyckades: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2077"/>
+        <location filename="../../main_window.py" line="2071"/>
+        <source>{0} ({1}) is no longer in this plan</source>
+        <translation>{0} ({1}) finns inte längre i den här planen</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="2078"/>
         <source>{0} is not in this plan</source>
         <translation>{0} finns inte i den här planen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2092"/>
+        <location filename="../../main_window.py" line="2093"/>
         <source>rescanning fonts</source>
         <translation>läser om typsnitt</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2100"/>
+        <location filename="../../main_window.py" line="2101"/>
         <source>%n font family/families available</source>
         <translation>
             <numerusform>%n typsnittsfamilj tillgänglig</numerusform>
@@ -961,7 +991,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2155"/>
+        <location filename="../../main_window.py" line="2156"/>
         <source>%n plugin(s) available</source>
         <translation>
             <numerusform>%n plugin tillgänglig</numerusform>
@@ -969,77 +999,77 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2180"/>
+        <location filename="../../main_window.py" line="2181"/>
         <source>opening the plugin folder</source>
         <translation>öppnar tilläggsmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2183"/>
+        <location filename="../../main_window.py" line="2184"/>
         <source>plugins are in {0}</source>
         <translation>tilläggen finns i {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2240"/>
+        <location filename="../../main_window.py" line="2241"/>
         <source>running {0}</source>
         <translation>kör {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2245"/>
+        <location filename="../../main_window.py" line="2246"/>
         <source>{0} ran</source>
         <translation>{0} kördes</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2247"/>
+        <location filename="../../main_window.py" line="2248"/>
         <source>{0} made no change</source>
         <translation>{0} ändrade ingenting</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2263"/>
+        <location filename="../../main_window.py" line="2264"/>
         <source>opening the plan header</source>
         <translation>öppnar planhuvudet</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2287"/>
+        <location filename="../../main_window.py" line="2288"/>
         <source>opening preferences</source>
         <translation>öppnar inställningar</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2324"/>
+        <location filename="../../main_window.py" line="2325"/>
         <source>{0} will be in {1} the next time it starts.</source>
         <translation>{0} kommer att vara på {1} nästa gång programmet startar.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2327"/>
+        <location filename="../../main_window.py" line="2328"/>
         <source>Quit and open it again to change the language of this window.</source>
         <translation>Avsluta och öppna igen för att byta språk i det här fönstret.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2410"/>
+        <location filename="../../main_window.py" line="2411"/>
         <source>{0} is not there any more.</source>
         <translation>{0} finns inte längre.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2411"/>
+        <location filename="../../main_window.py" line="2412"/>
         <source>It has been taken off the recent list. It was at {0}.</source>
         <translation>Den har tagits bort från listan över senaste. Den låg i {0}.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2456"/>
+        <location filename="../../main_window.py" line="2457"/>
         <source>{0}: {1}</source>
         <translation>{0}: {1}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2460"/>
+        <location filename="../../main_window.py" line="2461"/>
         <source>{0} failed: {1} — see the log</source>
         <translation>{0} misslyckades: {1} — se loggen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2477"/>
+        <location filename="../../main_window.py" line="2478"/>
         <source>opening the log folder</source>
         <translation>öppnar loggmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2480"/>
+        <location filename="../../main_window.py" line="2481"/>
         <source>logs are in {0}</source>
         <translation>loggarna finns i {0}</translation>
     </message>
@@ -1071,29 +1101,29 @@
         <translation>Konfigurera tillägg</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="124"/>
+        <location filename="../../plugin_config_dialog.py" line="109"/>
         <source>No plugins are installed.</source>
         <translation>Inga tillägg är installerade.</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="142"/>
+        <location filename="../../plugin_config_dialog.py" line="127"/>
         <source>{0} could not be loaded:
 {1}</source>
         <translation>{0} kunde inte läsas in:
 {1}</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="150"/>
+        <location filename="../../plugin_config_dialog.py" line="135"/>
         <source>Version {0}</source>
         <translation>Version {0}</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="153"/>
+        <location filename="../../plugin_config_dialog.py" line="138"/>
         <source>Active</source>
         <translation>Aktiv</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="170"/>
+        <location filename="../../plugin_config_dialog.py" line="155"/>
         <source>Nothing to configure.</source>
         <translation>Inget att konfigurera.</translation>
     </message>
@@ -1370,6 +1400,11 @@
         <source>unused: nothing is painted over in this region</source>
         <translation>används inte: ingenting målas över i den här regionen</translation>
     </message>
+    <message>
+        <location filename="../../inspector.py" line="350"/>
+        <source>{0}  ({1}, order {2})</source>
+        <translation>{0}  ({1}, ordning {2})</translation>
+    </message>
 </context>
 <context>
     <name>RenderDialog</name>
@@ -1521,33 +1556,33 @@
         <translation>Ingenting har körts än.</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="78"/>
-        <location filename="../../run_panel.py" line="151"/>
+        <location filename="../../run_panel.py" line="73"/>
+        <location filename="../../run_panel.py" line="146"/>
         <source>Cancel</source>
         <translation>Avbryt</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="91"/>
+        <location filename="../../run_panel.py" line="86"/>
         <source>page</source>
         <translation>sida</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="91"/>
+        <location filename="../../run_panel.py" line="86"/>
         <source>region</source>
         <translation>region</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="91"/>
+        <location filename="../../run_panel.py" line="86"/>
         <source>problem</source>
         <translation>problem</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="91"/>
+        <location filename="../../run_panel.py" line="86"/>
         <source>detail</source>
         <translation>detalj</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_panel.py" line="113"/>
+        <location filename="../../run_panel.py" line="108"/>
         <source>Rendering %n page(s) — {0}</source>
         <translation>
             <numerusform>Renderar %n sida — {0}</numerusform>
@@ -1555,7 +1590,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_panel.py" line="120"/>
+        <location filename="../../run_panel.py" line="115"/>
         <source>Reading %n page(s) — {0}</source>
         <translation>
             <numerusform>Läser %n sida — {0}</numerusform>
@@ -1563,27 +1598,27 @@
         </translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="134"/>
+        <location filename="../../run_panel.py" line="129"/>
         <source>Unpacking {0}…</source>
         <translation>Packar upp {0}…</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="149"/>
+        <location filename="../../run_panel.py" line="144"/>
         <source>starting…</source>
         <translation>startar…</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="158"/>
+        <location filename="../../run_panel.py" line="153"/>
         <source>{0}  ({1} of {2})</source>
         <translation>{0}  ({1} av {2})</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="165"/>
+        <location filename="../../run_panel.py" line="160"/>
         <source>Cancelling…</source>
         <translation>Avbryter…</translation>
     </message>
     <message>
-        <location filename="../../run_panel.py" line="182"/>
+        <location filename="../../run_panel.py" line="177"/>
         <source>Could not run: {0}</source>
         <translation>Kunde inte köra: {0}</translation>
     </message>

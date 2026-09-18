@@ -4,7 +4,7 @@
 <context>
     <name>ExtractDialog</name>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="418"/>
+        <location filename="../../extract_dialog.py" line="413"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n page</numerusform>
@@ -107,7 +107,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2100"/>
+        <location filename="../../main_window.py" line="2101"/>
         <source>%n font family/families available</source>
         <translation>
             <numerusform>%n font family available</numerusform>
@@ -115,7 +115,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2155"/>
+        <location filename="../../main_window.py" line="2156"/>
         <source>%n plugin(s) available</source>
         <translation>
             <numerusform>%n plugin available</numerusform>
@@ -172,7 +172,7 @@
 <context>
     <name>RunPanel</name>
     <message numerus="yes">
-        <location filename="../../run_panel.py" line="113"/>
+        <location filename="../../run_panel.py" line="108"/>
         <source>Rendering %n page(s) — {0}</source>
         <translation>
             <numerusform>Rendering %n page — {0}</numerusform>
@@ -180,7 +180,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_panel.py" line="120"/>
+        <location filename="../../run_panel.py" line="115"/>
         <source>Reading %n page(s) — {0}</source>
         <translation>
             <numerusform>Reading %n page — {0}</numerusform>

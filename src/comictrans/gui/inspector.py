@@ -343,7 +343,12 @@ class RegionInspector(QWidget):
             self._font_size.setValue(_FONT_SIZE_AUTO)
             return
 
-        self._id_label.setText(f"{region.id}  ({region.geometry.value}, order {region.order})")
+        # The geometry stays as the plan spells it — ``exact``, ``approximate``,
+        # ``manual`` are the file's own vocabulary and the file is never
+        # translated. The word around it is this window's, and is.
+        self._id_label.setText(
+            self.tr("{0}  ({1}, order {2})").format(region.id, region.geometry.value, region.order)
+        )
         self._flags.set_flags(document.flags(region.id))
         self._source_text.setPlainText(region.source_text)
         self._translation.setPlainText(region.translation)
