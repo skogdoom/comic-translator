@@ -42,9 +42,10 @@ always somewhere to write the line at the time rather than however many
 merges later.
 
 **Between releases the tree carries a `.devN` version**, which is what makes
-that heading exist. A tree sitting at a plain `1.1.0` is a release and has no
-heading open; the first milestone after one opens the next by bumping the
-version and adding the heading in the same change.
+that heading exist. A tree sitting at a plain version is a release and has no
+heading open; what opens the next one is the bump to `.devN`, which adds the
+heading in the same change — on its own once the release is tagged, or as the
+first thing the next milestone does.
 
 **The numbers are names, not positions.** They were allocated in the order
 the milestones were thought of, and the order worth building them in has
