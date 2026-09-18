@@ -46,11 +46,22 @@ Two things it prints that a bare `pip-audit` run does not, both worth reading
 rather than skipping to the last line:
 
 - **How many packages it actually audited, out of how many the lock names.**
-  `pip-audit` silently drops a requirement whose environment marker does not
-  match the running machine. Run on Linux, that is every `pyobjc-*` package —
-  the macOS half of a macOS application. The Mac is where this check means
-  the most, and a run anywhere else says so rather than reporting a clean
-  two thirds as a clean whole.
+  Asked the ordinary way, `pip-audit` silently drops two kinds of package —
+  one whose environment marker excludes the machine it is running on, and one
+  already present in the environment it builds to resolve in. On this lock
+  that was five `pyobjc` packages on Linux, and `packaging` on *every*
+  platform, because `pip-audit` depends on `packaging` itself. The second is
+  the nastier kind: no machine anywhere would have audited it, and nothing in
+  the output said so.
+
+  Both are the resolver's doing, so the resolver is turned off —
+  `--disable-pip`, which is all that is wanted from a file the lock has
+  already pinned in full — and with nothing being resolved the markers come
+  off the requirements too. The count now reads **18 of 18 from any machine**,
+  and an entry under *Not audited* is a real alarm rather than a standing
+  caveat about where you ran it. The two changes only work together: markers
+  stripped with the resolver still on makes pip try to build pyobjc off a Mac
+  and fails the whole run.
 - **The external binaries**, which no lock describes: `unrar`, `rar`,
   `tesseract`. Two of them take a file somebody else made, none of them ships
   here, and the version in use is whatever the machine has.
@@ -65,9 +76,14 @@ bundler out of `dev`.
 
 ### What it said on 2026-09-18
 
-Twelve of the eighteen packages the lock pins, audited on Linux: **no known
-vulnerabilities**. The six not covered are the five `pyobjc` packages and
-`packaging`; they need the run repeating on a Mac.
+All eighteen packages the lock pins: **no known vulnerabilities**. Run on
+Linux and, in the form it had that morning, on macOS.
+
+That first macOS run is what found the `packaging` case. With the resolver
+still on, Linux covered 12 of 18 and the Mac 17 of 18 — and the one left over
+was not a platform gap at all but the auditor shadowing what it was auditing,
+which is what the count existing at all is for. The external binaries on that
+Mac: none of the three installed.
 
 ## The code reading
 

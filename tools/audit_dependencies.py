@@ -14,23 +14,35 @@ is what an advisory check is. Nothing under ``src/comictrans`` may do that —
 see ``CLAUDE.md``, and ``tests/test_security.py``, which fails if it ever
 starts — and nothing here is imported by anything that ships.
 
-**Three things a bare ``pip-audit`` run does not give you**, each of which
-cost a confusing hour to find and is the reason this is a script rather than
-a line in a README:
+**Three things a bare ``pip-audit`` run does not give you**, each found by
+running it rather than by reading about it, and together the reason this is
+a script rather than a line in a README:
 
-1. *It has to run on this project's interpreter.* ``pip-audit -r`` resolves
-   the requirements inside a virtual environment built from whatever Python
-   invoked it, and this project's lock pins versions that need 3.12 —
-   ``uvx pip-audit`` picks its own and fails to resolve numpy at all. Running
-   it as ``sys.executable -m pip_audit`` is what makes the version that
-   answers the question the version the question is about.
+1. *Asked the ordinary way, it audits fewer packages than you gave it and
+   does not say so.* ``pip-audit -r`` resolves the requirements inside a
+   virtual environment, and two kinds of package never come out the other
+   side: one whose environment marker excludes the machine it is running on,
+   and one that is already in that environment. Measured on this lock: five
+   ``pyobjc`` packages skipped on Linux — the macOS half of a macOS
+   application — and ``packaging`` skipped on both platforms, because
+   ``packaging`` is a dependency of ``pip-audit`` itself. The second kind is
+   the nastier one: no machine anywhere would have audited it, and the auditor
+   shadowing what it is auditing leaves no trace in the output.
 
-2. *It silently audits fewer packages than you gave it.* A requirement whose
-   environment marker does not match the running platform is skipped, and so
-   is one pip considers already satisfied. On Linux that is every
-   ``pyobjc-*`` package — the macOS half of a macOS application, quietly not
-   audited. So this compares what came back against what the lock names and
-   prints the difference rather than letting a gap pass for a clean run.
+   Both are the resolver's doing, and this asks for the resolver to be turned
+   off. ``--disable-pip`` makes ``pip-audit`` read the requirements itself,
+   which is all that is wanted from a file the lock has already pinned in
+   full — and with nothing being resolved, the markers can come off too, so a
+   run anywhere audits every version the lock names. 18 of 18, measured on
+   Linux and on macOS. The two changes only work together: markers stripped
+   *with* the resolver still on makes pip try to build pyobjc off a Mac
+   ("PyObjC requires macOS to build") and fails the whole run.
+
+2. *It still audits the lock as this interpreter would read it.* Markers are
+   gone from the file, but ``pip-audit`` is invoked as ``sys.executable -m
+   pip_audit`` so that anything else version-dependent is judged by the
+   Python this project actually runs on, rather than by whichever one
+   happened to launch the audit.
 
 3. *It cannot see anything that is not a Python package.* Reading a CBR runs
    an external ``unrar`` and writing one runs an external ``rar``; OCR can
@@ -142,13 +154,10 @@ def _normalised(name: str) -> str:
 
 
 def export_lock() -> str:
-    """The lock as a requirements file, environment markers left on.
+    """The lock as a requirements file, exactly as ``uv`` writes it.
 
-    The markers stay because ``pip-audit`` hands the file to pip, and a
-    ``pyobjc`` requirement with its marker stripped is one pip tries to
-    *build* off a Mac — "PyObjC requires macOS to build" — which fails the
-    whole run rather than skipping one package. Skipped and named is better
-    than nothing audited at all, which is what :class:`Report` is for.
+    Markers and all: what is handed to ``pip-audit`` is built from this
+    rather than being this — see :func:`requirements_for`.
     """
     done = subprocess.run(EXPORT_COMMAND, cwd=ROOT, capture_output=True, text=True, check=False)
     if done.returncode != 0:
@@ -178,12 +187,28 @@ def locked_packages(exported: str) -> tuple[Package, ...]:
     return tuple(found)
 
 
+def requirements_for(packages: tuple[Package, ...]) -> str:
+    """One pinned line per package, with no marker on any of them.
+
+    A marker is a question about the machine — "install this only on a Mac" —
+    and this is not installing anything. Keeping them would mean a run on
+    Linux never asking about the pyobjc packages and a run on a Mac never
+    asking about the ones marked the other way, so what gets audited would
+    depend on where the audit happened. Stripping them is only safe because
+    the resolver is off; see the module docstring.
+    """
+    return "".join(f"{package.name}=={package.version}\n" for package in packages)
+
+
 def _pip_audit(requirements: Path) -> list[dict[str, object]]:
     """Run ``pip-audit`` over a requirements file and hand back its JSON.
 
     ``--no-deps`` because the file is already the resolved, fully pinned set:
     without it ``pip-audit`` re-resolves and can pick versions the lock does
-    not have. ``sys.executable -m`` for the reason in the module docstring.
+    not have. ``--disable-pip`` because resolving is not merely unnecessary
+    but is what loses packages — see the module docstring, and do not drop
+    it without putting the markers back. ``sys.executable -m`` so the
+    interpreter answering is this project's.
     """
     command = [
         sys.executable,
@@ -192,6 +217,7 @@ def _pip_audit(requirements: Path) -> list[dict[str, object]]:
         "--requirement",
         str(requirements),
         "--no-deps",
+        "--disable-pip",
         "--format",
         "json",
         "--progress-spinner",
@@ -276,10 +302,9 @@ def external_tools() -> tuple[ExternalTool, ...]:
 
 def audit(workspace: Path) -> Report:
     """Read the lock, ask about every version in it, and say what was missed."""
-    exported = export_lock()
-    locked = locked_packages(exported)
+    locked = locked_packages(export_lock())
     requirements = workspace / "locked-requirements.txt"
-    requirements.write_text(exported, encoding="utf-8")
+    requirements.write_text(requirements_for(locked), encoding="utf-8")
     dependencies = _pip_audit(requirements)
     answered = {_normalised(str(entry.get("name", ""))) for entry in dependencies}
     return Report(
@@ -306,10 +331,9 @@ def _print(report: Report) -> None:
 
     if report.unaudited:
         print(
-            f"\nNot audited here ({len(report.unaudited)}). pip-audit skips a requirement\n"
-            "whose environment marker does not match this machine, and one pip already\n"
-            "considers satisfied, without saying so — run this on a platform each of\n"
-            "these installs on, which for the pyobjc packages means a Mac:"
+            f"\nNot audited ({len(report.unaudited)}). Every version the lock pins is asked\n"
+            "about regardless of platform, so this is not the usual 'wrong machine' —\n"
+            "pip-audit was handed these and did not answer, which needs looking at:"
         )
         for package in report.unaudited:
             print(f"  {package.name} {package.version}")

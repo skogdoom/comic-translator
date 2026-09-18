@@ -35,11 +35,16 @@ for themselves. See **Build the application** in `README.md`.
 - **`tools/audit_dependencies.py`**, for the half of an audit that has to be
   re-run: the versions `uv.lock` pins, against published advisories. It
   reports what a bare `pip-audit` run does not — how many packages it
-  actually audited out of how many the lock names, since a requirement whose
-  platform marker does not match the machine is silently dropped, and the
-  versions of `unrar`, `rar` and `tesseract`, which no lock describes. It is
-  the only thing in the repository that uses the network, and it is not part
-  of the tool.
+  actually audited out of how many the lock names, and the versions of
+  `unrar`, `rar` and `tesseract`, which no lock describes. That count earned
+  itself immediately: asked the ordinary way, `pip-audit` drops a requirement
+  whose platform marker excludes the machine, and one already present in the
+  environment it builds to resolve in, and says nothing about either. The
+  first hid every `pyobjc` package on Linux; the second hid `packaging`
+  everywhere, because `pip-audit` depends on `packaging`. Both are the
+  resolver's doing, so it is turned off and the markers come off with it,
+  which reads 18 of 18 from any machine. It is the only thing in the
+  repository that uses the network, and it is not part of the tool.
 - **Seven things the window said only in English.** The Extract dialog's
   three file panels were titled in English whatever language the window was
   in, along with the kinds of file they offered; so were the line saying a

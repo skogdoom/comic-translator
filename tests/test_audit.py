@@ -92,12 +92,19 @@ def test_a_package_the_audit_skipped_is_reported_rather_than_counted_as_clean(
 ) -> None:
     """The failure this tool exists to prevent.
 
-    ``pip-audit`` drops a requirement whose marker does not match the machine
-    and one pip thinks is already satisfied, and says nothing about either —
-    measured on Linux, where five ``pyobjc`` packages and ``packaging`` come
-    back missing from a lock of eighteen. A run that reported "no known
-    vulnerabilities" and stopped there would be describing two thirds of the
-    lock in the words of the whole of it.
+    ``pip-audit`` asked the ordinary way drops a requirement whose marker
+    excludes the machine, and one already present in the environment it
+    builds, and says nothing about either. Measured on this lock before it
+    was asked differently: five ``pyobjc`` packages missing on Linux, and
+    ``packaging`` missing on both platforms because ``pip-audit`` depends on
+    ``packaging`` itself. A run that reported "no known vulnerabilities" and
+    stopped there would have been describing two thirds of the lock in the
+    words of the whole of it.
+
+    ``--disable-pip`` and stripped markers close both, so the count reads
+    18 of 18 now. This stays because the count is what *told* anyone: the
+    guard is worth more than the gap it found, and a future pip-audit can
+    start dropping something else.
     """
     monkeypatch.setattr(audit, "export_lock", lambda: EXPORTED)
     monkeypatch.setattr(
@@ -272,3 +279,86 @@ def test_without_pip_audit_it_says_how_to_get_it_rather_than_failing_obscurely(
         audit.main()
 
     assert "uv run --with pip-audit" in str(raised.value)
+
+
+# -- the two things that make the count 18 of 18 ------------------------------
+
+
+def test_what_pip_audit_is_handed_carries_no_markers() -> None:
+    """A marker is a question about the machine, and this is not installing.
+
+    Left on, what gets audited depends on where the audit ran: no pyobjc on
+    Linux, and nothing marked the other way on a Mac. Measured — the same
+    lock came back 12 of 18 on Linux with them, and 18 of 18 without.
+    """
+    written = audit.requirements_for(audit.locked_packages(EXPORTED))
+
+    assert written.splitlines() == [
+        "numpy==2.5.3",
+        "pillow==12.3.0",
+        "pyobjc-core==12.2.2",
+        "ruamel-yaml==0.19.1",
+    ]
+    assert ";" not in written and "sys_platform" not in written
+
+
+def test_the_resolver_is_turned_off_and_that_is_not_an_optimisation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``--disable-pip`` is what makes stripping the markers safe.
+
+    With the resolver on, a requirements file with no markers is one pip
+    tries to *build* pyobjc from off a Mac — "PyObjC requires macOS to
+    build" — which fails the whole run rather than skipping one package. The
+    two go together, and the one that is a bare flag in an argument list is
+    the one somebody removes while tidying.
+
+    It is also what stops ``pip-audit`` losing a package that is already in
+    the environment it builds, which is how ``packaging`` went unaudited on
+    every platform: ``pip-audit`` depends on ``packaging``.
+    """
+    seen: list[list[str]] = []
+
+    class _Done:
+        returncode = 0
+        stdout = '{"dependencies": []}'
+        stderr = ""
+
+    def _record(command: list[str], **_kwargs: object) -> _Done:
+        seen.append(command)
+        return _Done()
+
+    monkeypatch.setattr(audit.subprocess, "run", _record)
+
+    audit._pip_audit(tmp_path / "requirements.txt")
+
+    assert seen, "pip-audit was never run"
+    assert "--disable-pip" in seen[0], "the resolver is back on; the markers must go back too"
+    assert "--no-deps" in seen[0]
+    assert seen[0][0] == audit.sys.executable, "some other interpreter is answering"
+
+
+def test_the_file_pip_audit_is_pointed_at_is_the_built_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``requirements_for`` being right is no use if nothing calls it.
+
+    ``export_lock`` hands back what ``uv`` wrote, markers included, and
+    writing *that* to the file is a one-word slip that reads perfectly well
+    and quietly restores the platform gap.
+    """
+    handed: list[str] = []
+    monkeypatch.setattr(audit, "export_lock", lambda: EXPORTED)
+    monkeypatch.setattr(
+        audit,
+        "_pip_audit",
+        lambda requirements: handed.append(requirements.read_text(encoding="utf-8")) or [],
+    )
+    monkeypatch.setattr(audit, "external_tools", tuple)
+
+    audit.audit(tmp_path)
+
+    assert handed, "pip-audit was never pointed at anything"
+    assert "sys_platform" not in handed[0], "the raw export went through, markers and all"
+    assert "# via" not in handed[0]
+    assert handed[0].splitlines()[0] == "numpy==2.5.3"
