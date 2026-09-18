@@ -34,12 +34,17 @@ than no help at all.
 
 Sizes are relative effort, not estimates. When a milestone ships, delete
 its section and its row from the table, and say so in the Status section of
-`README.md`. Now that 1.0.0 is out, it also earns a line in `CHANGELOG.md`,
-under the heading of the version being worked towards — `1.1.0 — unreleased`
-while this tree is `1.1.0.dev0`. The changelog is a record of releases, and
-milestones accumulate into one; a test holds that heading to the version, so
-there is always somewhere to write the line at the time rather than however
-many merges later.
+`README.md`. It also earns a line in `CHANGELOG.md`, under the heading of the
+version being worked towards: a tree at `1.2.0.dev0` writes under
+`1.2.0 — unreleased`. The changelog is a record of releases, and milestones
+accumulate into one; a test holds that heading to the version, so there is
+always somewhere to write the line at the time rather than however many
+merges later.
+
+**Between releases the tree carries a `.devN` version**, which is what makes
+that heading exist. A tree sitting at a plain `1.1.0` is a release and has no
+heading open; the first milestone after one opens the next by bumping the
+version and adding the heading in the same change.
 
 **The numbers are names, not positions.** They were allocated in the order
 the milestones were thought of, and the order worth building them in has
@@ -60,9 +65,9 @@ one section can refer to another without ambiguity.
 | 23 | An empty plan, and pages added by hand | M |
 | 24 | The guide, checked against the window | S |
 
-**1.0.0 is out.** Everything a first release needed has shipped, and the
-macOS pass that could only happen on a built application has been done.
-Everything in this table is what comes after a release.
+**1.1.0 is out**, a week after 1.0.0: chapters in and out as one file, the
+window in Swedish, a page rendering in a fraction of the time, and plugins as
+an experiment. Everything in this table is what comes after it.
 
 The 4.x numbering says these follow milestone 4, the review GUI.
 
