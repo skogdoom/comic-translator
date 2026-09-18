@@ -2,9 +2,11 @@
 
 One list, everything Rescan Plugins would have found — a plugin that loaded
 and one that did not, side by side, rather than the second going unmentioned.
-Selecting a row shows what there is to show: a working plugin's own settings
-and its active checkbox, or a broken one's error and nothing else, since
-there is nothing to configure on a plugin that never became one.
+Selecting a row shows what there is to show: a working plugin's declared
+version if it named one, its own settings and its active checkbox, or a
+broken one's error and nothing else, since there is nothing to configure on
+a plugin that never became one. The version is shown nowhere else —
+``plugins.py`` reads nothing but text out of it.
 
 Fields write straight through to ``QSettings`` as they are edited, the same
 as the header dialog and the region inspector — there is nothing to apply
@@ -144,6 +146,10 @@ class PluginConfigDialog(QDialog):
         self._detail.addStretch(1)
 
     def _show_loaded(self, plugin: LoadedPlugin) -> None:
+        if plugin.version:
+            version_label = QLabel(self.tr("Version {0}").format(plugin.version))
+            self._detail.addWidget(version_label)
+
         active = QCheckBox(self.tr("Active"))
         active.setChecked(plugin_settings.is_active(self._settings, plugin))
         active.toggled.connect(lambda checked, p=plugin: self._on_active_toggled(p, checked))

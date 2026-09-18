@@ -71,9 +71,11 @@ experimental features turns on a Plugins menu that runs a plan-in, plan-out
 folder of Python you drop into the plugin folder, one folder per plugin so
 one can be more than a single file. One example is already there the first
 time you turn this on: it adds a note to every region. Plugins ▸ Configure
-Plugins… lists what is installed, including one that failed to load, lets
-you edit what a plugin declared as its own settings, and turns one off
-without removing it.
+Plugins… lists what is installed, including one that failed to load, shows
+a plugin's own declared version, lets you edit what it declared as its own
+settings, and turns one off without removing it. A plugin can also declare
+the oldest comictrans it needs; one that asks for a newer build than this
+fails to load with that said plainly, the same as a broken one would.
 
 Chapters can arrive as one file and leave as one: `extract` reads CBZ, CBR
 and PDF by unpacking them into a folder of pages first, and `apply --output

@@ -11,7 +11,12 @@ shape has to change for this to work. It is also the smallest possible
 plugin folder: one file, no siblings, though a plugin is free to have both.
 
 The note's text is configurable — Plugins > Configure Plugins… — which is
-what ``SETTINGS`` below declares.
+what ``SETTINGS`` below declares. ``PLUGIN_VERSION`` and
+``REQUIRES_APP_VERSION`` are both optional; this one declares both to show
+what each looks like. The version is just a label Configure Plugins shows;
+the app version is checked at discovery time and a real gate — comictrans
+older than this bundled copy declares itself needing would refuse to load
+it.
 """
 
 from __future__ import annotations
@@ -22,6 +27,8 @@ from comictrans.model import Plan
 from comictrans.plugins import SettingField
 
 PLUGIN_NAME = "Add a Note to Every Region"
+PLUGIN_VERSION = "1.0.0"
+REQUIRES_APP_VERSION = "1.1.0"
 
 SETTINGS = (
     SettingField(

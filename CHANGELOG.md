@@ -214,6 +214,13 @@ for themselves. See **Build the application** in `README.md`.
   keyboard focus off whatever field a moment ago selecting the region put
   it in, so Esc and Enter reach the mode they are meant for instead of
   landing in the translation as a stray keystroke.
+- **A plugin can declare its own version and the oldest comictrans it
+  needs.** `PLUGIN_VERSION` is a plain string, shown in Configure Plugins
+  and read as nothing else. `REQUIRES_APP_VERSION` is checked at discovery
+  time: a plugin asking for a newer comictrans than this build fails to
+  load, with that said plainly rather than left to guess at — the same
+  `FailedPlugin` a broken one already becomes. Both are optional; a plugin
+  that declares neither behaves exactly as one always has.
 
 ### Known limitations
 

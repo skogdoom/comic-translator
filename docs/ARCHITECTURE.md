@@ -2416,6 +2416,20 @@ already strikes — see `PlanDocument.apply_plugin`, which is `_record(plan,
 run=None)` behind the same no-op check `reorder_images` makes, so a plugin
 whose `run` changes nothing costs no undo step either.
 
+**Two more declarations, both optional, checked differently.**
+`PLUGIN_VERSION` is a plain string a plugin author writes for themselves —
+`plugins.py` reads it as nothing but text, and it surfaces nowhere but
+Configure Plugins, since comictrans has no use for it beyond showing it
+back. `REQUIRES_APP_VERSION` is the opposite: the oldest comictrans this
+plugin claims to work with, and `_check_app_version` holds it to that at
+discovery time, the same gate a malformed `SETTINGS` already goes through.
+Only the release numbers decide — `_release` reads the leading
+dotted-integer run of a version string and drops anything after it, so
+`"1.1.0.dev0"` and `"1.1.0"` compare equal — because comictrans is not on
+PyPI and a full PEP 440 comparator is a dependency this project does not
+otherwise need for one field. A requirement newer than this build, or one
+`_release` cannot parse at all, becomes a `FailedPlugin` naming which.
+
 **A load failure is a value, not a dropped result.** `discover_plugins`
 returns `LoadedPlugin | FailedPlugin` for every folder that ever claimed to
 be one — a `FailedPlugin` names its folder and carries the exception text,

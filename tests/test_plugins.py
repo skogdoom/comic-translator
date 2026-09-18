@@ -397,6 +397,115 @@ def run(plan, settings):
     assert match in failed.error
 
 
+# -- discovery: PLUGIN_VERSION -------------------------------------------
+
+
+def test_a_plugin_with_no_version_declares_none(tmp_path: Path) -> None:
+    _write(tmp_path, "uppercase", UPPERCASE_NOTES)
+
+    plugin = _loaded(plugins.discover_plugins(tmp_path))
+
+    assert plugin.version == ""
+
+
+def test_a_plugin_can_declare_a_version(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "versioned",
+        'PLUGIN_NAME = "Versioned"\nPLUGIN_VERSION = "2.3.1"\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
+    )
+
+    plugin = _loaded(plugins.discover_plugins(tmp_path))
+
+    assert plugin.version == "2.3.1"
+
+
+def test_a_non_string_plugin_version_is_a_failed_plugin(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "malformed",
+        'PLUGIN_NAME = "Malformed"\nPLUGIN_VERSION = 3\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
+    )
+
+    failed = _failed(plugins.discover_plugins(tmp_path))
+
+    assert "PLUGIN_VERSION" in failed.error
+
+
+# -- discovery: REQUIRES_APP_VERSION -------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("running", "required", "should_load"),
+    [
+        ("1.1.0", "1.1.0", True),
+        ("1.2.0", "1.1.0", True),
+        ("1.0.0", "1.1.0", False),
+        # A dev build satisfies the release it is building toward: only the
+        # release numbers decide, comictrans is not on PyPI.
+        ("1.1.0.dev0", "1.1.0", True),
+        # A short version is padded with zeros, not treated as smaller.
+        ("1.1", "1.1.0", True),
+        ("1.1.0", "1.1", True),
+    ],
+    ids=[
+        "equal",
+        "newer",
+        "older",
+        "dev-satisfies-its-own-release",
+        "short-running",
+        "short-required",
+    ],
+)
+def test_app_version_is_checked_at_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    running: str,
+    required: str,
+    should_load: bool,
+) -> None:
+    monkeypatch.setattr(plugins, "__version__", running)
+    _write(
+        tmp_path,
+        "gated",
+        f'PLUGIN_NAME = "Gated"\nREQUIRES_APP_VERSION = "{required}"\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
+    )
+
+    found = plugins.discover_plugins(tmp_path)
+
+    if should_load:
+        assert isinstance(found[0], LoadedPlugin)
+    else:
+        failed = _failed(found)
+        assert required in failed.error
+        assert running in failed.error
+
+
+def test_a_plugin_with_no_requirement_loads_on_any_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(plugins, "__version__", "0.0.1")
+    _write(tmp_path, "uppercase", UPPERCASE_NOTES)
+
+    assert isinstance(_loaded(plugins.discover_plugins(tmp_path)), LoadedPlugin)
+
+
+def test_a_malformed_app_version_requirement_is_a_failed_plugin(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "malformed",
+        'PLUGIN_NAME = "Malformed"\nREQUIRES_APP_VERSION = "banana"\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
+    )
+
+    failed = _failed(plugins.discover_plugins(tmp_path))
+
+    assert "REQUIRES_APP_VERSION" in failed.error
+
+
 # -- running one ------------------------------------------------------------
 
 
