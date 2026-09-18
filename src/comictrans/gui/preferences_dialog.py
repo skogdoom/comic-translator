@@ -41,12 +41,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import translations
+from . import erase_choices, translations
 from .extract_dialog import ENGINE_CHOICES
 from .font_box import FontBox
 from .note import Note
 from .preferences import ON, Preferences
-from .render_dialog import FORMAT_CHOICES, STRATEGY_CHOICES
+from .render_dialog import FORMAT_CHOICES
 
 WHAT_IT_IS = QCoreApplication.translate(
     "PreferencesDialog",
@@ -230,7 +230,7 @@ class PreferencesDialog(QDialog):
         output_widget.setLayout(output_row)
 
         self._erase = QComboBox()
-        for label, value, _description in STRATEGY_CHOICES:
+        for label, value, _description in erase_choices.STRATEGIES:
             self._erase.addItem(label, value)
         self._erase.setCurrentIndex(self._erase.findData(preferences.erase_strategy))
 
@@ -295,7 +295,7 @@ class PreferencesDialog(QDialog):
         form.addRow(_spacer())
         form.addRow(_section(self.tr("rendering pages")))
         form.addRow(self.tr("write pages to"), output_widget)
-        form.addRow(self.tr("erase"), self._erase)
+        form.addRow(erase_choices.ERASE_FIELD, self._erase)
         form.addRow(self.tr("format"), self._format)
         form.addRow(_spacer())
         form.addRow(_section(self.tr("this window")))

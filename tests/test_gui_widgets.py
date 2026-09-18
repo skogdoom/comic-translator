@@ -68,7 +68,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from comictrans.gui import about, extract_dialog, logfile, main_window, render_dialog, run_job
+from comictrans.gui import (
+    about,
+    erase_choices,
+    extract_dialog,
+    logfile,
+    main_window,
+    render_dialog,
+    run_job,
+)
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
@@ -98,6 +106,7 @@ from comictrans.gui.render_dialog import (
     NO_RAR_HERE,
     RENDER,
     SAVE_AND_RENDER,
+    STRATEGY_CHOICES,
     RenderDialog,
     suggested_output,
 )
@@ -3567,6 +3576,43 @@ def test_a_drawn_region_arrives_set_to_fill_itself(qapp: object, two_page_plan: 
 
     assert window.document.region(window._current_region).erase is Erase.POLYGON  # type: ignore[union-attr, arg-type]
     assert window._inspector._erase.currentText() == "the whole region"
+
+
+# -- the words the three erase boxes share ------------------------------------
+
+
+def test_every_erase_mode_has_a_name_in_the_boxes_that_offer_them() -> None:
+    """A new ``Erase`` member must not be able to arrive unnamed.
+
+    Three boxes offer this — the inspector's, the render dialog's and the
+    preferences' — and all three read ``erase_choices``. A mode added to the
+    model with no row here would simply not be offered, which is the quiet
+    kind of missing.
+    """
+    named = {mode for _label, mode, _hint in erase_choices.CHOICES}
+
+    assert named == set(Erase), "every Erase member needs a row, and no row may invent one"
+
+
+def test_the_three_boxes_describe_the_four_modes_in_the_same_words() -> None:
+    """The contract the module exists for, pinned so a re-split fails.
+
+    These were written out at each of the three, which let a reword in one
+    leave the other two saying something else — and handed a translator the
+    same sentences twice, with no way to notice they were the same.
+    """
+    inspector_rows = {(label, str(mode), hint) for label, mode, hint in ERASE_CHOICES if mode}
+    render_rows = set(STRATEGY_CHOICES)
+
+    assert inspector_rows == render_rows
+    assert render_rows == set(erase_choices.STRATEGIES)
+
+
+def test_the_inspector_alone_offers_following_the_run() -> None:
+    """A region may decline to decide; a run has nothing to decline to."""
+    assert ERASE_CHOICES[0][1] is None
+    assert all(mode is not None for _label, mode, _hint in ERASE_CHOICES[1:])
+    assert all(value for _label, value, _hint in STRATEGY_CHOICES)
 
 
 # -- the preview toggle -------------------------------------------------------

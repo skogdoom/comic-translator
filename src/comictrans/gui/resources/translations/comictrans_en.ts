@@ -4,7 +4,7 @@
 <context>
     <name>ExtractDialog</name>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="427"/>
+        <location filename="../../extract_dialog.py" line="418"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n page</numerusform>
@@ -145,7 +145,7 @@
 <context>
     <name>RenderDialog</name>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="266"/>
+        <location filename="../../render_dialog.py" line="244"/>
         <source>%n region(s)</source>
         <translation>
             <numerusform>%n region</numerusform>
@@ -153,7 +153,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="268"/>
+        <location filename="../../render_dialog.py" line="246"/>
         <source>Saves the plan, then renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Saves the plan, then renders %n page and {0}.</numerusform>
@@ -161,7 +161,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../render_dialog.py" line="271"/>
+        <location filename="../../render_dialog.py" line="249"/>
         <source>Renders %n page(s) and {0}.</source>
         <translation>
             <numerusform>Renders %n page and {0}.</numerusform>
