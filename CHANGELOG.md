@@ -10,6 +10,11 @@ any machine but the one that built it. A release is therefore the repository
 at a tag, a documented build command, and an application each person makes
 for themselves. See **Build the application** in `README.md`.
 
+## 1.2.0 — unreleased
+
+Where a shipped milestone earns its line, until there is a release to put it
+in. Nothing yet.
+
 ## 1.1.0 — 2026-09-18
 
 A chapter now goes in and comes out as one file, the window speaks Swedish,

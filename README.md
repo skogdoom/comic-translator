@@ -53,7 +53,8 @@ would any other script you did not write yourself.
 
 ## Status
 
-**Released: 1.1.0**, and this tree is it. All three passes are
+**Released: 1.1.0. This tree: 1.2.0.dev0**, which is work since that release
+rather than a version anybody builds from on purpose. All three passes are
 here and in use: `extract` writes a plan file, `apply` renders translated
 pages from it, and `review` opens a plan beside the pages it describes.
 `CHANGELOG.md` says what a release means here — there is no download, and the
