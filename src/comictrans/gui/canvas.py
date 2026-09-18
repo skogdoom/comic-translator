@@ -502,6 +502,14 @@ class PageCanvas(QGraphicsView):
         different things: dragging inside a region is also how you pan the
         page, so without a mode to be in, reaching for the page would
         sometimes move a balloon instead, and quietly.
+
+        Entering any mode but select also takes keyboard focus. Every one of
+        them is driven from here — Escape cancels reshaping, drawing and
+        picking, Enter also finishes reshaping and drawing — and the toggle
+        that turns a mode on is a menu item or a shortcut, reached without
+        ever clicking the page. Without this, a translation focused from
+        selecting the region a moment ago would keep the keyboard, and Esc or
+        Enter would land in it instead of reaching the mode it was meant for.
         """
         if mode == self._mode:
             return
@@ -521,6 +529,8 @@ class PageCanvas(QGraphicsView):
             if mode is CanvasMode.MERGE
             else Qt.CursorShape.ArrowCursor
         )
+        if mode is not CanvasMode.SELECT:
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
         self.mode_changed.emit(str(mode))
 
     # -- drawing a new region ---------------------------------------------

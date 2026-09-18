@@ -209,7 +209,11 @@ for themselves. See **Build the application** in `README.md`.
 - **Enter finishes reshaping a region, the same as it already finished
   drawing one.** Edit Region Shape had no keyboard way to turn itself back
   off; every edit it makes is already on the region as it is made, so there
-  is nothing left for Enter to do but leave the mode.
+  is nothing left for Enter to do but leave the mode. Turning on a tool
+  mode — Edit Region Shape, Add Region, Merge Region — now also takes
+  keyboard focus off whatever field a moment ago selecting the region put
+  it in, so Esc and Enter reach the mode they are meant for instead of
+  landing in the translation as a stray keystroke.
 
 ### Known limitations
 

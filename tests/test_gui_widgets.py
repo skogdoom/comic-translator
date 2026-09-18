@@ -2964,6 +2964,54 @@ def test_enter_finishes_reshaping_the_same_way_add_region_finishes_drawing(
     assert not window._edit_shape_action.isChecked()
 
 
+@pytest.mark.parametrize(
+    "action_name,expected_mode",
+    [
+        ("_edit_shape_action", CanvasMode.RESHAPE),
+        ("_add_region_action", CanvasMode.DRAW),
+        ("_merge_action", CanvasMode.MERGE),
+    ],
+    ids=["reshape", "draw", "merge"],
+)
+def test_entering_a_tool_mode_takes_focus_off_a_text_field(
+    qapp: object, two_page_plan: Path, action_name: str, expected_mode: CanvasMode
+) -> None:
+    """Selecting a region focuses the translation; turning on a tool mode
+    should not leave it there — Esc and Enter are how each mode is left, and
+    both are the canvas's own keys, not the field's."""
+    window = _shown_window(two_page_plan)
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is window._inspector._translation, "sanity"
+
+    getattr(window, action_name).setChecked(True)
+
+    assert window._canvas.mode is expected_mode, "sanity"
+    assert QApplication.focusWidget() is window._canvas
+
+
+def test_enter_finishes_reshaping_even_when_the_translation_field_had_focus(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The bug as reported: selecting a region focuses the translation, so
+    turning on Edit Region Shape right after — without clicking the page
+    first — left Enter landing in the field as a newline instead of
+    reaching the canvas."""
+    window = _shown_window(two_page_plan)
+    window._canvas.region_selected.emit("page-001-001")
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is window._inspector._translation, "sanity"
+
+    window._edit_shape_action.setChecked(True)
+    QApplication.processEvents()
+
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Return)
+
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._edit_shape_action.isChecked()
+    assert "\n" not in window._inspector._translation.toPlainText()
+
+
 def test_enter_mid_drag_does_not_interrupt_the_drag(qapp: object, two_page_plan: Path) -> None:
     window = _shown_window(two_page_plan)
     canvas = window._canvas
