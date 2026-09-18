@@ -49,9 +49,10 @@ regions they do have, and the plan is a version 2 one from then on.
   `collect_inputs`, so that a `.cbz` handed to a pass that reads folders is
   told what to do with it rather than shown a list of extensions.
 - `pack` turns images back into a container and is `sources`' mirror. It
-  imports `sources` for the two names `ZIP` and `RAR` and nothing else — the
-  two modules share what a kind *is* and agree on nothing about how to decide
-  it, which is the point: see "Chapters written as one file".
+  imports `sources` for what a kind *is* — the names `ZIP` and `RAR`, and the
+  extensions that spell them — and for nothing about how to decide one, which
+  is the point: reading asks the file's first bytes and writing has only a
+  name to go on. See "Chapters written as one file".
 
 That is not tidiness for its own sake. It means the review GUI's
 `gui.document` — the module that loads a plan, tracks edits, and saves —

@@ -1,6 +1,8 @@
 """Exception hierarchy.
 
-Every error the CLI is expected to survive derives from :class:`ComictransError`.
+Every error a front end is expected to survive derives from
+:class:`ComictransError`: the command line turns one into an exit code and a
+message, and the review window into an alert or a line in the run panel.
 Anything else escaping to the top level is a bug and gets a traceback.
 """
 
@@ -14,7 +16,12 @@ class ComictransError(Exception):
 
 
 class InputError(ComictransError):
-    """Bad CLI input: missing path, unreadable image, unsafe output directory."""
+    """Bad input: missing path, unreadable image, unsafe output directory.
+
+    Whichever front end supplied it. The refusals here are the pipeline's own
+    and are worded for either — an output directory inside the source tree
+    reads the same in a terminal and in the render dialog.
+    """
 
 
 class PlanError(ComictransError):

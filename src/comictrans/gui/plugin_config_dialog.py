@@ -102,22 +102,7 @@ class PluginConfigDialog(QDialog):
             self._show_nothing_installed()
 
     def _clear_detail(self) -> None:
-        while self._detail.count():
-            item = self._detail.takeAt(0)
-            if item is None:  # count() just said otherwise
-                continue
-            widget = item.widget()
-            if widget is not None:
-                # Detached immediately, not just scheduled for deletion: a
-                # widget only taken off the layout is still this dialog's
-                # child until deleteLater's deferred cleanup actually runs,
-                # so a search for "the" checkbox could still find the one
-                # that belonged to whatever was shown before this.
-                widget.setParent(None)
-                widget.deleteLater()
-            child_layout = item.layout()
-            if child_layout is not None:
-                _clear_layout(child_layout)
+        _clear_layout(self._detail)
 
     def _show_nothing_installed(self) -> None:
         self._clear_detail()
@@ -181,6 +166,18 @@ class PluginConfigDialog(QDialog):
 
 
 def _clear_layout(layout: QLayout) -> None:
+    """Empty a layout of its widgets and of any layout nested in it.
+
+    There were two of these, one on the dialog and one here, and only the
+    dialog's recursed — so a widget two layouts deep would have survived the
+    row being deselected. Nothing nests that deep today; the point is that
+    the two copies had already come to disagree about what clearing means.
+
+    Widgets are detached immediately, not just scheduled for deletion: one
+    only taken off the layout is still its parent's child until
+    ``deleteLater``'s deferred cleanup actually runs, so a search for "the"
+    checkbox could still find the one belonging to whatever was shown before.
+    """
     while layout.count():
         item = layout.takeAt(0)
         if item is None:  # count() just said otherwise
@@ -189,6 +186,9 @@ def _clear_layout(layout: QLayout) -> None:
         if widget is not None:
             widget.setParent(None)
             widget.deleteLater()
+        nested = item.layout()
+        if nested is not None:
+            _clear_layout(nested)
 
 
 __all__ = ["PluginConfigDialog"]
