@@ -1018,29 +1018,34 @@
 <context>
     <name>PluginConfigDialog</name>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="68"/>
+        <location filename="../../plugin_config_dialog.py" line="70"/>
         <source>Configure Plugins</source>
         <translation>Konfigurera tillägg</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="122"/>
+        <location filename="../../plugin_config_dialog.py" line="124"/>
         <source>No plugins are installed.</source>
         <translation>Inga tillägg är installerade.</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="140"/>
+        <location filename="../../plugin_config_dialog.py" line="142"/>
         <source>{0} could not be loaded:
 {1}</source>
         <translation>{0} kunde inte läsas in:
 {1}</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="147"/>
+        <location filename="../../plugin_config_dialog.py" line="150"/>
+        <source>Version {0}</source>
+        <translation>Version {0}</translation>
+    </message>
+    <message>
+        <location filename="../../plugin_config_dialog.py" line="153"/>
         <source>Active</source>
         <translation>Aktiv</translation>
     </message>
     <message>
-        <location filename="../../plugin_config_dialog.py" line="164"/>
+        <location filename="../../plugin_config_dialog.py" line="170"/>
         <source>Nothing to configure.</source>
         <translation>Inget att konfigurera.</translation>
     </message>

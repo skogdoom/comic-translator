@@ -567,6 +567,78 @@ def test_a_settings_field_is_wider_than_a_plain_line_edit(
     assert edit.minimumWidth() > QLineEdit().minimumSizeHint().width()
 
 
+def test_a_plugins_version_is_shown_in_the_dialog(
+    qapp: object, _empty_plugin_directory: Path
+) -> None:
+    from PySide6.QtWidgets import QLabel
+
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    _write(
+        _empty_plugin_directory,
+        "versioned",
+        'PLUGIN_NAME = "Versioned"\nPLUGIN_VERSION = "2.3.1"\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
+    )
+    window = MainWindow()
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+    row = next(
+        row for row in range(dialog._list.count()) if dialog._list.item(row).text() == "Versioned"
+    )
+    dialog._list.setCurrentRow(row)
+
+    detail = dialog._detail.itemAt(0).widget()
+    assert isinstance(detail, QLabel)
+    assert "2.3.1" in detail.text()
+
+
+def test_a_plugin_with_no_version_shows_no_version_line(
+    qapp: object, _empty_plugin_directory: Path
+) -> None:
+    from PySide6.QtWidgets import QCheckBox
+
+    from comictrans.gui.plugin_config_dialog import PluginConfigDialog
+
+    _write(_empty_plugin_directory, "uppercase", UPPERCASE_NOTES)
+    window = MainWindow()
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    dialog = PluginConfigDialog(window._settings, window._plugins, window)
+    row = next(
+        row
+        for row in range(dialog._list.count())
+        if dialog._list.item(row).text() == "Uppercase Notes"
+    )
+    dialog._list.setCurrentRow(row)
+
+    detail = dialog._detail.itemAt(0).widget()
+    assert isinstance(detail, QCheckBox), "no version declared, so Active is the first thing shown"
+
+
+def test_a_plugin_requiring_a_newer_app_version_fails_to_load(
+    qapp: object, _empty_plugin_directory: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window's side of the gate itself: covered without Qt in test_plugins.py."""
+    monkeypatch.setattr(plugins, "__version__", "1.0.0")
+    _write(
+        _empty_plugin_directory,
+        "toonew",
+        'PLUGIN_NAME = "Too New"\nREQUIRES_APP_VERSION = "9.0.0"\n\n\n'
+        "def run(plan, settings):\n    return plan\n",
+    )
+    window = MainWindow()
+
+    window._on_preferences_changed(Preferences(experimental="yes"))
+
+    assert not any(p.name == "Too New" for p in window._plugins if isinstance(p, LoadedPlugin))
+    failed = next(
+        p for p in window._plugins if not isinstance(p, LoadedPlugin) and p.path.name == "toonew"
+    )
+    assert "9.0.0" in failed.error
+
+
 def test_a_failed_plugin_shows_its_error_instead_of_settings(
     qapp: object, _empty_plugin_directory: Path
 ) -> None:

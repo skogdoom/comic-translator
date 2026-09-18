@@ -17,6 +17,15 @@ and declares two names at module level::
     PLUGIN_NAME = "..."
     def run(plan: Plan, settings: dict[str, str]) -> Plan: ...
 
+Two more are optional. ``PLUGIN_VERSION`` is a plain string, shown in
+Configure Plugins and read as nothing but text — comictrans does not compare
+it to anything. ``REQUIRES_APP_VERSION`` is: the oldest comictrans a plugin
+declares itself to work with, checked at discovery time against this
+build's own version. A plugin that asks for a newer one than this becomes a
+:class:`FailedPlugin`, the same as a missing ``PLUGIN_NAME`` would — running
+a plugin written against an interface this build does not have is not a
+risk worth taking silently.
+
 ``run`` gets the plan as it stands, and the plugin's own settings resolved
 to their current values — see :class:`SettingField` for how a plugin
 declares what it takes, and ``gui.plugin_settings`` for where a value a
@@ -42,12 +51,14 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import re
 import sys
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import __version__
 from .errors import PluginError
 from .model import Plan
 
@@ -125,6 +136,10 @@ class LoadedPlugin:
     """What this plugin lets a person configure, in declaration order.
     Empty for a plugin with nothing to set — ``run`` still takes a
     ``settings`` dict, just an empty one."""
+    version: str = ""
+    """The plugin's own ``PLUGIN_VERSION``, or empty if it declared none.
+    Text only — nothing here compares it to anything, which is
+    ``REQUIRES_APP_VERSION`` and the running comictrans, not this."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,12 +218,79 @@ def _load_one(folder: Path) -> LoadedPlugin | FailedPlugin | None:
         del sys.modules[module_name]
         return FailedPlugin(folder, "missing PLUGIN_NAME or run()")
 
+    version, error = _read_version(module)
+    if error is not None:
+        del sys.modules[module_name]
+        return FailedPlugin(folder, error)
+
+    error = _check_app_version(module)
+    if error is not None:
+        del sys.modules[module_name]
+        return FailedPlugin(folder, error)
+
     settings, error = _read_settings(module)
     if error is not None:
         del sys.modules[module_name]
         return FailedPlugin(folder, error)
 
-    return LoadedPlugin(name=name, path=folder, run=run, settings=settings)
+    return LoadedPlugin(name=name, path=folder, run=run, settings=settings, version=version)
+
+
+def _read_version(module: object) -> tuple[str, str | None]:
+    """The plugin's own ``PLUGIN_VERSION``, or an error naming what was wrong.
+
+    Absent is fine, the empty string a plugin that never declared one also
+    gets. Present and not a string is not, the same standard ``PLUGIN_NAME``
+    is held to — this is shown as text in Configure Plugins, and nothing
+    here can show what is not one.
+    """
+    declared = getattr(module, "PLUGIN_VERSION", "")
+    if not isinstance(declared, str):
+        return "", "PLUGIN_VERSION must be a string"
+    return declared, None
+
+
+_RELEASE = re.compile(r"\d+(?:\.\d+)*")
+
+
+def _release(text: str) -> tuple[int, ...] | None:
+    """The leading dotted-integer release segment of a version string.
+
+    ``"1.2.0"`` is ``(1, 2, 0)``; ``"1.2.0.dev0"`` is the same tuple, since
+    only the release numbers decide compatibility here — comictrans is not
+    on PyPI, and a full PEP 440 comparison is a dependency this project does
+    not otherwise need for one field.
+    """
+    match = _RELEASE.match(text.strip())
+    return None if match is None else tuple(int(part) for part in match.group().split("."))
+
+
+def _at_least(actual: tuple[int, ...], required: tuple[int, ...]) -> bool:
+    """Whether ``actual`` is ``required`` or newer, treating a short tuple as
+    padded with zeros — ``(1, 2)`` and ``(1, 2, 0)`` compare equal."""
+    width = max(len(actual), len(required))
+    return actual + (0,) * (width - len(actual)) >= required + (0,) * (width - len(required))
+
+
+def _check_app_version(module: object) -> str | None:
+    """``None`` if this build satisfies ``REQUIRES_APP_VERSION``, an error if not.
+
+    Unset, empty, or not a string at all is not a requirement — a plugin
+    that never declared one runs on any build, the same as one that never
+    declared ``SETTINGS`` has none to configure. Checked at discovery, not
+    every run: a plugin too new for this build is a load failure, the same
+    kind ``FailedPlugin`` already reports a broken one as.
+    """
+    declared = getattr(module, "REQUIRES_APP_VERSION", "")
+    if not isinstance(declared, str) or not declared.strip():
+        return None
+    required = _release(declared)
+    if required is None:
+        return f"REQUIRES_APP_VERSION {declared!r} could not be understood"
+    running = _release(__version__)
+    if running is None or not _at_least(running, required):
+        return f"requires comictrans {declared} or newer, this build is {__version__}"
+    return None
 
 
 def _read_settings(module: object) -> tuple[tuple[SettingField, ...], str | None]:
