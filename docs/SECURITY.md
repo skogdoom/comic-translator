@@ -90,7 +90,8 @@ of the three installed.
 
 ## The code reading
 
-Done against 1.1.0.dev0, over all 75 modules under `src/comictrans`. What
+Done against the tree that became 1.1.0, over all 75 modules under
+`src/comictrans`. What
 follows is what it found, in the order it is worth knowing.
 
 ### One thing was changed

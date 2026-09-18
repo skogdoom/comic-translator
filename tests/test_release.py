@@ -34,9 +34,10 @@ LIMITATION = re.compile(r"^- \*\*(.+?)\*\* —", re.MULTILINE)
 def _version_under_development() -> str:
     """The release a ``.devN`` version is working towards, or the version itself.
 
-    ``1.1.0.dev0`` is not a thing anyone releases; it is the mark that this
-    tree is past 1.0.0 and not yet 1.1.0. The notes it accumulates go under
-    the release it is heading for.
+    A ``.devN`` version is not a thing anyone releases: it marks a tree past
+    one release and not yet at the next, and the notes it accumulates go
+    under the release it is heading for. A tree at a plain version is that
+    release, and the heading is its own.
     """
     return comictrans.__version__.partition(".dev")[0]
 
