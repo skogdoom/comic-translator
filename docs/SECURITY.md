@@ -76,14 +76,17 @@ bundler out of `dev`.
 
 ### What it said on 2026-09-18
 
-All eighteen packages the lock pins: **no known vulnerabilities**. Run on
-Linux and, in the form it had that morning, on macOS.
+All eighteen packages the lock pins: **no known vulnerabilities**. Confirmed
+on both Linux and macOS, 18 of 18 each, which is the point of the markers
+coming off — the two machines now give the same answer.
 
-That first macOS run is what found the `packaging` case. With the resolver
-still on, Linux covered 12 of 18 and the Mac 17 of 18 — and the one left over
-was not a platform gap at all but the auditor shadowing what it was auditing,
-which is what the count existing at all is for. The external binaries on that
-Mac: none of the three installed.
+Getting there took three runs and the macOS one is why. With the resolver
+still on, Linux covered 12 of 18 and looked like a platform story; the Mac
+covered 17 of 18, and the single package left over was not a platform gap at
+all but the auditor shadowing what it was auditing. One run on the other
+machine is what separated the two causes, and neither could have been found
+by reading the output of the other. The external binaries on that Mac: none
+of the three installed.
 
 ## The code reading
 
