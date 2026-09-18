@@ -2950,6 +2950,41 @@ def test_escape_abandons_a_drag_and_leaves_the_region_alone(
     assert not window.isWindowModified()
 
 
+def test_enter_finishes_reshaping_the_same_way_add_region_finishes_drawing(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+    assert canvas.mode is CanvasMode.RESHAPE
+
+    QTest.keyClick(canvas, Qt.Key.Key_Return)
+
+    assert canvas.mode is CanvasMode.SELECT
+    assert not window._edit_shape_action.isChecked()
+
+
+def test_enter_mid_drag_does_not_interrupt_the_drag(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._edit_shape_action.setChecked(True)
+
+    start = canvas.mapFromScene(canvas._handles[0].pos())
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(canvas.viewport(), start + QPoint(30, 30))
+    dragged = canvas.polygon_of("page-001-001")
+    assert dragged != window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+
+    QTest.keyClick(canvas, Qt.Key.Key_Return)
+    assert canvas.mode is CanvasMode.RESHAPE, "still reshaping — the drag was not cut short"
+    assert canvas.polygon_of("page-001-001") == dragged, (
+        "and the shape it had mid-drag is unchanged"
+    )
+
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=start + QPoint(30, 30))
+    assert window.document.region("page-001-001").polygon == dragged  # type: ignore[union-attr]
+
+
 def test_a_shape_the_reader_would_refuse_is_put_back(qapp: object, two_page_plan: Path) -> None:
     window = _shown_window(two_page_plan)
     before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
