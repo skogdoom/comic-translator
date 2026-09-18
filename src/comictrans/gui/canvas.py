@@ -183,7 +183,8 @@ MODE_HINTS: dict[CanvasMode, str] = {
     CanvasMode.RESHAPE: QCoreApplication.translate(
         "Canvas",
         "drag a corner to reshape · drag inside or use the arrow keys to move · "
-        "double-click an edge to add a corner or a corner to remove it · Esc cancels",
+        "double-click an edge to add a corner or a corner to remove it · Esc cancels · "
+        "Enter finishes",
     ),
     CanvasMode.DRAW: QCoreApplication.translate(
         "Canvas",
@@ -501,6 +502,14 @@ class PageCanvas(QGraphicsView):
         different things: dragging inside a region is also how you pan the
         page, so without a mode to be in, reaching for the page would
         sometimes move a balloon instead, and quietly.
+
+        Entering any mode but select also takes keyboard focus. Every one of
+        them is driven from here — Escape cancels reshaping, drawing and
+        picking, Enter also finishes reshaping and drawing — and the toggle
+        that turns a mode on is a menu item or a shortcut, reached without
+        ever clicking the page. Without this, a translation focused from
+        selecting the region a moment ago would keep the keyboard, and Esc or
+        Enter would land in it instead of reaching the mode it was meant for.
         """
         if mode == self._mode:
             return
@@ -520,6 +529,8 @@ class PageCanvas(QGraphicsView):
             if mode is CanvasMode.MERGE
             else Qt.CursorShape.ArrowCursor
         )
+        if mode is not CanvasMode.SELECT:
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
         self.mode_changed.emit(str(mode))
 
     # -- drawing a new region ---------------------------------------------
@@ -1035,11 +1046,15 @@ class PageCanvas(QGraphicsView):
         event.accept()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
-        """Escape abandons what is half-done; drawing also takes Enter and Backspace.
+        """Escape abandons what is half-done; drawing and reshaping also take Enter.
 
         Escape leaves a dragged shape as it was and throws away a half-drawn
         outline — in both cases the plan is untouched, because neither has
-        reached it yet.
+        reached it yet. Enter closes a half-drawn outline the same way
+        clicking its first corner does, and, in reshape mode, is the
+        keyboard's way of turning Edit Region Shape back off — every edit it
+        made is already on the region, the same as it would be leaving the
+        mode any other way, so there is nothing left for Enter to commit.
         """
         key = event.key()
         base = NUDGE_STRIDE if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else NUDGE_STEP
@@ -1067,6 +1082,14 @@ class PageCanvas(QGraphicsView):
             event.accept()
             return
         if key == Qt.Key.Key_Escape and self._mode in (CanvasMode.PICK, CanvasMode.MERGE):
+            self.set_mode(CanvasMode.SELECT)
+            event.accept()
+            return
+        if (
+            key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+            and self._mode is CanvasMode.RESHAPE
+            and self._drag is None
+        ):
             self.set_mode(CanvasMode.SELECT)
             event.accept()
             return

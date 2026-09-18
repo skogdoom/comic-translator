@@ -43,21 +43,21 @@
     </message>
     <message>
         <location filename="../../canvas.py" line="183"/>
-        <source>drag a corner to reshape · drag inside or use the arrow keys to move · double-click an edge to add a corner or a corner to remove it · Esc cancels</source>
-        <translation>dra i ett hörn för att ändra form · dra inuti eller använd piltangenterna för att flytta · dubbelklicka på en kant för att lägga till ett hörn, eller på ett hörn för att ta bort det · Esc avbryter</translation>
+        <source>drag a corner to reshape · drag inside or use the arrow keys to move · double-click an edge to add a corner or a corner to remove it · Esc cancels · Enter finishes</source>
+        <translation>dra i ett hörn för att ändra form · dra inuti eller använd piltangenterna för att flytta · dubbelklicka på en kant för att lägga till ett hörn, eller på ett hörn för att ta bort det · Esc avbryter · Enter avslutar</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="188"/>
+        <location filename="../../canvas.py" line="189"/>
         <source>click to place each corner · click the first again, double-click or Enter to close it · Backspace takes one back · Esc cancels</source>
         <translation>klicka för att placera varje hörn · klicka på det första igen, dubbelklicka eller tryck Enter för att sluta den · Backsteg tar tillbaka ett · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="193"/>
+        <location filename="../../canvas.py" line="194"/>
         <source>click the region to merge the selected one with · Esc cancels</source>
         <translation>klicka på regionen som den valda ska sammanfogas med · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="196"/>
+        <location filename="../../canvas.py" line="197"/>
         <source>click a colour on the page · Esc cancels</source>
         <translation>klicka på en färg på sidan · Esc avbryter</translation>
     </message>
