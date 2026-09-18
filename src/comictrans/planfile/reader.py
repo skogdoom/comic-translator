@@ -27,6 +27,7 @@ from ..model import (
     Region,
     TextCase,
     polygon_is_simple,
+    source_path,
 )
 from ..util import sha256_file
 from .schema import (
@@ -407,9 +408,8 @@ def image_problems(plan: Plan, plan_path: Path) -> Iterator[tuple[str, str]]:
     what loading a plan in order to render it wants — and lazily, so that
     stopping there still means not hashing the pages after it.
     """
-    base = plan_path.parent
     for image in plan.images:
-        resolved = (base / image.name).resolve()
+        resolved = source_path(plan_path, image.name)
         if not resolved.is_file():
             yield image.name, f"source image not found: {image.name} (resolved to {resolved})"
             continue

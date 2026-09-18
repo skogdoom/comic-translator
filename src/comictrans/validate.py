@@ -34,7 +34,7 @@ from pathlib import Path
 from .errors import ComictransError, PlanError
 from .fonts import resolve
 from .imaging import page_size
-from .model import Plan
+from .model import Plan, source_path
 from .planfile import image_problems, load_plan
 
 
@@ -133,9 +133,8 @@ def _page_sizes(plan: Plan, plan_path: Path) -> dict[str, tuple[int, int]]:
     in different words is what this module exists not to do.
     """
     sizes: dict[str, tuple[int, int]] = {}
-    base = plan_path.parent
     for image in plan.images:
-        size = page_size(base / image.name)
+        size = page_size(source_path(plan_path, image.name))
         if size is not None:
             sizes[image.name] = size
     return sizes
