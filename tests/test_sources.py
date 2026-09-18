@@ -674,8 +674,11 @@ def test_a_pdf_that_is_not_a_pdf_says_so(tmp_path: Path) -> None:
 
 
 class _FakeRarInfo:
-    def __init__(self, filename: str, directory: bool = False, link: bool = False) -> None:
+    def __init__(
+        self, filename: str, directory: bool = False, link: bool = False, file_size: int = 0
+    ) -> None:
         self.filename = filename
+        self.file_size = file_size
         self._directory = directory
         self._link = link
 
@@ -708,7 +711,12 @@ class _FakeRarFile:
         return None
 
     def infolist(self) -> list[_FakeRarInfo]:
-        return [_FakeRarInfo(name, link=name.endswith(".link.png")) for name in self.entries]
+        # file_size from the bytes it will hand back, the way a real archive's
+        # header describes what is in it — see sources.MAX_PAGE_BYTES.
+        return [
+            _FakeRarInfo(name, link=name.endswith(".link.png"), file_size=len(data))
+            for name, data in self.entries.items()
+        ]
 
     def read(self, info: _FakeRarInfo) -> bytes:
         return self.entries[info.filename]

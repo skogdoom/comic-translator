@@ -18,8 +18,11 @@ alter one of those behaviours, stop and say so rather than folding the fix in.
 
 It is a different list from **Known weak points on real scans** in
 `docs/ARCHITECTURE.md`, which is about what detection does badly on real
-pages. That one describes the state of the art here; `known-bugs.md`
-describes choices.
+pages, and from `docs/SECURITY.md`, which is what an untrusted chapter or
+plan file is allowed to do. That first one describes the state of the art
+here; `known-bugs.md` describes choices; `docs/SECURITY.md` describes a
+reading that was done, and is the thing to read before changing how an
+archive is unpacked, a plan is parsed, or a plugin is loaded.
 
 ## Invariants
 
@@ -43,7 +46,12 @@ Spec, not preference. Breaking one of these is never a refactor:
   window ▸ experimental features) and always third-party code the user chose
   to install. `plugins.py` itself makes no network call and never touches
   the network on a plugin's behalf, but nothing stops a plugin's own code
-  from doing so — see the disclaimer in `README.md`.
+  from doing so — see the disclaimer in `README.md`. This invariant is the
+  one that had nothing holding it; it now has two checks, in
+  `tests/test_security.py`. Nothing under `src/comictrans` may import a
+  module that speaks to another machine, and both passes run end to end with
+  `socket` unusable. An installed plugin is outside both, as it is outside
+  the invariant.
 - Emphasis renders as bold, never italic. A bold face is never synthesised and
   the oblique face is never used.
 - A font is never silently substituted for the one the plan file names.
@@ -59,10 +67,14 @@ uv run ruff format .       # format
 uv run mypy                # strict, over src/comictrans
 ```
 
-All four are expected to pass before a commit. Thresholds and guards in
-`config.py` are tuned against the pages in `tests/fixtures/`; if you change
-one, re-run detection across every fixture and say what moved, rather than
-trusting the suite alone to catch it.
+All four are expected to pass before a commit. There is a fifth, which is
+not one of them: `uv run --with pip-audit tools/audit_dependencies.py` checks
+the locked dependencies against published advisories. It uses the network, so
+it is not part of the suite and is not run per commit — see `docs/SECURITY.md`.
+
+Thresholds and guards in `config.py` are tuned against the pages in
+`tests/fixtures/`; if you change one, re-run detection across every fixture
+and say what moved, rather than trusting the suite alone to catch it.
 
 Touching anything under `src/comictrans/gui/` needs PySide6: `uv sync --extra
 gui`. Without it those files still lint and still type-check — mypy falls

@@ -555,6 +555,16 @@ written by then are this chapter's own, which is why stopping late costs
 nothing; a plan file is not an image, so the translation that lives in this
 directory is never mistaken for one.
 
+**An archive entry is not trusted about its own size.** Both formats declare
+what each member unpacks to, and `MAX_PAGE_BYTES` refuses a member claiming
+more than half a gigabyte before anything is decompressed. The declared
+number is worth reading because the unpackers already hold themselves to it,
+so the refusal costs no read; the cap is set several times above the largest
+page anyone scans, so the only thing it catches is a compression bomb —
+measured at 1029:1, which makes a 4MB file a 4GB allocation. Like a resource
+fork or a hidden file, the entry is skipped and named rather than refusing
+the chapter. See `docs/SECURITY.md`.
+
 **A PDF is read as a scan, not rendered as a document.** One photograph per
 page is what a scanned comic is, so the page's image is lifted out byte for
 byte: lossless, no rasteriser, no guess at a DPI, and no resampling of the
@@ -691,8 +701,12 @@ minutes of work and the answer costs nothing to give up front.
 
 That configured path is an executable this code then runs, with arguments
 built in `_pack_rar` and no shell. It is validated as far as "something
-executable is there" and no further, which is the one thing in this project
-worth a second look when a security audit comes.
+executable is there" and no further. The audit looked at it and left it
+there: the person naming the binary is the person running the application,
+and a stricter check refuses an ordinary Homebrew install without stopping
+anybody who can already write to their own `PATH`. What the audit did write
+down is the pair of properties that make the argument list safe, neither of
+which was obvious from reading it — see `docs/SECURITY.md`.
 
 **No ComicInfo.xml, and no metadata of any kind.** It was considered and
 refused. The plan header knows the source and target languages and nothing

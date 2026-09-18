@@ -100,6 +100,29 @@ MIN_PAGE_DPI = 72
 did fill the page, what would it have been scanned at" — a real scan is 150
 to 1200, and a logo on a letter page works out at about twelve."""
 
+MAX_PAGE_BYTES = 512 * 1024 * 1024
+"""How large one page may say it unpacks to before it is not a page.
+
+**A cap on what an archive is allowed to claim, read before anything is
+decompressed.** Both formats declare each member's unpacked size in their
+own header, and both unpackers hold themselves to it — CPython's
+``ZipExtFile`` truncates at ``zinfo.file_size`` (``zipfile/__init__.py``,
+``self._left``) and ``rarfile`` counts down ``self._remain`` from
+``file_size`` the same way — so the declared number is an upper bound
+somebody else is already enforcing, and refusing on it costs no read at all.
+
+Measured on a deflate bomb built for this: 255KB of archive declaring, and
+delivering, 256MB on one member, at 1029:1. Deflate tops out near that
+ratio, so a 4MB file of the same shape is 4GB, read into memory in one
+piece by :func:`_archive_pages` and then written to disk.
+
+Set where no page reaches it. A 600dpi colour scan of a US comic page is
+about 3960x6120, which is 72MB uncompressed and around 40MB as PNG; 1200dpi
+doubles each side and quadruples that. Half a gigabyte is several times the
+largest thing anyone puts in a CBZ and still turns the 4GB case into a line
+in the report.
+"""
+
 
 @dataclass(slots=True)
 class _Notes:
@@ -185,6 +208,10 @@ class _Member(Protocol):
     """What a zip entry and a rar entry have in common, which is enough."""
 
     filename: str
+    file_size: int
+    """What the archive's own header says this unpacks to. A claim, not a
+    measurement — but one the unpacker holds itself to, which is what makes
+    it worth reading. See :data:`MAX_PAGE_BYTES`."""
 
     def is_dir(self) -> bool: ...
 
@@ -229,6 +256,12 @@ def _archive_pages(
         reason = _skip_reason(info.filename)
         if reason is None and not regular(info):
             reason = "a link or a device, not a file"
+        if reason is None and info.file_size > MAX_PAGE_BYTES:
+            reason = (
+                f"it says it unpacks to {info.file_size / 1024 / 1024:,.0f}MB, past the "
+                f"{MAX_PAGE_BYTES // 1024 // 1024}MB a page may be — nothing scanned "
+                "off paper is this size, so this is a compression bomb or a mistake"
+            )
         if reason is not None:
             notes.skipped.append((info.filename, reason))
             continue
