@@ -76,6 +76,13 @@ Thresholds and guards in `config.py` are tuned against the pages in
 `tests/fixtures/`; if you change one, re-run detection across every fixture
 and say what moved, rather than trusting the suite alone to catch it.
 
+**Measure a cause before naming one.** An explanation that sounds right reads
+exactly like one that was checked, and once it is in a commit message or a
+docstring it is believed. One command before the claim, not after somebody
+re-derives it: the dependency audit named the wrong cause twice before anyone
+ran the thing that showed `pip-audit` depends on the very package it was
+failing to audit.
+
 Touching anything under `src/comictrans/gui/` needs PySide6: `uv sync --extra
 gui`. Without it those files still lint and still type-check — mypy falls
 back to treating PySide6 as untyped rather than failing outright, deliberately
