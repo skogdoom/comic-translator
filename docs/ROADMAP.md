@@ -59,7 +59,10 @@ one section can refer to another without ambiguity.
 | 4.27 | Lock a region | M |
 | 16 | Languages by name, not by code | M |
 | 17 | A shape palette for drawing a region | M |
+| 26 | Rotate a region | M |
 | 18 | Chapter metadata in the plan | M |
+| 27 | Rotated text | M |
+| 28 | Sound effects, lettered over the artwork | M |
 | 19 | ComicInfo.xml, read and written | M |
 | 20 | EPUB output | L |
 | 6 | PDF output | L |
@@ -86,6 +89,23 @@ old shape. Done separately that is two bumps and two migrations for one idea;
 done once first, 19 and 20 are each a file format wrapped around a header
 that already holds the answers. 6 sits with them because it is the third
 member of the same family and the least urgent of the three.
+
+**Four things now want `PLAN_VERSION` 4, and that is this file's one real
+sequencing problem.** 4.27 wants `locked`, 18 wants the header fields, 27
+wants an angle and 28 wants a stroke colour. The reader rejects unknown keys
+by design, so a field added on its own is its own bump and its own migration —
+four of them for what is one idea, which is exactly what 18 was sequenced
+first to avoid. The cheap answer is a single schema change carrying every
+field the roadmap wants, landing ahead of the milestones that fill them in,
+each of which then finds an empty field rather than adding one. Whether that
+is its own step or rides with 4.27, which is first and already claims the
+bump, is **not decided**.
+
+26 and 28 are placed by what they need rather than by size. 26 follows 17
+because rotation is a handle on a shape and 17 is what builds the shapes. 28
+would have been the cheapest of the three and is not, because the outline it
+needs is a field: had it been implied by `erase: none` it would have needed no
+bump at all, and that was considered and refused.
 
 24 is late on purpose. The guide goes stale against window changes, and
 checking it before 4.27, 16 and 17 land would mean checking it twice. Each of
@@ -226,7 +246,8 @@ points and an ellipse is a polygon approximated to as many as it needs, so
 both produce exactly what the polygon tool produces: one simple ring, a
 `Geometry.MANUAL` region, no schema change and no `PLAN_VERSION` bump. The
 work is a fourth and fifth `CanvasMode`, their lines on the hint bar, and the
-palette itself.
+palette itself. 26 joins this palette rather than building its own, which is
+why it is sequenced behind it.
 
 **The brush stays an idea, deliberately.** It is in *Ideas* below with the
 reason: a stroke can paint a doughnut or two separate blobs, and a plan's
@@ -251,8 +272,8 @@ first.
 that a typo is an error rather than a silent no-op — which means a plan
 carrying `locked:` cannot be read by a build that predates it. That is what
 `PLAN_VERSION` is for: 3 becomes 4. Worth spending that bump on every field
-the roadmap wants at once rather than twice; nothing else pending needs
-one, so today this is alone.
+the roadmap wants at once rather than four times — 18, 27 and 28 each want
+one too, and the note on the shared bump above is where that is unresolved.
 
 **In the plan rather than in settings**, for the reason everything else is:
 the plan is the thing handed to someone else, and "these are final, leave
@@ -271,6 +292,35 @@ regions are the ones that should come through untouched, which is half the
 reason to want it. The region context menu 4.28 built has to reach it too:
 that milestone shipped without a lock/unlock item because this one had not,
 so this is also where the menu gains its third command.
+
+## 26 Rotate a region
+
+Tilt a region so its outline follows a balloon that sits at an angle.
+
+**No schema change, and no memory of the angle.** A `Region` already holds an
+arbitrary polygon, so a tilted rectangle is four points and nothing more. The
+rotation is a gesture rather than a stored property: once applied, the region
+is the points it now has, exactly as if they had been dragged there. That is
+what keeps this clear of `PLAN_VERSION`, and it is a trade made deliberately —
+a region cannot afterwards be un-rotated or re-rotated cleanly, because
+nothing records the angle it was put at.
+
+That is the same trade 17 makes for an ellipse, settled the same way: stored
+as the polygon it comes out as, losing the fact that it was ever an ellipse,
+because a shape field is a `PLAN_VERSION` bump for something nothing
+downstream reads. Consistency here is worth more than either answer.
+
+**Driven from 17's palette**, which is why it sits behind it. Rotation is a
+handle on a shape, and the shapes are what 17 builds; doing this first would
+mean fitting the handle to a palette that does not exist yet.
+
+**It does not letter rotated text**, and is worth having without it. The
+typesetter fits each line to the widest horizontal run inside the polygon on
+every row of its band, so text inside a tilted outline is still laid out
+level. Measured on a 320x180 box: the same sentence fits at 87px over three
+lines upright, 68px over four at 20 degrees, and 66px over six at 45. What
+this milestone buys on its own is an erase and an outline that follow the
+balloon instead of a bounding box. 27 is what makes the text follow too.
 
 ## 18 Chapter metadata in the plan
 
@@ -309,6 +359,82 @@ What it is:
 Not in scope here: reading any of it from anywhere, which is 19, and writing
 it anywhere, which is 19 and 20. This milestone ends with fields nothing
 fills in yet, the same bargain the experimental flag just made.
+
+## 27 Rotated text
+
+Letter a tilted region at its own angle rather than level inside it.
+
+**Latin only.** Vertical CJK was considered and is not this: breaking lines
+down a column is not the horizontal algorithm turned sideways, and the two
+share nothing but a schema field.
+
+**The typesetter does not change.** Measured, not assumed. The band algorithm
+does not need to stop thinking in horizontal bands — it needs to be handed a
+polygon that is already upright. Rotating the polygon into the region's own
+frame and calling `layout_text` unmodified recovers the full fit at every
+angle tried: 87px over three lines at 0, 20, 30 and 45 degrees alike, against
+87, 68, 70 and 66 for the same box laid out level in page coordinates.
+
+So the work is three things and none of them is in `typeset`:
+
+- **An angle on the region**, which the reader refuses until `PLAN_VERSION`
+  goes up. See the note on the shared bump in **Order**.
+- **A coordinate transform** either side of the fit: rotate the polygon in,
+  rotate the drawn result back.
+- **`draw_layout` drawing into a region-local layer** and rotating it once
+  before compositing. It already draws each line into a transparent layer and
+  pastes that, so this changes where the layer lands rather than how it is
+  made.
+
+**Not yet measured**: what a single rotation resample does to small text. The
+fit is proven; the rendering of it is not.
+
+## 28 Sound effects, lettered over the artwork
+
+Letter a sound effect straight onto the art, in something that can be read on
+top of it.
+
+**Detection is not part of this.** Telling a sound effect from a balloon would
+be a new class of thing for `detect` to recognise, and it was decided against:
+a sound effect is a region somebody draws. That leaves most of this milestone
+as an affordance over machinery that is already here — `erase: none` is
+documented for exactly this case, the inspector already sets erase per region
+and already picks a text colour, and the canvas already draws a region by
+hand. What is missing is one action that does all three at once, and the
+outline below.
+
+**The outline is the only genuinely new rendering, and it is not optional.** A
+flat colour does not work on a comic page, measured over the thirteen fixture
+pages as the share of page area where the text would be hard to read:
+
+| fill | outline | worst page | mean |
+| --- | --- | --- | --- |
+| magenta `255,0,255` | none | 67.9% | 49.6% |
+| hot pink `255,20,147` | none | 43.3% | 25.2% |
+| hot pink `255,20,147` | black | 11.2% | 1.3% |
+| white | black | 0.0% | 0.0% |
+
+A mid-luminance colour has poor contrast against both the paper and the ink,
+which is why magenta — the obvious "nobody draws in this" choice — is the
+worst of them. **Hot pink with a black outline** is what to build. White on
+black is perfect and was not chosen: it reads as ordinary lettering, and a
+sound effect that announces itself as placed is the point.
+
+**The outline is not implied by `erase: none`.** Decided, so that a plan
+already using `erase: none` for a caption over artwork does not quietly change
+what it renders. It is a field, which is what puts this behind the shared
+bump.
+
+**One field, not two.** `stroke_color: Color | None`, `None` meaning no
+outline. The width is a ratio in `TypesetConfig` derived from the fitted font
+size, which is the idiom every other size there already follows —
+`padding_ratio`, `max_size_ratio` — and which keeps the outline proportional
+between two regions whose sizes were searched separately. An absolute width in
+pixels would look different on every region of one page. `draw_layout` already
+calls `ImageDraw.text`, which takes `stroke_width` and `stroke_fill`.
+
+**The colour is chosen at extract time and recorded**, like every other colour
+in a plan: `review` may measure the page, `apply` may not.
 
 ## 19 ComicInfo.xml, read and written
 
@@ -443,27 +569,20 @@ leaves at the top is `load_page`: 77MB of traced allocations and about 230MB
 of process peak for one 11 MP PNG, 0.29s, to end up holding 44MB — the page
 and its alpha. Most of the difference is inside Pillow rather than here: an
 RGBA decode, `convert("RGBA")` again to pull the alpha channel out, and
-`flatten_to_rgb` after it. Whether that can be had for less without giving up
-the metadata the apply pass needs is a measurement nobody has taken. It
-matters most where pages are read in a loop, which is `apply` over a chapter
-rather than a preview of one page.
+`flatten_to_rgb` after it.
 
-**Rotate a region.** Cheaper than it looks, and it splits in two. A `Region`
-already holds an arbitrary polygon, so a rotated outline is representable
-today with no schema change and no `PLAN_VERSION` bump — a tilted rectangle
-is just four points. What that does *not* buy is rotated text: the
-typesetter fits each line to the widest horizontal run inside the polygon on
-every row of its band, so text inside a tilted outline would still be laid
-out level. So this is worth having on its own, for a balloon that sits at an
-angle, and it is not a step towards the next one.
-
-**Rotated and vertical text.** The other half, and a different order of
-work. It needs a field on a region — an angle, or a writing mode — which the
-reader rejects until `PLAN_VERSION` goes up, and it needs the typesetter to
-stop thinking in horizontal bands, which is the shape of `typeset` rather
-than a parameter to it. Vertical CJK is more again: line breaking and
-hyphenation are not the same algorithm turned sideways. Worth knowing which
-of the two is actually wanted before either is designed.
+**Measured since, and deliberately left here.** On an 11.2 MP page: 0.28s and
+a 68MB traced peak for an opaque PNG, ending up holding 34MB; 0.56s and 79MB
+for the same page carrying an alpha channel. The doubling is the two
+conversions — `convert("RGBA")` to pull the alpha out, then `flatten_to_rgb`
+over the same image — and it only happens on a page that *has* alpha, which a
+comic scan usually does not. The opaque path is already close to its floor, so
+the candidate worth trying is narrow: read the alpha channel directly when the
+mode already carries one, instead of converting the whole image to reach it.
+It stays an idea on that evidence. It is the only thing in this file with no
+user-visible change, and the measurement says the common case has little to
+win. It would matter most where pages are read in a loop, which is `apply`
+over a chapter rather than a preview of one page.
 
 **Extracting and rendering emphasis, italic and bold.** This one is not a
 feature, it is a change to an invariant, and should be decided as one.
@@ -478,21 +597,6 @@ means synthesising a slant, which is the thing the rule forbids. The
 extraction half is separate again and probably harder: telling italic from
 upright in scanned comic lettering is not something either recogniser
 reports.
-
-**Sound effects, identified and lettered over the artwork.** Half of this
-exists. `erase: none` is already documented as being for exactly this — it
-paints nothing and letters straight onto the page — so the render side needs
-no new machinery, and a region can already carry it per region.
-
-What is missing is the other two thirds. Detection would have to tell a
-sound effect from a balloon, which is a new class of thing for `detect` to
-recognise rather than a threshold to move, and the flag on `extract` is the
-easy part of that. And the colour: a sound effect has no balloon to sample,
-so "a visible colour" means choosing one for contrast against whatever is
-underneath, which is a decision nothing in the tool makes yet —
-`sample_colors` reads the colours that are there. Note which pass may do
-that: `review` may measure the page, `apply` may not, so the choice has to
-be made at extract time and recorded, like every other colour in a plan.
 
 **WebP, in and out.** Reading one is nearly free and writing one is not.
 Pillow decodes WebP already — `features.check("webp")` is true in this
