@@ -118,11 +118,12 @@ would have been the cheapest of the three and is not, because the outline it
 needs is a field: had it been implied by `erase: none` it would have needed no
 bump at all, and that was considered and refused.
 
-30 sits behind both for the same reason 26 does: the brush is a tool in 17's
-palette, and the palette is what 17 builds. It comes after 26 rather than
-before it because the question that kept it out of 17 — what a stroke that
-paints a doughnut *means* — has now been answered and 26's has not, so the one
-with nothing left to decide goes first.
+30 sits behind 17 for the same reason 26 does: the brush is a tool in 17's
+palette, and the palette is what 17 builds. Which of 26 and 30 goes first is a
+judgement and not a dependency — both need 17, neither needs the other, and 26
+was sequenced there before the brush had a number. The question that kept the
+brush out of 17 has been answered, so nothing holds it where it is except that
+somebody has to be second.
 
 **31 is early because nothing holds it back.** It opens a chapter file rather
 than a plan, so it waits on no schema, no field and no milestone above it, and
@@ -455,29 +456,40 @@ balloon instead of a bounding box. 27 is what makes the text follow too.
 Paint a region instead of clicking its corners, with a brush sized from 17's
 palette.
 
-**Decided: the largest contour wins.** A stroke can paint a doughnut, and two
-strokes apart paint two blobs; a plan's region is *one simple ring* —
-`MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced by the reader and again
-by the window so it cannot write a file it could not reopen. Three answers were
-on the table: keep the largest area, refuse the stroke and make it be drawn
-again, or fill holes but refuse disconnected blobs. **Keep the largest** is
-what to build.
+**Decided: the region is the outline of whatever was painted.** A plan's region
+is *one simple ring* — `MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced
+by the reader and again by the window so it cannot write a file it could not
+reopen — and a stroke can paint a doughnut, so something has to say what
+becomes of the hole. It is filled. The ring is the outer boundary of the
+painted area and nothing else is recorded.
 
-**The objection to it is recorded rather than dropped.** It is the same thing
-`detect` does to a mask, and a tool that draws what you drew and then throws
-half of it away without saying so is a surprise — that was the reason this
-question was held open, and choosing this answer does not make it untrue. What
-it leaves is one open question, and it is a question about the window rather
-than about the plan: whether discarding is announced, and how. That is worth
-settling while the cursor is being designed, not afterwards.
+**Nothing is discarded, which is the point of it.** Keeping the largest contour
+was considered first and refused: it is what `detect` does to a mask, and a
+tool that draws what you drew and then throws part of it away — silently, or
+with a line in the status bar — is a surprise from a tool whose whole promise
+is that the window cannot write a plan it could not reopen. Taking the outline
+has no such half: what you painted is what you get, minus a hole you could not
+have stored anyway.
 
-**The conversion already exists and is not the work.** `detect` turns a raster
-mask into a polygon today: largest contour, `approxPolyDP` at three epsilons in
-turn, rejecting anything that comes out non-simple or with fewer than three
-points. A brush stroke is a raster mask. So a brush that paints into a scratch
-mask and converts on release reuses that, produces a `Geometry.MANUAL` region
-exactly as the polygon tool does, and needs **no schema change and no
-`PLAN_VERSION` bump** — which is why it is not one of 29's fields.
+**It is the retrieval mode `detect` already uses.** `cv2.findContours` with
+`RETR_EXTERNAL` returns outermost contours and ignores holes, which is exactly
+this rule, and it is already the call in `detect/__init__.py` and
+`detect/colorseg.py`. So the conversion is not new work: a brush that paints
+into a scratch mask and converts on release reuses `detect`'s own path —
+`RETR_EXTERNAL`, then `approxPolyDP` at three epsilons in turn, rejecting
+anything non-simple or under three points — and produces a `Geometry.MANUAL`
+region exactly as the polygon tool does. **No schema change and no
+`PLAN_VERSION` bump**, which is why it is not one of 29's fields.
+
+**What is left open is a second stroke, not a hole.** `RETR_EXTERNAL` gives one
+contour per painted blob, so two strokes apart still give two rings and one of
+them has to go — the same problem, moved. It does not arise at all if a stroke
+commits on release and one stroke is one region, which is the simplest thing to
+build and worth trying first. If strokes should instead accumulate until an
+explicit commit, the answer is already in the tree and need not be invented:
+`model.convex_hull` is what merging two regions produces, on the reasoning that
+"the hull of both outlines is the smallest convex shape that covers what either
+of them covered". That is the same question a brush would be asking.
 
 **Brush size, not stroke width.** The control is the brush's own size, and the
 label has to say so, because *stroke* is already spoken for twice: `config.py`
@@ -723,8 +735,11 @@ disagree about the signature, and its own pass over the same documentation.
 What it adds:
 
 - **Progress the plugin reports itself**, through a helper it calls as it goes.
-- **A dialog of the plugin's own, shown before it runs.**
+- **A dialog the plugin describes and the window builds**, shown before the
+  run starts.
 - **The id of the selected region**, or nothing when none is selected.
+
+The dialog is most of the work; the other two are a subclass and a parameter.
 
 **The selected region is the cheap one.** `main_window._current_region` is
 already a `str | None` sitting at the call site, and the canvas selects one
@@ -739,27 +754,53 @@ to draw in. The harness for this exists and already has four subclasses —
 and `failed` delivered in the window's thread. A `PluginJob` is the fifth, and
 the helper a plugin calls is the `ProgressCallback` those jobs already take.
 
-**Dialogs are pre-run, and that decision is what keeps this an M.** A plugin on
-a worker thread cannot build a widget — Qt forbids it — so a dialog raised in
-the middle of a run would mean the worker blocking on the main thread and
-waiting for an answer, which nothing in this project does anywhere. Resolved
-before the thread starts, it is the shape that already exists: the window asks,
-the plugin is handed values, and the run is only the run.
+**Dialogs are pre-run and declared rather than built**, and those two decisions
+together are what keep this an M.
 
-**What "its own dialog" means is the one thing left open**, and the two
-readings differ in more than size:
+*Pre-run*, because a plugin on a worker thread cannot build a widget — Qt
+forbids it — so a dialog raised in the middle of a run would mean the worker
+blocking on the main thread and waiting for an answer, which nothing in this
+project does anywhere. Asked before the thread starts, it is the shape that
+already exists: the window asks, the plugin is handed values, and the run is
+only the run.
 
-- **Richer declared fields.** `SETTING_TYPES` gains members — a number, a flag,
-  a choice, a path — and `gui.plugin_config_dialog` gains a widget for each.
-  `plugins.py` already names this as the additive path: a new member here, a
-  new widget there, and nothing about a plugin that only ever declared `str`
-  changes underneath it.
-- **A dialog the plugin builds itself.** More expressive, and it makes a plugin
-  import PySide6 — which `plugins.py` deliberately does not, and which the
-  `gui` extra deliberately makes optional. It also puts a Qt ABI inside a
-  plugin that has to keep loading across builds.
+*Declared*, because **a plugin never imports PySide6**. It describes what it
+wants and the window builds it. `plugins.py` deliberately imports no Qt, the
+`gui` extra deliberately stays optional, and a widget built inside a plugin
+would put a Qt ABI in something that has to keep loading across builds. It also
+keeps what a dialog looks like the window's business rather than a plugin
+author's.
 
-The first, unless the second turns out to be what was wanted.
+**The vocabulary is small on purpose**, and it is all of what a plugin may ask
+for:
+
+| | |
+| --- | --- |
+| output | a label |
+| input | text field, dropdown, radio buttons, checkboxes |
+| buttons | OK — OK and Cancel — Yes and No |
+
+**Cancel means the plugin does not run at all**, which is the reason the dialog
+comes before the thread rather than inside it: there is nothing started to
+stop. Yes and No both run it, and which was pressed is one of the answers.
+
+**It is not `SETTINGS`, and the two will be confused unless the milestone keeps
+them apart.** `SETTINGS` is configuration: edited in Configure Plugins, stored
+per plugin, resolved and handed to every run whether or not anybody looked at
+it. A dialog is asked on each run and its answers are not stored. That is the
+same care 4.27 has to take between `skip` and `locked` — two neighbouring
+things that are not the same thing. Answers arrive as strings on the same
+"empty means unset" terms `SettingField` already uses, so there is one
+convention here rather than two.
+
+**One thing left open: whether the dialog is a constant or a call.** A
+module-level `DIALOG = (...)` matches how `SETTINGS` is declared and is
+simpler. A function the window calls first — handed the plan and the selection,
+returning the same description — is what lets a dropdown be filled from the
+plan, and what makes the obvious example of this feature possible at all: a
+plugin that shows the text of the selected region needs a label whose contents
+are not known until it is asked. A constant cannot do that, so the call is the
+recommendation unless something is found that it makes worse.
 
 **The signature is declared, not sniffed.** A module-level `PLUGIN_API`, read
 at discovery exactly as `REQUIRES_APP_VERSION` already is, decides which shape
