@@ -59,8 +59,10 @@ one section can refer to another without ambiguity.
 | 29 | `PLAN_VERSION` 4, in one go | M |
 | 4.27 | Lock a region | M |
 | 16 | Languages by name, not by code | M |
+| 31 | A reader window | M |
 | 17 | A shape palette for drawing a region | M |
 | 26 | Rotate a region | M |
+| 30 | Drawing a region with a brush | M |
 | 18 | Chapter metadata in the plan | M |
 | 27 | Rotated text | M |
 | 28 | Sound effects, lettered over the artwork | M |
@@ -69,6 +71,8 @@ one section can refer to another without ambiguity.
 | 6 | PDF output | L |
 | 23 | An empty plan, and pages added by hand | M |
 | 24 | The guide, checked against the window | S |
+| 33 | Plugins: what `run` is given | M |
+| 32 | Plugins with their own dependencies | M |
 
 **1.1.0 is out**, a week after 1.0.0: chapters in and out as one file, the
 window in Swedish, a page rendering in a fraction of the time, and plugins as
@@ -113,6 +117,28 @@ because rotation is a handle on a shape and 17 is what builds the shapes. 28
 would have been the cheapest of the three and is not, because the outline it
 needs is a field: had it been implied by `erase: none` it would have needed no
 bump at all, and that was considered and refused.
+
+30 sits behind 17 for the same reason 26 does: the brush is a tool in 17's
+palette, and the palette is what 17 builds. Which of 26 and 30 goes first is a
+judgement and not a dependency — both need 17, neither needs the other, and 26
+was sequenced there before the brush had a number. The question that kept the
+brush out of 17 has been answered, so nothing holds it where it is except that
+somebody has to be second.
+
+**31 is early because nothing holds it back.** It opens a chapter file rather
+than a plan, so it waits on no schema, no field and no milestone above it, and
+the part that looked like new work turns out to be a seam that already exists —
+see its own section. It is the only thing in this table that makes the tool do
+something for a page nobody is translating.
+
+**33 and 32 are last by judgement rather than by dependency**, which is worth
+saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
+and one call site in the window, and not one milestone above them goes near
+those. What puts them here is that plugins are experimental and off by default,
+so they are not felt every few minutes the way 4.27 is — the same test the
+window irritations pass and these do not. They are adjacent because both end in
+a pass over the same documentation, and 33 before 32 because 33 settles what a
+plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
 checking it before 4.27, 16 and 17 land would mean checking it twice. Each of
@@ -291,6 +317,55 @@ Three things not to lose:
   is actually installed, which is a different widget and arguably its own
   milestone if it grows.
 
+## 31 A reader window
+
+Read a chapter without translating it: page through it, zoom, one page or two.
+
+**Its own window, started on its own.** Not a mode of the review window and not
+reached from it — a separate window with its own entry point, which on the
+command line means a fifth subcommand beside `extract`, `apply`, `review` and
+`validate`. It opens a chapter rather than a plan, and that is what keeps it
+small: no document, no undo, nothing dirty, nothing to save. Being reachable
+from the review window later is a thing it could grow, not a thing it needs.
+
+**It reads what `extract` reads**: a folder of pages, one image — `.jpg`,
+`.jpeg`, `.png`, `.tif`, `.tiff` — or a chapter file: `.cbz`, `.cbr`, `.zip`,
+`.rar`, `.pdf`.
+
+**It must not unpack, and it does not have to.** `sources.unpack` writes
+`<stem>-pages` beside the container on purpose, because the plan naming those
+pages has to keep finding them. A reader has no plan and wants no directory:
+opening somebody's `.cbz` to read it must not leave a folder next to it. The
+seam for that already exists — `unpack` is a thin write-loop around
+`_reader_for(source)`, which yields `(name, bytes)` per entry for zip, rar and
+PDF alike. Reading through it writes nothing and inherits what that path
+already enforces: the 512MB `MAX_PAGE_BYTES` cap, the symlink rejection, and
+the `__MACOSX` and hidden-file skips. A second archive reader would lose all
+four silently, which is why this is the milestone's first design constraint
+rather than a note about efficiency — and why `docs/SECURITY.md` gains a line
+saying the reader goes through the same door.
+
+**What the window does**: arrow keys page through, a zoom control, a switch
+between one page and two, and a slider at the bottom carrying *page 4 of 83* —
+slider and count both hidden until the pointer is over them.
+
+Three things to settle when it is picked up:
+
+- **A page that is already a spread.** A double-width scan shown beside its
+  neighbour is wrong, and showing it alone is the usual answer. The cue is the
+  page's own aspect ratio, which means a threshold, which means measuring the
+  fixtures rather than picking a number.
+- **Reading direction.** Two pages have a left and a right, and a manga chapter
+  reads the other way round. A chapter file carries no such fact, so this is a
+  toggle defaulted left-to-right. 18 puts reading direction in the plan header;
+  this window does not open plans, so that is a connection it could make later
+  and not a dependency.
+- **What paging costs.** `load_page` is 0.28s and a 68MB traced peak for one
+  11MP page — see *Ideas*. A reader is the one place that is felt on a keypress
+  rather than once per run, so the caching question is real here in a way it is
+  not anywhere else. `gui/preview_cache.py` caches something different, but it
+  is the thing to read before a second cache is written.
+
 ## 17 A shape palette for drawing a region
 
 A rectangle and an ellipse beside the existing polygon tool, chosen from a
@@ -304,12 +379,13 @@ work is a fourth and fifth `CanvasMode`, their lines on the hint bar, and the
 palette itself. 26 joins this palette rather than building its own, which is
 why it is sequenced behind it.
 
-**The brush stays an idea, deliberately.** It is in *Ideas* below with the
-reason: a stroke can paint a doughnut or two separate blobs, and a plan's
-region is one simple ring, so something has to decide what that *means*
-before a cursor is drawn. Putting the palette in first is not a step towards
-the brush being skipped — it is the palette the brush would join, built while
-the question it raises is still open.
+**The brush is milestone 30 and joins this palette.** It was an idea while the
+question it raises was open — a stroke can paint a doughnut or two separate
+blobs, and a plan's region is one simple ring, so something had to decide what
+that *means* before a cursor was drawn. That has been decided, and 30 is where
+it is written down. This milestone still goes first: the palette is what the
+brush joins, and it is worth having with two shapes in it before a third
+arrives.
 
 Worth settling while the palette is being designed: whether an ellipse is
 stored as the polygon it is approximated to, which is what the schema allows
@@ -374,6 +450,57 @@ level. Measured on a 320x180 box: the same sentence fits at 87px over three
 lines upright, 68px over four at 20 degrees, and 66px over six at 45. What
 this milestone buys on its own is an erase and an outline that follow the
 balloon instead of a bounding box. 27 is what makes the text follow too.
+
+## 30 Drawing a region with a brush
+
+Paint a region instead of clicking its corners, with a brush sized from 17's
+palette.
+
+**Decided: the region is the outline of whatever was painted.** A plan's region
+is *one simple ring* — `MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced
+by the reader and again by the window so it cannot write a file it could not
+reopen — and a stroke can paint a doughnut, so something has to say what
+becomes of the hole. It is filled. The ring is the outer boundary of the
+painted area and nothing else is recorded.
+
+**Nothing is discarded, which is the point of it.** Keeping the largest contour
+was considered first and refused: it is what `detect` does to a mask, and a
+tool that draws what you drew and then throws part of it away — silently, or
+with a line in the status bar — is a surprise from a tool whose whole promise
+is that the window cannot write a plan it could not reopen. Taking the outline
+has no such half: what you painted is what you get, minus a hole you could not
+have stored anyway.
+
+**It is the retrieval mode `detect` already uses.** `cv2.findContours` with
+`RETR_EXTERNAL` returns outermost contours and ignores holes, which is exactly
+this rule, and it is already the call in `detect/__init__.py` and
+`detect/colorseg.py`. So the conversion is not new work: a brush that paints
+into a scratch mask and converts on release reuses `detect`'s own path —
+`RETR_EXTERNAL`, then `approxPolyDP` at three epsilons in turn, rejecting
+anything non-simple or under three points — and produces a `Geometry.MANUAL`
+region exactly as the polygon tool does. **No schema change and no
+`PLAN_VERSION` bump**, which is why it is not one of 29's fields.
+
+**What is left open is a second stroke, not a hole.** `RETR_EXTERNAL` gives one
+contour per painted blob, so two strokes apart still give two rings and one of
+them has to go — the same problem, moved. It does not arise at all if a stroke
+commits on release and one stroke is one region, which is the simplest thing to
+build and worth trying first. If strokes should instead accumulate until an
+explicit commit, the answer is already in the tree and need not be invented:
+`model.convex_hull` is what merging two regions produces, on the reasoning that
+"the hull of both outlines is the smallest convex shape that covers what either
+of them covered". That is the same question a brush would be asking.
+
+**Brush size, not stroke width.** The control is the brush's own size, and the
+label has to say so, because *stroke* is already spoken for twice: `config.py`
+uses stroke width for the morphological closing over the original lettering's
+pen strokes, and 28 adds `stroke_color` for the outline around drawn text. A
+third meaning, on a control a person sets, is one too many.
+
+**The rest is window work of a kind that already has a shape**: another mode in
+17's palette beside select, reshape, draw and the shapes 17 adds, its own line
+on the hint bar, and whole-plan undo swallowing a stroke the way it swallows a
+drag, through the same run-key coalescing the arrow keys use.
 
 ## 18 Chapter metadata in the plan
 
@@ -596,6 +723,131 @@ It is last of the window milestones on purpose — see *Why this order* — and 
 is worth having as a milestone at all because the alternative is that it is
 nobody's job.
 
+## 33 Plugins: what `run` is given
+
+Three things a plugin cannot see today, added in one interface change.
+
+**One change rather than three**, which is 29's argument applied to a different
+format. Each of these alters what a plugin is handed, and done separately each
+is its own interface version, its own window in which a plugin and a build
+disagree about the signature, and its own pass over the same documentation.
+
+What it adds:
+
+- **Progress the plugin reports itself**, through a helper it calls as it goes.
+- **A dialog the plugin describes and the window builds**, shown before the
+  run starts.
+- **The id of the selected region**, or nothing when none is selected.
+
+The dialog is most of the work; the other two are a subclass and a parameter.
+
+**The selected region is the cheap one.** `main_window._current_region` is
+already a `str | None` sitting at the call site, and the canvas selects one
+region at a time — `_selected_id` is singular — so that is the whole of the
+type. It is here because it changes the signature, not because it is work.
+
+**Progress means a plugin stops running on the UI thread.** `_on_run_plugin`
+calls `run_plugin` synchronously today, which is fine for the one example that
+ships and is the reason no plugin can report anything: there is no window left
+to draw in. The harness for this exists and already has four subclasses —
+`RunJob` in `gui/run_job.py`, one `work()` method, `progressed`, `completed`
+and `failed` delivered in the window's thread. A `PluginJob` is the fifth, and
+the helper a plugin calls is the `ProgressCallback` those jobs already take.
+
+**Dialogs are pre-run and declared rather than built**, and those two decisions
+together are what keep this an M.
+
+*Pre-run*, because a plugin on a worker thread cannot build a widget — Qt
+forbids it — so a dialog raised in the middle of a run would mean the worker
+blocking on the main thread and waiting for an answer, which nothing in this
+project does anywhere. Asked before the thread starts, it is the shape that
+already exists: the window asks, the plugin is handed values, and the run is
+only the run.
+
+*Declared*, because **a plugin never imports PySide6**. It describes what it
+wants and the window builds it. `plugins.py` deliberately imports no Qt, the
+`gui` extra deliberately stays optional, and a widget built inside a plugin
+would put a Qt ABI in something that has to keep loading across builds. It also
+keeps what a dialog looks like the window's business rather than a plugin
+author's.
+
+**The vocabulary is small on purpose**, and it is all of what a plugin may ask
+for:
+
+| | |
+| --- | --- |
+| output | a label |
+| input | text field, dropdown, radio buttons, checkboxes |
+| buttons | OK — OK and Cancel — Yes and No |
+
+**Cancel means the plugin does not run at all**, which is the reason the dialog
+comes before the thread rather than inside it: there is nothing started to
+stop. Yes and No both run it, and which was pressed is one of the answers.
+
+**It is not `SETTINGS`, and the two will be confused unless the milestone keeps
+them apart.** `SETTINGS` is configuration: edited in Configure Plugins, stored
+per plugin, resolved and handed to every run whether or not anybody looked at
+it. A dialog is asked on each run and its answers are not stored. That is the
+same care 4.27 has to take between `skip` and `locked` — two neighbouring
+things that are not the same thing. Answers arrive as strings on the same
+"empty means unset" terms `SettingField` already uses, so there is one
+convention here rather than two.
+
+**One thing left open: whether the dialog is a constant or a call.** A
+module-level `DIALOG = (...)` matches how `SETTINGS` is declared and is
+simpler. A function the window calls first — handed the plan and the selection,
+returning the same description — is what lets a dropdown be filled from the
+plan, and what makes the obvious example of this feature possible at all: a
+plugin that shows the text of the selected region needs a label whose contents
+are not known until it is asked. A constant cannot do that, so the call is the
+recommendation unless something is found that it makes worse.
+
+**The signature is declared, not sniffed.** A module-level `PLUGIN_API`, read
+at discovery exactly as `REQUIRES_APP_VERSION` already is, decides which shape
+`run` is called with; a plugin declaring nothing keeps today's `run(plan,
+settings)`. Inspecting the callable's arity was considered and refused: every
+other fact about a plugin here is declared and then validated, precisely
+because a plugin is arbitrary code loaded out of a file, and guessing an
+interface from a function object is the opposite of that.
+
+## 32 Plugins with their own dependencies
+
+Let a plugin carry a library comictrans does not ship, without it leaking into
+every other plugin.
+
+**Half of this already works, and the half that does not is the half that
+matters.** Measured, with fixture plugins loaded through `discover_plugins`:
+
+| what the plugin does | result |
+| --- | --- |
+| `from .vendor.helper import VALUE` — its own modules | loads |
+| a vendored library whose internals say `from foolib.util import x` | `No module named 'foolib'` |
+| the plugin puts its own `vendor/` on `sys.path`, then imports it | loads |
+
+The second row is every real third-party library, because a library refers to
+itself by its own name. So the only recipe that works today is a plugin
+mutating `sys.path` — and **`sys.path` is global to the process and outlives
+the plugin that changed it**. Two plugins carrying different versions of the
+same library collide, first to load wins, silently, for the rest of the
+session. `_load_one` already goes to some trouble to keep plugin *module names*
+from colliding, with a fresh uuid per load so that one plugin's siblings cannot
+shadow another's; their dependencies have nothing of the kind.
+
+Two shapes, and choosing between them is most of the milestone:
+
+- **Publish the recipe and name the hazard.** A documented `sys.path` insert,
+  with the collision written where a plugin author will meet it. Cheap, honest,
+  and it does not actually hold.
+- **Give each plugin its own import namespace.** A finder on `sys.meta_path`
+  scoped to the plugin being loaded, so that `foolib` resolves to that plugin's
+  `foolib` and to nothing else. Real isolation, and a real amount of work.
+
+Worth knowing before either: a dependency with a compiled extension has to
+match the interpreter and platform it is loaded into, which inside a frozen
+bundle is whichever one PyInstaller built. That is the plugin author's problem
+rather than this project's, but it is not one they can see coming, so the
+documentation is where it gets said.
+
 ## Ideas, not milestones
 
 Things to look into, none of them decided. **Unnumbered on purpose**: a
@@ -669,30 +921,55 @@ Alpha is fine: WebP stores it, so it would join `ALPHA_FORMATS` rather than
 warn like JPEG does. The format is also capped at 16383 pixels a side, which
 no comic page reaches and a double-page scan at 1200 DPI would.
 
-**Drawing a region with a brush.** Still an idea, and deliberately not part
-of milestone 17, which builds the palette it would join: the unresolved
-question below is about the plan format, not about a cursor. The conversion
-this needs already exists and is not the hard part. `detect` turns a raster mask into a polygon today:
-largest contour, `approxPolyDP` at three epsilons in turn, rejecting anything
-that comes out non-simple or with fewer than three points. A brush stroke is
-a raster mask. So a brush that paints into a scratch mask and converts on
-release would reuse that, produce a `Geometry.MANUAL` region like the polygon
-tool does, need no schema change and no `PLAN_VERSION` bump.
+**Packaging for Windows and Linux.** Asked about, and kept here rather than
+sequenced: it is cross-cutting, and *Why this order* says what that costs —
+packaging bundles whatever the application is by the time it runs, so doing it
+early means doing it twice. What it would run into was measured rather than
+guessed, and the blocker is not the bundler.
 
-What it runs into is what a polygon cannot hold. A plan's region is *one
-simple ring* — `MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced by the
-reader and again by the GUI so that the window cannot write a file it could
-not reopen. A brush makes holes, and two strokes apart make two blobs;
-largest-contour-wins throws both away silently, which is the same thing
-detection does and would be a surprise coming from a tool that draws what
-you drew. Deciding what a stroke that paints a doughnut *means* is the
-design work, and it is a decision about the plan format before it is one
-about a cursor.
+**Fonts are the blocker, and they fail hard rather than degrade.**
+`SEARCH_DIRS` holds four macOS paths and nothing else, so on this project's own
+Linux machine not one of them exists and `resolve_default()` raises:
 
-The rest is window work of a kind that already has a shape: a fourth
-`CanvasMode` beside select, reshape and draw, its own line on the hint bar,
-and whole-plan undo swallowing a stroke the way it swallows a drag, through
-the same run-key coalescing the arrow keys use.
+```
+none of the fallback fonts could be resolved
+(Comic Sans MS, Chalkboard SE, Marker Felt, Noteworthy, Helvetica)
+```
+
+Not a downgrade — a stop, before a page is rendered. Three of those families
+are Apple's own and exist nowhere else. `Comic Sans MS` ships with Windows,
+where the search directory is the only thing missing, and is on no Linux box by
+default. `resolve_family` also requires a **real bold face**, because emphasis
+renders as bold and synthesising one is forbidden, so a replacement chain
+cannot simply name whatever is installed. And nothing is bundled: the suite has
+never had to answer this, because `tests/conftest.py` hands it a *fake* macOS
+font directory on `COMICTRANS_FONT_PATH`. Shipping an open comic face inside
+the application would answer it and runs straight into "a font is never
+silently substituted" — a decision about an invariant, not a packaging detail,
+and the reason this is an idea rather than a size.
+
+**OCR degrades rather than stops.** Apple Vision is macOS only, and
+`get_recognizer` falls back to Tesseract and says so in the log — *"OCR
+quality will be noticeably worse on comic lettering"*. A Windows or Linux
+build ships that as its ordinary state rather than as a fallback few people
+meet, which is a decision about what those builds are worth, not a thing
+to fix.
+
+**What is already right, and would need nothing.**
+`plugins.plugin_directory()` and `gui.logfile.log_directory()` both branch
+macOS against XDG already. `MOVE_MODIFIER` is `ControlModifier`, which Qt maps
+to Command on macOS, and the hint asks Qt what this platform calls it rather
+than deciding from `sys.platform`. The dependencies are fine: the pyobjc pair
+is already guarded by `sys_platform == 'darwin'`, and everything else has
+wheels for all three.
+
+**The bundler does not cross-compile.** PyInstaller freezes the interpreter and
+libraries of the machine it runs on, which is why `tools/build_app.py` refuses
+anywhere but macOS. Each platform needs its own build script, run on that
+platform, with its own icon story — `.ico` for Windows, and no single answer on
+Linux — and neither has had the thought put into signing that macOS already
+has. Linux is the cheaper of the two to try, because this project's own
+development and its widget tests already run there.
 
 **PSD, in and out.** Asked for as rendered regions on one layer and
 translated text on another, which is the right shape — and the writing half
