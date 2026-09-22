@@ -112,52 +112,7 @@ at 0.25–0.45. A caption box fused to its frame sits in the same place on that
 scale, so no threshold separates them. Telling the box from the frame needs a
 different signal.
 
-## 4. A long region id sets a floor under the Region panel's width
-
-The inspector's id line (`_id_label` in `src/comictrans/gui/inspector.py`) is
-a plain `QLabel` with no wrapping, so its minimum size is the full width of
-its text. That propagates up: the panel cannot be made narrower than the
-longest id it has shown, and neither can the dock holding it.
-
-Measured with the review window's own inspector:
-
-| id shown | id width | panel minimum |
-| --- | --- | --- |
-| *(none)* | — | 330px |
-| `page-001-001  (exact, order 1)` | 185px | 330px |
-| `5-borderless-caption-on-artwork-001  (approximate, order 1)` | 364px | 471px |
-| `7-1-combined-box-balloon-and-bare-caption-001  (approximate, order 12)` | 443px | 549px |
-
-The panel's own floor is 330px, so the id starts deciding the width somewhere
-past 185px of text and grows the floor one-for-one after that. Region ids are
-built from the source image's filename, so in practice this is set by the
-longest filename in the plan — the fixtures alone reach 549px, a fifth of a
-1440-wide laptop screen given over to a dock that holds a few short fields.
-
-Not the same defect as the flags field, which clipped: this one never hides
-anything, and it does not depend on the platform's form-layout policy —
-measured identical under `FieldsStayAtSizeHint` and `AllNonFixedFieldsGrow`.
-
-**Why it is not a one-line fix.** Every obvious remedy trades away something:
-
-- Letting the label shrink makes `QLabel` clip without an ellipsis, so a
-  truncated id is indistinguishable from a complete one — and the id's tail
-  is the part that identifies the region.
-- Eliding needs to elide the *middle* to keep that tail, and needs redoing on
-  every resize.
-- Wrapping reintroduces exactly the height-depends-on-width problem that the
-  flags field was just moved off a `QLabel` to escape.
-- Moving the id out of the form to a full-width line above it buys room once
-  and then grows the same way.
-
-The decision is which to give up: the whole id being readable at a glance, or
-the panel being narrowable. That is a judgement about how the panel is used,
-not a patch.
-
-**Impact.** Space only. Nothing is hidden, nothing is misreported, and no
-plan data is affected.
-
-## 5. macOS will not give the application its own language
+## 4. macOS will not give the application its own language
 
 System Settings > General > Language & Region > Applications answers
 "Comic Translator.app doesn't support additional languages" for a bundle that

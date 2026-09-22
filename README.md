@@ -832,7 +832,7 @@ in this order:
 **macOS's per-application language does not work yet.** System Settings >
 General > Language & Region says the application supports no additional
 languages, for a bundle that declares them every way Apple documents. It is
-recorded, with everything tried and measured, as entry 5 in `known-bugs.md`.
+recorded, with everything tried and measured, as entry 4 in `known-bugs.md`.
 Use Preferences instead; nothing about the translation itself is affected.
 
 A language named in the first two and not translated falls back to English

@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QListWidget,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -71,7 +72,8 @@ by different names. The row this adds is the one only a region has: a region
 may decline to decide and follow the run, and a run has nothing to follow.
 
 Short words: this box sits in a dock whose width every field's size hint
-pushes at (see 4 in known-bugs.md), and the tooltip carries the detail."""
+pushes at, and the tooltip carries the detail. The region line above it is
+the one field that no longer pushes — see :class:`ElidedLabel`."""
 
 _FONT_SIZE_AUTO = 0
 """The spin box's special value for "no override", shown as the word "auto"."""
@@ -176,6 +178,77 @@ class FlagList(QListWidget):
         self._fit_to_rows()
 
 
+class ElidedLabel(QLabel):
+    """A one-line label that shortens its text to fit instead of pushing.
+
+    A plain ``QLabel`` reports the full width of its text as the width it
+    needs, and a form passes that up to the panel and the panel to the dock —
+    so the Region dock used to change width every time the selection moved to
+    a region whose id was longer, taking the width from the page beside it.
+    Measured on the fixture ids: 415px of dock against 538px, and 123px of
+    canvas gone, on nothing but a click.
+
+    So it declines to report a width and elides to whatever it is given, which
+    is the bargain ``HintLine`` already strikes one layer out and ``font_box``
+    strikes with a long family name. **Both halves are load-bearing, and it
+    takes shrinking the panel to see why.** Eliding alone holds the selection
+    changes: the text is cut to the width the label already has, so the width
+    it asks for never exceeds the width it was given, and swapping between a
+    short id and a long one moves nothing. But a label that has once shown its
+    text in full reports that full width as its *minimum*, and a minimum is
+    not something a layout may go under — so without ``Ignored`` the panel
+    can be widened and then never narrowed again, and the label never gets a
+    smaller width to re-elide into. Measured both ways.
+
+    An explicit ``minimumSizeHint`` was also tried, and that one is genuinely
+    redundant: ``Ignored`` already stops the layout asking. It is not here.
+
+    **The text is in two parts**, which is the one thing here that is not
+    ``HintLine``. It elides to the right, because a hint reads from the front;
+    this cannot, because what identifies a region is the *tail* of its id, and
+    the geometry and order after it are a suffix that must not be eaten
+    either. So the first part is elided in the middle and the second is kept
+    whole.
+
+    The full text is on the tooltip, which is what makes eliding honest rather
+    than lossy — the id is also in the plan file and in the page list.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._elidable = ""
+        self._fixed = ""
+        # Ignored horizontally so the layout never treats this label's text as
+        # a width it has to honour — in either direction. Vertically it is an
+        # ordinary one-line label.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def set_parts(self, elidable: str, fixed: str = "") -> None:
+        """Show ``elidable`` shortened as needed, with ``fixed`` kept whole."""
+        self._elidable, self._fixed = elidable, fixed
+        self.setToolTip(f"{elidable}{fixed}".strip())
+        self._relayout()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        # How much fits changed, so what to cut did too.
+        self._relayout()
+
+    def _relayout(self) -> None:
+        metrics = QFontMetrics(self.font())
+        room = self.contentsRect().width() - metrics.horizontalAdvance(self._fixed)
+        elided = metrics.elidedText(self._elidable, Qt.TextElideMode.ElideMiddle, max(0, room))
+        shown = f"{elided}{self._fixed}"
+        # Guarded for the reason ``HintLine._elide`` and ``FlagList._fit_to_rows``
+        # are: setting the text is what triggers the next layout pass, which is
+        # what calls this again. Carried on their evidence rather than on any
+        # of its own — removing it here changes nothing the suite can see, and
+        # a runaway layout pass is a hang, which is the class of thing the
+        # offscreen platform the widget tests run under is least likely to show.
+        if shown != self.text():
+            self.setText(shown)
+
+
 def _erase_index(mode: Erase | None) -> int:
     """Which row of the erase box a region's value is."""
     for index, (_label, value, _hint) in enumerate(ERASE_CHOICES):
@@ -201,7 +274,8 @@ class RegionInspector(QWidget):
         self._document: PlanDocument | None = None
         self._region_id: str | None = None
 
-        self._id_label = QLabel("—")
+        self._id_label = ElidedLabel()
+        self._id_label.set_parts("—")
         self._flags = FlagList()
         # Typeable, not just readable. A region drawn by hand has no OCR
         # reading and no other way to get one — nothing in review reads a
@@ -345,7 +419,7 @@ class RegionInspector(QWidget):
 
     def _populate(self, document: PlanDocument | None, region: Region | None) -> None:
         if document is None or region is None:
-            self._id_label.setText("—")
+            self._id_label.set_parts("—")
             self._flags.set_flags(None)
             self._source_text.setPlainText("")
             self._translation.setPlainText("")
@@ -362,9 +436,12 @@ class RegionInspector(QWidget):
         # The geometry stays as the plan spells it — ``exact``, ``approximate``,
         # ``manual`` are the file's own vocabulary and the file is never
         # translated. The word around it is this window's, and is.
-        self._id_label.setText(
-            self.tr("{0}  ({1}, order {2})").format(region.id, region.geometry.value, region.order)
-        )
+        # Two parts, because the id is the half that may be shortened and the
+        # half whose *tail* identifies the region — see :class:`ElidedLabel`.
+        # The gap between them is layout rather than language, so it is not in
+        # the translated string.
+        suffix = self.tr("({0}, order {1})").format(region.geometry.value, region.order)
+        self._id_label.set_parts(region.id, f"  {suffix}")
         self._flags.set_flags(document.flags(region.id))
         self._source_text.setPlainText(region.source_text)
         self._translation.setPlainText(region.translation)

@@ -6,9 +6,10 @@ happen. They belong somewhere that stays put for as long as the mode does.
 
 Wide enough to read and never wide enough to matter: the label refuses to
 report a width of its own, so a long line is elided rather than allowed to set
-a floor under the window (the shape of the defect recorded as 4 in
-``known-bugs.md``, one layer out). What is elided is still readable in the
-tooltip, the same bargain ``font_box`` strikes with a long family name.
+a floor under the window. What is elided is still readable in the tooltip, the
+same bargain ``font_box`` strikes with a long family name and ``inspector``'s
+``ElidedLabel`` with a long region id — that last one was the same defect a
+layer in, and was recorded in ``known-bugs.md`` until it was fixed.
 """
 
 from __future__ import annotations

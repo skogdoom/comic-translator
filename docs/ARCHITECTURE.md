@@ -2314,7 +2314,7 @@ eyes. It draws no conclusion without that one.
 **None of it worked, and that is recorded rather than left implied.** The
 panel still refuses. What the bundle declares, what was tried, where the
 `.lproj` directories provably land, and the one measurement still to take are
-entry 5 in `known-bugs.md`. The declarations stay: they are correct, they are
+entry 4 in `known-bugs.md`. The declarations stay: they are correct, they are
 what Apple documents, and a later fix will want them there. What does not
 stay is any claim that they work — the window's own Preferences is the route
 that does.

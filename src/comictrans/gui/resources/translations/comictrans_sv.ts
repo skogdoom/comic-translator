@@ -1034,7 +1034,7 @@
         <translation>kör {0}</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2327"/>
+        <location filename="../../main_window.py" line="2326"/>
         <source>{0} ran — %n locked region(s) left as they are</source>
         <translation>
             <numerusform>{0} kördes — %n låst region lämnades som den var</numerusform>
@@ -1322,129 +1322,129 @@
 <context>
     <name>RegionInspector</name>
     <message>
-        <location filename="../../inspector.py" line="57"/>
+        <location filename="../../inspector.py" line="58"/>
         <source>(plan default)</source>
         <translation>(planens standard)</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="59"/>
+        <location filename="../../inspector.py" line="60"/>
         <source>whatever the run is set to erase: --erase, or the render dialog</source>
         <translation>det körningen är inställd på att radera: --erase, eller renderingsdialogen</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="114"/>
+        <location filename="../../inspector.py" line="115"/>
         <source>approximate geometry</source>
         <translation>ungefärlig geometri</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="115"/>
+        <location filename="../../inspector.py" line="116"/>
         <source>low confidence</source>
         <translation>låg säkerhet</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="116"/>
+        <location filename="../../inspector.py" line="117"/>
         <source>held back (no translation)</source>
         <translation>hålls tillbaka (ingen översättning)</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="117"/>
+        <location filename="../../inspector.py" line="118"/>
         <source>same as source</source>
         <translation>samma som källan</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="118"/>
+        <location filename="../../inspector.py" line="119"/>
         <source>overlaps another region</source>
         <translation>överlappar en annan region</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="119"/>
+        <location filename="../../inspector.py" line="120"/>
         <source>skipped</source>
         <translation>överhoppad</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="133"/>
+        <location filename="../../inspector.py" line="134"/>
         <source>nothing flagged</source>
         <translation>inget flaggat</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="219"/>
+        <location filename="../../inspector.py" line="285"/>
         <source>what the lettering on the page says</source>
         <translation>vad texten på sidan säger</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="224"/>
+        <location filename="../../inspector.py" line="290"/>
         <source>never rendered; kept when re-extracting</source>
         <translation>renderas aldrig; behålls vid ny extrahering</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="225"/>
+        <location filename="../../inspector.py" line="291"/>
         <source>skip: leave this region untouched</source>
         <translation>hoppa över: lämna regionen orörd</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="231"/>
+        <location filename="../../inspector.py" line="297"/>
         <source>locked: finished — still lettered, but not editable</source>
         <translation>låst: klar — textas fortfarande, men kan inte ändras</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="241"/>
+        <location filename="../../inspector.py" line="307"/>
         <source>auto</source>
         <translation>auto</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="245"/>
+        <location filename="../../inspector.py" line="311"/>
         <source>region</source>
         <translation>region</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="246"/>
+        <location filename="../../inspector.py" line="312"/>
         <source>flags</source>
         <translation>flaggor</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="247"/>
+        <location filename="../../inspector.py" line="313"/>
         <source>source text</source>
         <translation>källtext</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="248"/>
+        <location filename="../../inspector.py" line="314"/>
         <source>translation</source>
         <translation>översättning</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="249"/>
+        <location filename="../../inspector.py" line="315"/>
         <source>notes</source>
         <translation>anteckningar</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="253"/>
+        <location filename="../../inspector.py" line="319"/>
         <source>fill colour</source>
         <translation>fyllnadsfärg</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="254"/>
+        <location filename="../../inspector.py" line="320"/>
         <source>text colour</source>
         <translation>textfärg</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="255"/>
+        <location filename="../../inspector.py" line="321"/>
         <source>font override</source>
         <translation>typsnitt (åsidosätt)</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="256"/>
+        <location filename="../../inspector.py" line="322"/>
         <source>font size</source>
         <translation>textstorlek</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="312"/>
+        <location filename="../../inspector.py" line="378"/>
         <source>unused: nothing is painted over in this region</source>
         <translation>används inte: ingenting målas över i den här regionen</translation>
     </message>
     <message>
-        <location filename="../../inspector.py" line="366"/>
-        <source>{0}  ({1}, order {2})</source>
-        <translation>{0}  ({1}, ordning {2})</translation>
+        <location filename="../../inspector.py" line="435"/>
+        <source>({0}, order {1})</source>
+        <translation>({0}, ordning {1})</translation>
     </message>
 </context>
 <context>

@@ -6597,3 +6597,148 @@ def test_a_modifier_drag_is_not_offered_over_a_locked_region(
     window._lock_action.setChecked(True)
 
     assert not canvas.wants_move_cursor(inside, Qt.KeyboardModifier.ControlModifier)
+
+
+# -- the region line does not push the panel about -----------------------
+
+LONG_REGION_ID = "7-1-combined-box-balloon-and-bare-caption-001"
+
+
+@pytest.fixture
+def plan_with_a_long_region_id(tmp_path: Path, two_page_plan: Path) -> Path:
+    """The two-page plan with the first region renamed to a long id."""
+    plan = load_plan(two_page_plan, check_images=False)
+    renamed = (replace(plan.regions[0], id=LONG_REGION_ID), *plan.regions[1:])
+    write_plan(replace(plan, regions=renamed), two_page_plan, force=True)
+    return two_page_plan
+
+
+def test_the_region_dock_does_not_resize_when_the_id_gets_longer(
+    qapp: object, plan_with_a_long_region_id: Path
+) -> None:
+    """The defect this fixes: the dock used to take its width from the id.
+
+    Measured before the fix, on these same two regions: 415px of dock against
+    538px, and 123px taken off the canvas, on nothing but a click.
+    """
+    window = _shown_window(plan_with_a_long_region_id)
+    window._go_to_region("page-001-002")
+    dock, canvas = window._inspector_dock.width(), window._canvas.width()
+
+    window._go_to_region(LONG_REGION_ID)
+
+    assert window._inspector_dock.width() == dock
+    assert window._canvas.width() == canvas
+
+
+def test_the_panel_minimum_no_longer_tracks_the_id(
+    qapp: object, plan_with_a_long_region_id: Path
+) -> None:
+    window = _shown_window(plan_with_a_long_region_id)
+    window._go_to_region("page-001-002")
+    narrowest = window._inspector.minimumSizeHint().width()
+
+    window._go_to_region(LONG_REGION_ID)
+
+    assert window._inspector.minimumSizeHint().width() == narrowest
+
+
+def test_a_long_region_id_is_elided_in_the_middle_keeping_its_tail(qapp: object) -> None:
+    """The tail is the part that tells a region from its neighbours, and the
+    geometry and order after it are a suffix that must survive whole."""
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from comictrans.gui.inspector import ElidedLabel
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    label = ElidedLabel()
+    layout.addWidget(label)
+    host.resize(300, 60)
+    host.show()
+    QTest.qWaitForWindowExposed(host)
+    suffix = "  (approximate, order 12)"
+    label.set_parts(LONG_REGION_ID, suffix)
+
+    shown = label.text()
+
+    assert shown != LONG_REGION_ID + suffix, "it had to be shortened to fit"
+    assert "…" in shown
+    assert shown.startswith("7-1-"), "the head stays"
+    assert shown.endswith("-001" + suffix), "and so do the tail and the suffix"
+    assert label.toolTip() == LONG_REGION_ID + suffix, "nothing is lost, it is one hover away"
+
+
+def test_the_region_line_is_re_elided_when_the_panel_is_resized(qapp: object) -> None:
+    """Eliding once is not enough — the dock is draggable.
+
+    Without this the id would keep whatever width it was first laid out at,
+    and dragging the dock narrower would put the text under the edge of the
+    panel rather than cutting it.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from comictrans.gui.inspector import ElidedLabel
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    label = ElidedLabel()
+    layout.addWidget(label)
+    host.resize(900, 60)
+    host.show()
+    QTest.qWaitForWindowExposed(host)
+    suffix = "  (approximate, order 12)"
+    label.set_parts(LONG_REGION_ID, suffix)
+    assert "…" not in label.text(), "room enough at this width"
+
+    host.resize(300, 60)
+    QTest.qWait(1)
+
+    assert "…" in label.text(), "and cut when there is not"
+
+
+def test_the_region_line_never_draws_wider_than_it_was_given(qapp: object) -> None:
+    """What it shows has to fit, suffix included.
+
+    The suffix is appended whole, so the room left for the id is the width
+    less the suffix — get that subtraction wrong and the line is not elided
+    at all, it is clipped by the widget's own edge.
+    """
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from comictrans.gui.inspector import ElidedLabel
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    label = ElidedLabel()
+    layout.addWidget(label)
+    host.show()
+    QTest.qWaitForWindowExposed(host)
+
+    for width in (900, 500, 340, 260):
+        host.resize(width, 60)
+        QTest.qWait(1)
+        label.set_parts(LONG_REGION_ID, "  (approximate, order 12)")
+        drawn = QFontMetrics(label.font()).horizontalAdvance(label.text())
+        assert drawn <= label.contentsRect().width(), (
+            f"at {width}px the line is {drawn}px in a {label.contentsRect().width()}px label"
+        )
+
+
+def test_a_region_id_that_fits_is_left_alone(qapp: object) -> None:
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from comictrans.gui.inspector import ElidedLabel
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    label = ElidedLabel()
+    layout.addWidget(label)
+    host.resize(900, 60)
+    host.show()
+    QTest.qWaitForWindowExposed(host)
+    label.set_parts("p-001", "  (exact, order 1)")
+
+    assert label.text() == "p-001  (exact, order 1)"
+    assert "…" not in label.text()

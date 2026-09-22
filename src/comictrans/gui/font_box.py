@@ -54,8 +54,9 @@ _MAX_CHARS = 24
 
 A floor because a field too narrow to read its own value is no use, and a
 ceiling because this width becomes the panel's minimum width: a font called
-something enormous must not be able to force the Region dock wide, which is
-the shape of the defect recorded as 4 in ``known-bugs.md``.
+something enormous must not be able to force the Region dock wide. The region
+line was the other field that could, and stopped — see ``inspector``'s
+``ElidedLabel`` for how, and for what it cost.
 """
 
 
