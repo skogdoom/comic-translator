@@ -2721,6 +2721,100 @@ def test_the_unresolvable_mark_reads_on_a_dark_window_too(
     assert mark.red() > mark.green() and mark.red() > mark.blue(), "a warning is red"
 
 
+def test_typing_part_of_a_font_name_writes_only_what_was_typed(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """A fragment from the middle of a name is offered the name, not glued to it.
+
+    Qt's default completion for an editable combo is inline, which finishes
+    what was typed as though the match began with it. With the contains
+    filter this field uses, typing "Sans" wrote eight fonts into the plan
+    header, half of them nonsense: each keystroke, then the same keystroke
+    with the rest of Comic Sans MS glued on after it — "Somic Sans MS",
+    "Samic Sans MS", "Sanic Sans MS", "Sansc Sans MS". Measured. Typed as
+    keys, because the completer's model filters the same way in either mode
+    and it is the mode that decides what typing does.
+    """
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+    box = dialog._font
+    written: list[str] = []
+    dialog.edited.connect(
+        lambda: written.append(window.document.plan.header.font)  # type: ignore[union-attr]
+    )
+    dialog.show()
+    dialog.activateWindow()
+    line_edit = box.lineEdit()
+    assert line_edit is not None
+    line_edit.setFocus()
+    line_edit.clear()
+    QApplication.processEvents()
+
+    QTest.keyClicks(line_edit, "Sans")
+    QApplication.processEvents()
+
+    completer = box.completer()
+    assert completer is not None
+    popup = completer.popup()
+    try:
+        assert written == ["S", "Sa", "San", "Sans"], "only what was typed reaches the plan"
+        assert popup is not None and popup.isVisible(), "the name containing it is offered"
+        model = completer.completionModel()
+        offered = [model.index(row, 0).data() for row in range(model.rowCount())]
+        assert offered == ["Comic Sans MS"]
+    finally:
+        if popup is not None:
+            popup.hide()
+        dialog.hide()
+
+
+def test_the_cleanup_leaves_a_completer_popup_to_the_combo_that_owns_it(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deleted on its own, a completer's list is deleted twice, and that crashes.
+
+    The test above was the first in the suite to open a completer popup, and
+    it took the suite down with a segmentation fault three runs in four — in
+    a later test, whichever first ran an event loop. The popup has no parent, so
+    the window cleanup after each test saw a window of its own and deleted
+    it; the completer deletes it again when its combo goes. Measured
+    directly: popup first, the process dies; combo first, it does not.
+
+    What the cleanup schedules is recorded rather than carried out, so that
+    getting this wrong fails here, as an assertion, instead of as that crash
+    somewhere later. A completer makes its popup when first asked for it,
+    shown or not, and from then on it is listed as a window.
+    """
+    from PySide6.QtWidgets import QComboBox
+
+    from .conftest import close_windows_opened_since
+
+    box = QComboBox()
+    box.setEditable(True)
+    completer = box.completer()
+    assert completer is not None
+    completer.setCompletionMode(completer.CompletionMode.PopupCompletion)
+    before = set(QApplication.topLevelWidgets())
+
+    popup = completer.popup()
+    window = QWidget()
+    window.show()
+    popup.show()
+    assert {popup, window} <= set(QApplication.topLevelWidgets()) - before
+
+    deleted: list[QWidget] = []
+    monkeypatch.setattr(QWidget, "deleteLater", lambda widget: deleted.append(widget))
+    close_windows_opened_since(before)
+    monkeypatch.undo()
+
+    assert deleted == [window], "a window the test opened goes; the popup is its owner's"
+    assert not popup.isVisible(), "but it is hidden like everything else"
+    window.deleteLater()
+
+
 def test_the_font_box_stays_editable_so_a_name_can_be_typed(qapp: object, font_dir: Path) -> None:
     from comictrans.gui.font_box import FontBox
 

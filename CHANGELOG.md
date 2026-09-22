@@ -23,6 +23,15 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **Typing part of a font name no longer writes nonsense into the plan.**
+  The font fields completed a fragment from the middle of a name as though it
+  were the start of one, and wrote each step through: typing "Sans" into the
+  plan header's font put eight fonts into the header in turn, four of them
+  "Somic Sans MS", "Samic Sans MS", "Sanic Sans MS" and "Sansc Sans MS", one
+  undo step each. They were marked red as not installed, which is how they
+  showed, but they still reached the plan. Typing now writes what was typed,
+  and the families containing it are offered in a list underneath to pick
+  from.
 - **A comic's languages are picked by name.** The plan header, Extract Pages
   and Preferences show *Italian (it)* where they showed `it`, and offer every
   language with a two-letter code, found by typing any part of its name. The
