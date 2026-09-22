@@ -960,10 +960,18 @@ internal name differs from the file it lives in is real and usable but not
 findable under the name inside it. Asking per file rather than globally is
 what stops a font being offered twice under two spellings.
 
-The field stays editable and never rewrites a name it does not recognise: a
-plan written on another Mac can name a font this one lacks, and silently
-swapping it is exactly the substitution the spec forbids. The name stays and
-is marked instead.
+The field stays editable, but it records only a family from the list: a name
+typed in full is recorded at once, a fragment is completed to its best match
+by Enter, Tab or leaving the field, Escape puts back what was there, and a
+name matching nothing installed is never recorded. It used to record whatever
+it showed, keystroke by keystroke like every other field, and a plan was
+saved naming "Sans". So the font is the one field in the window that does not
+write through as it is typed; see `inspector`'s module docstring.
+
+It never rewrites a name it was *given*: a plan written on another Mac can
+name a font this one lacks, and silently swapping it is exactly the
+substitution the spec forbids. The name stays and is marked instead, until
+somebody chooses another.
 
 **Why the header dialog validates and the region setters do not.** A
 region's fields carry no invariants of their own, so the schema is enforced

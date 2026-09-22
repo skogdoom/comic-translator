@@ -896,13 +896,16 @@ families installed here that this tool can actually render with: found on
 disk, and each one checked to have a real bold, since emphasis is bold and a
 bold is never synthesised. Qt knows a wider set than that, so the list is
 built from the same resolver `apply` uses rather than from Qt, and everything
-it offers will render. The fields stay typeable — any part of a name offers
-the families containing it, with one marked that Enter or Tab takes and
-Escape leaves alone — and a name this machine does
-not have is kept exactly as written and marked rather than swapped for
-something installed — you find out before you render, not after. The list is
-read once per session; **Edit > Rescan Fonts** looks again after you install
-one.
+it offers will render. The fields stay typeable, but what they record is
+always a font from that list. A name typed in full is recorded as you type it;
+part of one offers the families containing it, with the best one marked, and
+**Enter, Tab or leaving the field takes it** while **Escape puts back** what
+was there. A name that matches nothing installed is never recorded, so a
+font this machine does not have cannot be typed in. One a plan already names
+is another matter: it is kept exactly as written and marked rather than
+swapped for something installed — you find out before you render, not after.
+The list is read once per session; **Edit > Rescan Fonts** looks again after
+you install one.
 
 **Edit > Plan Header…** changes the settings every region is drawn under:
 the font, the case, the two fit limits, and the language pair — each language

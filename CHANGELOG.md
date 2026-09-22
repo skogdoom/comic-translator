@@ -23,18 +23,21 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
-- **Typing part of a font name no longer writes nonsense into the plan.**
-  The font fields completed a fragment from the middle of a name as though it
-  were the start of one, and wrote each step through: typing "Sans" into the
-  plan header's font put eight fonts into the header in turn, four of them
-  "Somic Sans MS", "Samic Sans MS", "Sanic Sans MS" and "Sansc Sans MS", one
-  undo step each. They were marked red as not installed, which is how they
-  showed, but they still reached the plan. Typing now writes what was typed,
-  and the families containing it are offered in a list underneath with the
-  likeliest marked — a name typed in full, else the first. **Enter or Tab
-  takes it**, as finishing the name used to; Escape keeps what was typed; and
-  a name nothing here contains, such as a font from another Mac, is kept as
-  typed, since there is nothing to take.
+- **A font field records a font, not what is being typed.** Reported: a plan
+  could be saved naming "Sans". The font fields wrote through as they were
+  typed in, like every other field, and with Qt's inline completion that was
+  worse than a fragment: typing "Sans" into the plan header's font put
+  "Somic Sans MS", "Samic Sans MS", "Sanic Sans MS" and "Sansc Sans MS" there
+  in turn, the rest of Comic Sans MS glued onto each keystroke. Now nothing
+  reaches the plan until the field settles on an installed family. A name
+  typed in full is recorded as it is typed. Part of one offers the families
+  containing it, with the best marked — the name typed in full if there is
+  one, else the first — and **Enter, Tab or leaving the field takes it**;
+  **Escape puts back** what was there, and only a second Escape closes the
+  dialog. A name that matches nothing installed is never recorded: Enter
+  leaves it in the field, marked, to be corrected, and leaving puts back what
+  was there. A plan that already names a font this machine lacks keeps it
+  exactly, marked, as it always did; what you can no longer do is type one in.
 - **A comic's languages are picked by name.** The plan header, Extract Pages
   and Preferences show *Italian (it)* where they showed `it`, and offer every
   language with a two-letter code, found by typing any part of its name. The

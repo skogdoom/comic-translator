@@ -8,7 +8,8 @@ that could quietly change an open document would be the one thing the
 two-pass design cannot afford.
 
 Fields write straight through as they are edited, like the header dialog and
-the region inspector, so there is nothing to apply and nothing to cancel.
+the region inspector, so there is nothing to apply and nothing to cancel —
+the font excepted, which waits for a whole name, as it does in both of them.
 That is also what macOS expects of a Preferences window: no OK button, and
 Cmd+, to open it. Undo does not reach here, and does not need to — a
 preference only seeds the next dialog, which shows you what it seeded and
@@ -357,7 +358,7 @@ class PreferencesDialog(QDialog):
         self._target_language.currentTextChanged.connect(self._commit)
         self._ocr_languages.textChanged.connect(self._commit)
         self._engine.currentIndexChanged.connect(self._commit)
-        self._font.currentTextChanged.connect(self._commit)
+        self._font.chosen.connect(self._commit)
         self._output.textChanged.connect(self._commit)
         self._unrar_tool.textChanged.connect(self._commit)
         self._rar_tool.textChanged.connect(self._commit)

@@ -7,17 +7,31 @@ search directories and demands a real bold face, because emphasis is bold and
 a bold is never synthesised. A list built from Qt would offer families that
 ``apply`` then refuses, turning a two-click choice into a render failure.
 
-It stays editable, and it never rewrites a name it does not recognise. A plan
-written on another Mac can name a font this one does not have; silently
-swapping that for something installed is the one thing the spec says never
-happens. Instead the name stays, and is marked so you find out before you
-render rather than after.
+It stays editable, but what it records is always a family from that list —
+typed in full, picked, or completed from part of a name. A fragment that
+matches nothing installed is never written anywhere; leaving the field puts
+back what it held, and so does Escape, whatever was typed. That is how a plan
+came to be saved naming "Sans": the field used to record whatever it showed.
+
+It never rewrites a name it was *given*, though. A plan written on another
+Mac can name a font this one does not have; silently swapping that for
+something installed is the one thing the spec says never happens. So a name
+the field was handed stays exactly as it came, marked so you find out before
+you render rather than after, until somebody chooses another.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QSignalBlocker, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QKeyEvent, QPalette
+from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFocusEvent,
+    QFontMetrics,
+    QGuiApplication,
+    QHideEvent,
+    QKeyEvent,
+    QPalette,
+)
 from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
 from .. import fonts
@@ -60,7 +74,13 @@ line was the other field that could, and stopped — see ``inspector``'s
 """
 
 
-_TAKES_THE_SUGGESTION = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab)
+_NOT_LEAVING = (Qt.FocusReason.ActiveWindowFocusReason, Qt.FocusReason.PopupFocusReason)
+"""Focus lost to another application, or to the list of suggestions."""
+
+_NO_MATCH = object()
+"""What :meth:`FontBox._best_match` says when nothing installed fits.
+
+Not ``None``, which is a real answer here: "no override"."""
 
 
 class FontBox(QComboBox):
@@ -71,7 +91,15 @@ class FontBox(QComboBox):
     different things in different places. The plan header's font may not be
     absent: every region without an override falls back to it, so there is
     nothing for it to fall back to itself.
+
+    Read :meth:`value` when :attr:`chosen` fires, not the text: the text is
+    whatever is being typed, and the value is what was last settled on.
     """
+
+    chosen = Signal()
+    """A font was settled on — picked, completed, or typed in full — or an
+    edit was cancelled back to one. Read :meth:`value`. Not emitted when the
+    value did not change, and never by :meth:`set_value`."""
 
     def __init__(
         self,
@@ -84,6 +112,12 @@ class FontBox(QComboBox):
         self._allow_default = allow_default
         self._default_text = default_text
         self._loaded = False
+        # What the field holds, as far as anyone reading value() knows; what
+        # it held when the current edit began, for Escape and for leaving
+        # with nothing to take; and whether an edit is under way at all.
+        self._saved: str | None = None
+        self._before: str | None = None
+        self._editing = False
         self.setEditable(True)
         self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         # Measured before anything is in it, so this is the frame and the
@@ -96,16 +130,8 @@ class FontBox(QComboBox):
         # A popup of every family containing what was typed, so "Sans"
         # offers Comic Sans MS. The popup is not cosmetic: Qt's default for a
         # combo is inline completion, which finishes the text as though the
-        # match began with what was typed, and every step of that is an edit
-        # the field writes through — "Sans" put "Sansc Sans MS" in the plan
-        # header, measured.
-        #
-        # Enter and Tab take the suggestion marked in that list, as they did
-        # when inline completion finished the name for you; without this a
-        # fragment typed and entered stayed a fragment, and a plan saved
-        # holding "Sans". Escape keeps what was typed, and a name nothing
-        # here contains — a font from another Mac — has no list to take
-        # anything from, so it is kept as typed.
+        # match began with what was typed — "Sans" became "Sansc Sans MS",
+        # measured.
         completer = self.completer()
         if completer is not None:
             completer.setCompletionMode(completer.CompletionMode.PopupCompletion)
@@ -118,9 +144,23 @@ class FontBox(QComboBox):
             completer.completionModel().modelReset.connect(
                 self._mark_best_match, Qt.ConnectionType.QueuedConnection
             )
-            popup = completer.popup()
-            if popup is not None:
-                popup.installEventFilter(self)
+
+        line_edit = self.lineEdit()
+        if line_edit is not None:
+            line_edit.textEdited.connect(self._on_typed)
+            # Enter only. Leaving is caught as the focus event itself, in
+            # focusOutEvent: this signal fires on leaving only if the text
+            # changed since it last fired, so after Enter on a name nothing
+            # matches, leaving would never be heard.
+            line_edit.editingFinished.connect(
+                lambda: self._finish(left=False) if self.hasFocus() else None
+            )
+        # A pick from either list: the one under the arrow, and the
+        # suggestions too, which the combo passes on as its own. Nothing need
+        # have been typed first, so this is a pick, not the end of an edit:
+        # taken as the end of one, it was ignored — measured, the field
+        # showed the font picked while the plan kept the one before.
+        self.activated.connect(lambda index: self._pick(self.itemText(index)))
 
         self.currentTextChanged.connect(lambda _text: self._on_text_changed())
         self._fit_width()
@@ -129,10 +169,96 @@ class FontBox(QComboBox):
         self._mark_resolvable()
         self._fit_width()
 
-    # -- completing a name -------------------------------------------------
+    # -- settling on a font ----------------------------------------------
+
+    def _best_match(self, text: str) -> object:
+        """The family ``text`` stands for, ``None`` for the default, or ``_NO_MATCH``.
+
+        A family named in full, ignoring case; otherwise the first that
+        contains it — the same one the list marks. Empty is the default
+        where there is one, and matches nothing where there is not: the plan
+        header has no font to fall back to.
+        """
+        self._ensure_loaded()
+        typed = text.strip().casefold()
+        if not typed:
+            return None if self._allow_default else _NO_MATCH
+        names = [self.itemText(index) for index in range(self.count())]
+        folded = [name.casefold() for name in names]
+        found = (
+            names[folded.index(typed)]
+            if typed in folded
+            else next((name for name in names if typed in name.casefold()), None)
+        )
+        if found is None:
+            return _NO_MATCH
+        return None if self._allow_default and found == self._default_text else found
+
+    def _on_typed(self, text: str) -> None:
+        """A key was typed. A family named in full is settled on at once.
+
+        At once rather than on leaving, because not every way out of the
+        field says so: Next Region changes the region under it without the
+        field ever losing focus, and would take a correctly typed name with
+        it. Only a name typed in full, though — a fragment waits.
+        """
+        if not self._editing:
+            self._editing = True
+            self._before = self._saved
+        if text.strip().casefold() in (name.casefold() for name in self._names()):
+            self._settle(self._best_match(text))
+
+    def _names(self) -> list[str]:
+        self._ensure_loaded()
+        return [self.itemText(index) for index in range(self.count())]
+
+    def _finish(self, *, left: bool) -> None:
+        """Enter, Tab, a pick from either list, or the field losing focus.
+
+        Settles on the best match for what was typed and shows it spelled as
+        the family is. With nothing to take, leaving the field puts back what
+        it held, while Enter leaves the text where it is — marked as not
+        installed — so it can be corrected.
+        """
+        if not self._editing:
+            return
+        match = self._best_match(self.currentText())
+        if match is _NO_MATCH:
+            if left:
+                self._revert()
+            return
+        self._take(match)
+
+    def _pick(self, text: str) -> None:
+        """A choice from either list, whether or not anything was typed first."""
+        match = self._best_match(text)
+        if match is not _NO_MATCH:
+            self._take(match)
+
+    def _take(self, match: object) -> None:
+        family = match if isinstance(match, str) else None
+        self._settle(family)
+        self._editing = False
+        self._show(family)
+
+    def _settle(self, match: object) -> None:
+        family = match if isinstance(match, str) else None
+        if family != self._saved:
+            self._saved = family
+            self.chosen.emit()
+
+    def _revert(self) -> None:
+        """Put back what the field held when this edit began."""
+        self._settle(self._before)
+        self._editing = False
+        self._show(self._before)
 
     def _mark_best_match(self) -> None:
-        """Mark the suggestion Enter and Tab will take, without taking it.
+        """Show which suggestion Enter, Tab or leaving will take, without taking it.
+
+        Only shows it: what is taken is worked out again by
+        :meth:`_best_match` when the edit ends, so a key that beats this to
+        it takes the same font.
 
         A family typed in full is marked over a longer one containing it, so
         "Sans" stays Sans where both exist; otherwise the first in the list.
@@ -161,33 +287,45 @@ class FontBox(QComboBox):
             popup.setCurrentIndex(model.index(best, 0))
         popup.viewport().update()
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
-        """Enter and Tab take the marked suggestion.
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # noqa: N802 - Qt override
+        """Leaving the field settles the edit: the best match, or what was there.
 
-        Enter is Qt's own once something is marked; this only makes sure
-        something is, should a key beat the queued mark to it. Tab is done
-        here outright, because Qt's completer takes a suggestion on Enter
-        and not on Tab — measured, "Comic" and Tab left "Comic". The key
-        still goes on afterwards, so focus moves to the next field as a Tab
-        should.
+        The combo, not its line edit: the line edit hands focus to the combo,
+        so this is where losing it is heard — measured, a filter on the line
+        edit saw no focus event at all. Not to another application, and not
+        to the list of suggestions: coming back from either, the edit is
+        still under way.
         """
-        completer = self.completer()
-        popup = completer.popup() if completer is not None else None
-        if (
-            popup is not None
-            and watched == popup
-            and isinstance(event, QKeyEvent)
-            and event.type() == QEvent.Type.KeyPress
-            and event.key() in _TAKES_THE_SUGGESTION
-            and popup.isVisible()
-        ):
-            if not popup.currentIndex().isValid():
-                self._mark_best_match()
-            if event.key() == Qt.Key.Key_Tab and popup.currentIndex().isValid():
-                chosen = str(popup.currentIndex().data())
-                popup.hide()
-                self.setCurrentText(chosen)
-        return super().eventFilter(watched, event)
+        if event.reason() not in _NOT_LEAVING:
+            self._finish(left=True)
+        super().focusOutEvent(event)
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802 - Qt override
+        """Closing the dialog is leaving the field, however it was closed.
+
+        Clicking a button need not take focus — on macOS it does not — so
+        the field can go without ever being told it lost focus.
+        """
+        self._finish(left=True)
+        super().hideEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
+        """Escape cancels the edit, and goes no further.
+
+        Here rather than on the line edit because keys come here first and
+        reach the line edit by a direct call, which no event filter sees. The
+        first Escape puts the font back; only a second one, with nothing
+        left to cancel, reaches the dialog and closes it.
+
+        With the suggestions open, the keyboard is theirs, but Qt's completer
+        closes them and hands Escape and Enter on to here — measured, so
+        nothing needs catching on the list itself.
+        """
+        if event.key() == Qt.Key.Key_Escape and self._editing:
+            self._revert()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _room_for_text(self) -> int:
         """Pixels the name gets: what it needs, floored and capped."""
@@ -249,15 +387,25 @@ class FontBox(QComboBox):
     # -- the value -------------------------------------------------------
 
     def value(self) -> str | None:
-        """The chosen family, or ``None`` for "no override"."""
-        text = self.currentText().strip()
-        if not text or (self._allow_default and text == self._default_text):
-            return None
-        return text
+        """The family last settled on, or ``None`` for "no override".
+
+        Not what the field shows while somebody is typing in it: a fragment
+        is not a font, and nothing reading this should ever see one.
+        """
+        return self._saved
 
     def set_value(self, family: str | None) -> None:
-        """Show a family without writing it back out as an edit."""
+        """Hold ``family``, exactly as given, without writing it back out.
+
+        Also ends any edit under way: the plan moved on — another region,
+        an undo — and what was being typed belonged to what it was before.
+        """
         self._ensure_loaded()
+        self._saved = self._before = family
+        self._editing = False
+        self._show(family)
+
+    def _show(self, family: str | None) -> None:
         self.blockSignals(True)
         try:
             self.setCurrentText(
@@ -271,14 +419,16 @@ class FontBox(QComboBox):
     def resolvable(self) -> bool:
         """Whether the name shown is one that will render.
 
-        Membership of the scanned list rather than a fresh ``resolve_family``
-        call: the list is exactly the families that were put through it, so
-        the two agree, and this can be asked on every keystroke.
+        The name *shown*, so that Enter on a name nothing matches leaves it
+        marked in the field. Membership of the scanned list rather than a
+        fresh ``resolve_family`` call: the list is exactly the families that
+        were put through it, so the two agree, and this can be asked on
+        every keystroke.
         """
-        family = self.value()
-        if family is None:
+        text = self.currentText().strip()
+        if not text or (self._allow_default and text == self._default_text):
             return True
-        return family in fonts.available_families()
+        return text in fonts.available_families()
 
     def _mark_resolvable(self) -> None:
         line_edit = self.lineEdit()
@@ -294,7 +444,7 @@ class FontBox(QComboBox):
                 self.tr(
                     "{0} is not installed here, or has no bold face. "
                     "apply will refuse it rather than substitute another font."
-                ).format(repr(self.value()))
+                ).format(repr(self.currentText().strip()))
             )
         line_edit.setPalette(palette)
 
