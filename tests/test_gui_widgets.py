@@ -6669,6 +6669,56 @@ def test_a_long_region_id_is_elided_in_the_middle_keeping_its_tail(qapp: object)
     assert label.toolTip() == LONG_REGION_ID + suffix, "nothing is lost, it is one hover away"
 
 
+def test_the_region_line_is_visible_where_macos_sizes_fields_to_their_hint(
+    qapp: object, plan_with_a_long_region_id: Path
+) -> None:
+    """The defect this test exists for shipped, and looked fine on Linux.
+
+    ``QFormLayout`` is asked how to size its fields and the answer is not the
+    same everywhere: macOS asks for ``FieldsStayAtSizeHint`` where every other
+    platform this suite runs on stretches fields to the panel. A widget whose
+    hint is ignored is given the full width under one and *nothing* under the
+    other — measured at zero pixels, a region line nobody could see. So this
+    asks the form for the macOS policy and checks there is something there.
+    """
+    from PySide6.QtWidgets import QFormLayout
+
+    window = _shown_window(plan_with_a_long_region_id)
+    form = window._inspector.layout().itemAt(0).layout()
+    assert isinstance(form, QFormLayout)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    QTest.qWait(1)
+
+    for region_id in ("page-001-002", LONG_REGION_ID):
+        window._go_to_region(region_id)
+        QTest.qWait(1)
+        label = window._inspector._id_label
+        assert label.width() > 0, f"{region_id}: the region line has no width at all"
+        assert label.text().strip(), f"{region_id}: the region line is empty"
+        # Not merely non-empty: the id itself has to be in there, not just
+        # the geometry and order that follow it.
+        assert label.text().startswith(region_id[:4]), label.text()
+
+
+def test_the_region_line_asks_for_the_same_width_whatever_the_id(
+    qapp: object, plan_with_a_long_region_id: Path
+) -> None:
+    """The hint is a constant, which is what stops it pushing the panel.
+
+    Asserted on the hint rather than on the dock, because the dock only moves
+    under a policy that honours the hint — testing the dock on Linux misses
+    exactly the case that shipped broken.
+    """
+    window = _shown_window(plan_with_a_long_region_id)
+    label = window._inspector._id_label
+    window._go_to_region("page-001-002")
+    short = (label.sizeHint().width(), label.minimumSizeHint().width())
+
+    window._go_to_region(LONG_REGION_ID)
+
+    assert (label.sizeHint().width(), label.minimumSizeHint().width()) == short
+
+
 def test_the_region_line_is_re_elided_when_the_panel_is_resized(qapp: object) -> None:
     """Eliding once is not enough — the dock is draggable.
 

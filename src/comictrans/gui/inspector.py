@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 
-from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QListWidget,
-    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -178,6 +177,20 @@ class FlagList(QListWidget):
         self._fit_to_rows()
 
 
+_ID_MIN_CHARS = 24
+_ID_MAX_CHARS = 44
+"""How wide the region line asks to be, in characters.
+
+The same bargain ``font_box`` strikes with a family name, and for the same
+two reasons: a floor because a field too narrow to read is no use, and a
+ceiling because this width is what the panel's own minimum is built from —
+a region id long enough must not be able to push the Region dock wide.
+
+44 shows ``page-001-001  (exact, order 1)`` whole, which is the shape
+``extract`` writes; past that the id is elided and the tooltip has the rest.
+"""
+
+
 class ElidedLabel(QLabel):
     """A one-line label that shortens its text to fit instead of pushing.
 
@@ -188,20 +201,24 @@ class ElidedLabel(QLabel):
     Measured on the fixture ids: 415px of dock against 538px, and 123px of
     canvas gone, on nothing but a click.
 
-    So it declines to report a width and elides to whatever it is given, which
-    is the bargain ``HintLine`` already strikes one layer out and ``font_box``
-    strikes with a long family name. **Both halves are load-bearing, and it
-    takes shrinking the panel to see why.** Eliding alone holds the selection
-    changes: the text is cut to the width the label already has, so the width
-    it asks for never exceeds the width it was given, and swapping between a
-    short id and a long one moves nothing. But a label that has once shown its
-    text in full reports that full width as its *minimum*, and a minimum is
-    not something a layout may go under — so without ``Ignored`` the panel
-    can be widened and then never narrowed again, and the label never gets a
-    smaller width to re-elide into. Measured both ways.
+    So it asks for a width that has nothing to do with its text — a floor and
+    a ceiling in characters, exactly as ``font_box`` bounds the width of a
+    family name — and elides into whatever it is actually given. The hint
+    being a constant is the whole of the fix: a hint that cannot grow with
+    the id cannot push the panel, whichever way the form is sizing its
+    fields.
 
-    An explicit ``minimumSizeHint`` was also tried, and that one is genuinely
-    redundant: ``Ignored`` already stops the layout asking. It is not here.
+    **``QSizePolicy.Ignored`` was tried here and is wrong**, which is worth
+    recording because it looks right and passes on Linux. A form asks
+    ``QFormLayout`` how to size its fields, and the answer is not the same
+    everywhere: this project's own ``_widen_for_special_value`` already
+    notes that macOS asks for ``FieldsStayAtSizeHint`` where every other
+    platform the suite runs on stretches fields to the panel. Under a policy
+    that stretches, ``Ignored`` gets the full width and everything looks
+    fine. Under one that sizes a field to its hint, a widget whose hint is
+    ignored is given **nothing** — measured at zero pixels, which is a region
+    line nobody can see, and is what shipped to a Mac before this note
+    existed.
 
     **The text is in two parts**, which is the one thing here that is not
     ``HintLine``. It elides to the right, because a hint reads from the front;
@@ -218,16 +235,25 @@ class ElidedLabel(QLabel):
         super().__init__(parent)
         self._elidable = ""
         self._fixed = ""
-        # Ignored horizontally so the layout never treats this label's text as
-        # a width it has to honour — in either direction. Vertically it is an
-        # ordinary one-line label.
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
     def set_parts(self, elidable: str, fixed: str = "") -> None:
         """Show ``elidable`` shortened as needed, with ``fixed`` kept whole."""
         self._elidable, self._fixed = elidable, fixed
         self.setToolTip(f"{elidable}{fixed}".strip())
         self._relayout()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        """As much as the line is worth, never as much as the line is."""
+        return QSize(self._chars(_ID_MAX_CHARS), super().sizeHint().height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        """And a floor, so a narrowed panel still shows something."""
+        return QSize(self._chars(_ID_MIN_CHARS), super().minimumSizeHint().height())
+
+    def _chars(self, count: int) -> int:
+        """``count`` characters wide, measured from the font rather than set
+        in pixels, so these hold at whatever size the interface is run at."""
+        return QFontMetrics(self.font()).averageCharWidth() * count
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
