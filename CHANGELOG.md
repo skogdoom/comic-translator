@@ -13,7 +13,29 @@ for themselves. See **Build the application** in `README.md`.
 ## 1.2.0 — unreleased
 
 Where a shipped milestone earns its line, until there is a release to put it
-in. Nothing yet.
+in.
+
+**The plan format has moved.**
+Version 4. The reader also accepts versions 1 and 2 and 3 and upgrades them on
+the way in, so a plan written by any earlier build opens with its translations
+intact. Opening one and saving it writes version 4, and that is the whole of
+what changes: every field version 4 adds is optional and defaults to the value
+that means "as before", and the writer leaves out each one at that value — so a
+plan that says nothing new is byte for byte the file it was.
+
+- **Every field the roadmap still wanted, added at once.** A region may now
+  carry `locked` (finished, not to be edited), `angle` (a tilt in degrees) and
+  `stroke_color` (an outline around the lettering, or none); the header may
+  carry the chapter's own details — series, title, volume, number, year,
+  publisher, writer, and which way the pages read. **Nothing reads any of them
+  yet.** They arrive together because the reader rejects unknown keys on
+  purpose, which makes each added field a compatibility break: four of them
+  added separately would be four version bumps, four migrations, and four
+  windows in which two builds disagree about what a plan may contain. Done
+  once it is one of each, and the milestones that will use them — locking a
+  region, lettering a tilted one, a sound effect over the artwork, and the
+  chapter metadata that `ComicInfo.xml` and EPUB both need — each arrive to
+  find their field already there.
 
 ## 1.1.0 — 2026-09-18
 

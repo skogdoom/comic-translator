@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 29 | `PLAN_VERSION` 4, in one go | M |
 | 4.27 | Lock a region | M |
 | 16 | Languages by name, not by code | M |
 | 31 | A reader window | M |
@@ -87,30 +86,33 @@ what is left, and it sits ahead of everything below it for the same reason
 4.28 did: met every few minutes by the one person using this, cheap, and in
 the same corner of the same files as the context menu it will now extend.
 
-**Four milestones want a field, and 29 is the one that adds them.** 4.27
-wants `locked`, 18 the chapter header fields, 27 an angle, 28 a stroke colour.
-The reader rejects unknown keys by design, so a field added on its own is its
-own bump, its own migration, and its own window in which two builds disagree
-about what a plan may contain. Doing that four times for what is one idea is
-the thing this file has been trying to avoid since 18 was first sequenced
-ahead of 19 and 20.
+**The schema change has shipped, and four milestones are cheaper for it.**
+Milestone 29 took the plan format to version 4 and added every field this file
+still wanted — `locked` for 4.27, an angle for 27, a stroke colour for 28, and
+the chapter header fields for 18 — all optional, all inert, and filled in by
+nothing. It went first because the reader rejects unknown keys by design, so a
+field added on its own is its own bump, its own migration and its own window in
+which two builds disagree about what a plan may contain; four of them
+separately would have been four of each. Each of those milestones now arrives
+to find its field already there and spends itself on behaviour, which is also
+what makes them independent of one another: none waits on another's migration.
+18 keeps the job it was sequenced for — 19 and 20 still need the header to stop
+being *empty*, and that is 18 rather than either format milestone. 6 sits with
+them as the third member of the same family and the least urgent of the three.
 
-**Decided: one schema change, as its own step, and it goes first.** 29 adds
-every field the roadmap wants, all optional and empty, and fills in none of
-them. Every milestone below it then arrives to find its field already there
-and spends itself on behaviour — which is also what makes them independent of
-each other, since none waits on another's migration. 18 keeps the job it was
-sequenced for: 19 and 20 still need the header to stop being empty, and that
-is 18 rather than either format milestone. 6 sits with them as the third
-member of the same family and the least urgent of the three.
+**A field being there is not an instruction to fill it in.** The temptation 29
+existed to resist outlives it: four fields are now sitting in the format with
+nothing reading them, and each belongs to exactly one milestone below. Borrow
+`known-bugs.md`'s instinct here — meeting one while doing something else is
+not a reason to start on it.
 
-**What 29 does not settle, and should not be read as settling.** Two open
+**What 29 did not settle, and should not be read as settling.** Two open
 questions in this file were answered partly on the grounds that a field costs
 a version bump: whether an ellipse remembers it is an ellipse (17) and whether
-a rotated region remembers its angle (26). 29 makes that argument cheap, so
-both now rest on the half that is still true — nothing downstream reads
-either, and a field nothing reads is still a field to maintain. Neither is
-reopened here; they are simply standing on one leg instead of two.
+a rotated region remembers its angle (26). The bump is now paid for and the
+mechanism is proven, so both rest on the half that is still true — nothing
+downstream reads either, and a field nothing reads is still a field to
+maintain. Neither is reopened; they are standing on one leg instead of two.
 
 26 and 28 are placed by what they need rather than by size. 26 follows 17
 because rotation is a handle on a shape and 17 is what builds the shapes. 28
@@ -235,54 +237,6 @@ It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
 
-## 29 `PLAN_VERSION` 4, in one go
-
-Every field the roadmap wants, added at once, filled in by nothing.
-
-**Why it is a milestone rather than a line in four others.** The reader
-rejects unknown keys on purpose, so that a typo is an error rather than a
-silent no-op. That makes every added field a compatibility break: a plan
-carrying it cannot be read by a build that predates it. Four milestones want
-one — 4.27 a `locked` flag, 18 the chapter header fields, 27 an angle, 28 a
-stroke colour — and done separately that is four bumps, four migrations and
-four windows in which two builds disagree about what a plan may contain. Done
-once it is one of each, and the four become ordinary feature work.
-
-**What it adds**, all optional, all defaulting to the value that means "as
-before":
-
-- `locked` on a region — 4.27
-- `angle` on a region — 27
-- `stroke_color` on a region, `None` meaning no outline — 28
-- the chapter header fields — series, title, volume, number, year, publisher,
-  writer, and reading direction — 18
-
-**The mechanism already exists and has been used twice.** `PLAN_VERSION` goes
-to 4 and `READABLE_VERSIONS` gains it; the new keys join `REGION_KEYS` and the
-header's allow-list; the reader upgrades an older plan in memory and the
-writer always emits the current version, which is what turns a version-3 file
-into a version-4 one the first time it is saved. Version 1 already has its own
-allow-list in `LEGACY_REGION_KEYS`, so the shape for doing this is on the page
-rather than something to invent.
-
-**A version-4 plan opened by an older build is refused.** That is correct and
-is what the version is for. It is also the reason to do this once: each extra
-bump is another build somebody has in their hands that cannot open a file
-somebody else just saved.
-
-**It ends with fields nothing writes and nothing reads**, which is the same
-bargain 18 already described making, and the thing to watch when reviewing
-it: the temptation is to let one of the four milestones start here because its
-field is right there. That is what this milestone exists to prevent, and
-`known-bugs.md`'s rule is the right instinct to borrow — a field being present
-is not an instruction to fill it in.
-
-**How it is known to be done.** A version-3 plan round-trips: opened, saved,
-and the result is a version-4 file whose regions are unchanged except for
-defaults. A version-4 plan with every new field set reads back identically.
-And the fixture plans already in the suite keep passing, because none of them
-names a key that has changed meaning.
-
 ## 16 Languages by name, not by code
 
 `it` and `en` in the header dialog and in preferences should read `Italian`
@@ -399,10 +353,10 @@ wanted.
 Mark a region finished, so that changing it means deliberately unlocking it
 first.
 
-**The field arrives in 29, not here.** `locked` is one of the four fields
-that milestone adds, so by the time this one starts the plan can already carry
-it and the version has already moved. What is left here is the behaviour,
-which is all of the work and none of the compatibility risk.
+**The field is already there.** `locked` went in with version 4 of the plan
+format, so the plan can carry it today and the version has already moved. What
+is left here is the behaviour, which is all of the work and none of the
+compatibility risk.
 
 **In the plan rather than in settings**, for the reason everything else is:
 the plan is the thing handed to someone else, and "these are final, leave
@@ -479,7 +433,8 @@ into a scratch mask and converts on release reuses `detect`'s own path —
 `RETR_EXTERNAL`, then `approxPolyDP` at three epsilons in turn, rejecting
 anything non-simple or under three points — and produces a `Geometry.MANUAL`
 region exactly as the polygon tool does. **No schema change and no
-`PLAN_VERSION` bump**, which is why it is not one of 29's fields.
+`PLAN_VERSION` bump**, which is why nothing was reserved for it when the
+format last moved.
 
 **What is left open is a second stroke, not a hole.** `RETR_EXTERNAL` gives one
 contour per painted blob, so two strokes apart still give two rings and one of
@@ -516,13 +471,13 @@ exactly this reason, and the refusal is written into `README.md` and
 metadata the tool does not have is worse than no file.
 
 19 and 20 both need that to stop being true, and neither should be the
-milestone that changes the plan format to fix it. 29 adds the fields; this one
-is where they stop being empty. After it, 19 and 20 are each a file format
-wrapped around a header that already holds the answers.
+milestone that changes the plan format to fix it. Version 4 added the fields;
+this one is where they stop being empty. After it, 19 and 20 are each a file
+format wrapped around a header that already holds the answers.
 
 What it is:
 
-- **The header fields put to use.** 29 has already added them — series,
+- **The header fields put to use.** The format already carries them — series,
   title, volume, number, year, publisher, writer, and the one that is not
   bibliographic: **reading direction**, left-to-right or right-to-left, which
   a manga chapter needs and which 20 writes into the spine. Empty is still a
@@ -551,8 +506,8 @@ angle tried: 87px over three lines at 0, 20, 30 and 45 degrees alike, against
 
 So the work is three things and none of them is in `typeset`:
 
-- **An angle on the region**, which 29 has already added — so nothing here
-  touches the plan format.
+- **An angle on the region**, which the plan format already carries — so
+  nothing here touches it.
 - **A coordinate transform** either side of the fit: rotate the polygon in,
   rotate the drawn result back.
 - **`draw_layout` drawing into a region-local layer** and rotating it once
@@ -596,7 +551,7 @@ sound effect that announces itself as placed is the point.
 
 **The outline is not implied by `erase: none`.** Decided, so that a plan
 already using `erase: none` for a caption over artwork does not quietly change
-what it renders. It is a field, and 29 is where it arrives.
+what it renders. It is a field, and the format already carries it.
 
 **One field, not two.** `stroke_color: Color | None`, `None` meaning no
 outline. The width is a ratio in `TypesetConfig` derived from the fitted font
@@ -727,10 +682,11 @@ nobody's job.
 
 Three things a plugin cannot see today, added in one interface change.
 
-**One change rather than three**, which is 29's argument applied to a different
-format. Each of these alters what a plugin is handed, and done separately each
-is its own interface version, its own window in which a plugin and a build
-disagree about the signature, and its own pass over the same documentation.
+**One change rather than three**, which is the argument version 4 of the plan
+format already settled, applied to a different format. Each of these alters
+what a plugin is handed, and done separately each is its own interface
+version, its own window in which a plugin and a build disagree about the
+signature, and its own pass over the same documentation.
 
 What it adds:
 

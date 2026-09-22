@@ -66,6 +66,14 @@ Mac — for a menu of what can be done to it.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
+**The plan format is at version 4**, and plans written by every earlier build
+still open. Version 4 added the fields the milestones still to come will need —
+a lock on a region, an angle, an outline colour, and the chapter's own details
+— all optional and all inert: nothing writes them and nothing reads them yet.
+They went in together because the reader rejects unknown keys by design, so
+adding them one at a time would have meant a format change per milestone. See
+**The plan file** below.
+
 Plugins are experimental and off by default: Preferences ▸ this window ▸
 experimental features turns on a Plugins menu that runs a plan-in, plan-out
 folder of Python you drop into the plugin folder, one folder per plugin so
@@ -953,7 +961,7 @@ YAML, UTF-8, stable key order, hand-editable. One entry per detected region.
 Comments you add are preserved.
 
 ```yaml
-version: 3
+version: 4
 generator: comictrans 1.1.0
 created: 2026-09-06T19:22:04Z
 source_language: it
@@ -1032,10 +1040,21 @@ Loading validates: unknown keys, malformed or self-intersecting polygons, bad
 colours, duplicate ids, a region naming an image the `images` list does not
 have, and image-hash mismatches are all errors that name the offending line.
 
+A plan may also carry fields that nothing acts on yet, added together so that
+the milestones which will use them do not each cost a format change: `locked`,
+`angle` and `stroke_color` on a region, and the chapter's own details on the
+header — `series`, `title`, `volume`, `number`, `year`, `publisher`, `writer`
+and `reading_direction`. All are optional, `extract` writes none of them, and
+every one defaults to the value that means "as before", so a plan that leaves
+them out is exactly the plan this wrote before they existed. Setting one today
+changes nothing about what `apply` renders.
+
 Older plans still load. Version 1 carried an `image_sha256` on every region
 and had no `images` list; the list is derived from the regions it does have.
-Version 2 is version 3 without the optional `erase` key. Either way the plan
-is a current one from then on, and saving it writes the current shape.
+Version 2 is version 3 without the optional `erase` key, and version 3 is
+version 4 without the optional fields in the paragraph above. Whichever it
+was, the plan is a current one from then on, and saving it writes the current
+shape.
 
 ## Fonts
 

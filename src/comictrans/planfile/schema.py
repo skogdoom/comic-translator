@@ -6,9 +6,9 @@ valid plan file looks like.
 
 from __future__ import annotations
 
-PLAN_VERSION = 3
+PLAN_VERSION = 4
 
-READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3})
+READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3, 4})
 """Versions the reader accepts, as against the one it writes.
 
 Version 2 moved each page's hash out of every region and into a top-level
@@ -21,7 +21,20 @@ Version 3 added the optional region key ``erase``. An older file simply does
 not have it and reads unchanged, which is why — unlike the images list, whose
 two shapes are mutually exclusive — the key is accepted whatever version a
 file claims: a hand-edited plan that gained one without its number being
-bumped is not worth refusing."""
+bumped is not worth refusing.
+
+Version 4 added every remaining field the roadmap had asked for, in one go:
+``locked``, ``angle`` and ``stroke_color`` on a region, and the chapter's own
+details on the header. All of them are optional and all of them default to
+the value that means "as before", so a version 3 file reads unchanged and a
+plan that names none of them is byte for byte the plan this wrote before.
+They were added together on purpose: the reader rejects unknown keys, so each
+one added on its own would be its own bump, its own migration, and its own
+window in which two builds disagree about what a plan may contain.
+
+**Nothing reads any of them yet**, which is the state this version was
+deliberately left in. A field being here is not an instruction to fill it in
+— see the milestones in ``docs/ROADMAP.md`` that each claim one."""
 
 MIN_POLYGON_POINTS = 3
 """Fewest points a polygon may have.
@@ -41,10 +54,40 @@ that allowed one value more than the reader does would write a plan file it
 could not then reopen.
 """
 
+ANGLE_RANGE = (-360.0, 360.0)
+"""What a region's ``angle`` may be set to, in degrees.
+
+Wider than it needs to be and deliberately so: a full turn either way covers
+every way somebody might write the same tilt, and nothing here has to decide
+whether -30 or 330 is the better spelling of it. Positive is counter-clockwise,
+which is what both Pillow and OpenCV mean by a positive angle — worth settling
+here rather than leaving the first milestone that reads it to pick.
+"""
+
+YEAR_RANGE = (1000, 9999)
+"""What the header's ``year`` may be set to.
+
+Four digits, which is what a year on a comic is. The range exists to catch a
+typo — ``19`` for 1919, ``20255`` for 2025 — rather than to have an opinion
+about when comics were published.
+"""
+
 HEADER_KEY_ORDER: tuple[str, ...] = (
     "version",
     "generator",
     "created",
+    # What the comic is, between what wrote the file and how it is processed.
+    # Every one of these is optional and written only when set, so a plan with
+    # nothing to say about the chapter looks exactly as it did before they
+    # existed.
+    "series",
+    "title",
+    "volume",
+    "number",
+    "year",
+    "publisher",
+    "writer",
+    "reading_direction",
     "source_language",
     "target_language",
     "ocr_engine",
@@ -53,6 +96,26 @@ HEADER_KEY_ORDER: tuple[str, ...] = (
     "font_size_min_ratio",
     "condense_min",
 )
+
+OPTIONAL_HEADER_KEYS: frozenset[str] = frozenset(
+    {
+        "series",
+        "title",
+        "volume",
+        "number",
+        "year",
+        "publisher",
+        "writer",
+        "reading_direction",
+    }
+)
+"""Header keys a plan may leave out, and which the writer omits when unset.
+
+Named rather than inferred, so that the writer can still fail loudly on a
+*required* key somebody added to ``HEADER_KEY_ORDER`` and forgot to supply —
+see ``writer.header_to_node``. Without this set that check would have to be
+dropped, and a forgotten required key would go quietly unwritten.
+"""
 
 IMAGE_KEY_ORDER: tuple[str, ...] = ("name", "sha256")
 IMAGE_KEYS: frozenset[str] = frozenset(IMAGE_KEY_ORDER)
@@ -67,12 +130,15 @@ REGION_KEY_ORDER: tuple[str, ...] = (
     "order",
     "geometry",
     "polygon",
+    "angle",
     "fill_color",
     "text_color",
+    "stroke_color",
     "erase",
     "confidence",
     "low_confidence",
     "skip",
+    "locked",
     "font",
     "font_size",
     "source_text",
