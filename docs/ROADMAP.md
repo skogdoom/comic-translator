@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 4.27 | Lock a region | M |
 | 16 | Languages by name, not by code | M |
 | 31 | A reader window | M |
 | 17 | A shape palette for drawing a region | M |
@@ -79,19 +78,22 @@ an experiment. Everything in this table is what comes after it.
 
 The 4.x numbering says these follow milestone 4, the review GUI.
 
-**Why this order.** The window irritations first. 4.28 has shipped, without
-the lock/unlock command its own section asked for — 4.27 had not landed yet
-when it was built, and it was built without it rather than wait. 4.27 is
-what is left, and it sits ahead of everything below it for the same reason
-4.28 did: met every few minutes by the one person using this, cheap, and in
-the same corner of the same files as the context menu it will now extend.
+**Why this order.** The window irritations first, and they are done: 4.28
+shipped the region context menu without the lock/unlock command its own
+section asked for, because 4.27 had not landed and it was built without it
+rather than wait; 4.27 has now landed and put that third command in the menu
+where it belongs. What is left below is no longer sorted by how often it is
+met — 16 leads because it is the last of the small window jobs, not because
+anything depends on it.
 
 **The schema change has shipped, and four milestones are cheaper for it.**
 Milestone 29 took the plan format to version 4 and added every field this file
-still wanted — `locked` for 4.27, an angle for 27, a stroke colour for 28, and
-the chapter header fields for 18 — all optional, all inert, and filled in by
-nothing. It went first because the reader rejects unknown keys by design, so a
-field added on its own is its own bump, its own migration and its own window in
+still wanted — `locked`, an angle for 27, a stroke colour for 28, and the
+chapter header fields for 18 — all optional, all inert, and filled in by
+nothing. `locked` has since been taken up by 4.27, which is the shape the
+rest are waiting for. It went first because the reader rejects unknown keys
+by design, so a field added on its own is its own bump, its own migration and
+its own window in
 which two builds disagree about what a plan may contain; four of them
 separately would have been four of each. Each of those milestones now arrives
 to find its field already there and spends itself on behaviour, which is also
@@ -137,13 +139,14 @@ something for a page nobody is translating.
 saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
 and one call site in the window, and not one milestone above them goes near
 those. What puts them here is that plugins are experimental and off by default,
-so they are not felt every few minutes the way 4.27 is — the same test the
-window irritations pass and these do not. They are adjacent because both end in
-a pass over the same documentation, and 33 before 32 because 33 settles what a
+so they are not felt every few minutes the way the window irritations were —
+the same test those passed and these do not. They are adjacent because both
+end in a pass over the same documentation, and 33 before 32 because 33 settles
+what a
 plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 4.27, 16 and 17 land would mean checking it twice. Each of
+checking it before 16 and 17 land would mean checking it twice. Each of
 those milestones still updates the guide for its own change, as every
 milestone here does; 24 is the sweep for what that misses.
 
@@ -347,34 +350,6 @@ today and loses the fact that it was an ellipse, or whether a region grows a
 shape field, which is a `PLAN_VERSION` bump for something nothing downstream
 reads. The first, unless reshaping an ellipse as an ellipse turns out to be
 wanted.
-
-## 4.27 Lock a region
-
-Mark a region finished, so that changing it means deliberately unlocking it
-first.
-
-**The field is already there.** `locked` went in with version 4 of the plan
-format, so the plan can carry it today and the version has already moved. What
-is left here is the behaviour, which is all of the work and none of the
-compatibility risk.
-
-**In the plan rather than in settings**, for the reason everything else is:
-the plan is the thing handed to someone else, and "these are final, leave
-them" is exactly the sort of thing worth handing over. In settings it would
-live on one machine and be lost on the next.
-
-**It is not `skip`, and the two will be confused unless the labels are
-careful.** `skip` means do not render this region; `locked` means do not
-edit it, and a locked region still renders. Saying which is which without
-the manual is this milestone's job, under the casing and wording rules the
-interface review settled.
-
-**What it has to reach**: every edit path. The inspector's fields,
-reshaping, the arrow keys, merge, delete — and re-extraction, where locked
-regions are the ones that should come through untouched, which is half the
-reason to want it. The region context menu 4.28 built has to reach it too:
-that milestone shipped without a lock/unlock item because this one had not,
-so this is also where the menu gains its third command.
 
 ## 26 Rotate a region
 
@@ -744,9 +719,10 @@ stop. Yes and No both run it, and which was pressed is one of the answers.
 them apart.** `SETTINGS` is configuration: edited in Configure Plugins, stored
 per plugin, resolved and handed to every run whether or not anybody looked at
 it. A dialog is asked on each run and its answers are not stored. That is the
-same care 4.27 has to take between `skip` and `locked` — two neighbouring
-things that are not the same thing. Answers arrive as strings on the same
-"empty means unset" terms `SettingField` already uses, so there is one
+same care 4.27 took between `skip` and `locked` — two neighbouring things
+that are not the same thing, told apart in the label itself. Answers arrive as
+strings on the same "empty means unset" terms `SettingField` already uses, so
+there is one
 convention here rather than two.
 
 **One thing left open: whether the dialog is a constant or a call.** A
@@ -876,6 +852,35 @@ Output is where it runs into the promises `apply` makes. Two of them:
 Alpha is fine: WebP stores it, so it would join `ALPHA_FORMATS` rather than
 warn like JPEG does. The format is also capped at 16383 pixels a side, which
 no comic page reaches and a double-page scan at 1200 DPI would.
+
+**The lock, enforced where the plan rules live rather than in the window.**
+4.27 put the plugin half of the lock in `gui.document.apply_plugin`, which is
+where a plugin's returned plan is taken. That was the smaller and more honest
+change against the code as it stands — the commit point already holds both
+the old plan and the new one, so the regions held back fall out of the
+comparison for free and `plugins.run_plugin` keeps its single job of
+validating and refusing.
+
+It is arguably in the wrong module. `locked` is a field on `Region`, not a GUI
+concept, and `run_plugin` is already where "what a plugin may not do" is
+written down — `_check_same_shape` refuses a plugin that adds, removes,
+reorders or moves a region. A lock is the same kind of rule and sits oddly
+apart from it.
+
+**What decides it is whether a plugin ever runs outside the window.** Today
+none can: there is no plugin subcommand, `discover_plugins` is called only
+from `main_window`, and so the window is the only door. A CLI plugin runner
+would add a second one, and that second door would not inherit the lock —
+which is the same shape of bug 4.27 shipped with and had to be told about.
+So: if a plugin runner reaches the command line, move the rule into
+`run_plugin` in the same change rather than afterwards.
+
+The one cost to weigh when moving it. `run_plugin` returns a `Plan` and
+nothing else, and the window needs to know *which* regions were held back in
+order to say so — `apply_plugin` returns a `PluginOutcome` carrying exactly
+that. Moving the rule means either widening what `run_plugin` returns or
+giving the caller a second way to ask, and the first is an interface change
+that milestone 33 may want to make anyway.
 
 **Packaging for Windows and Linux.** Asked about, and kept here rather than
 sequenced: it is cross-cutting, and *Why this order* says what that costs —

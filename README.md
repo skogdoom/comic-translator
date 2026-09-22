@@ -66,13 +66,21 @@ Mac — for a menu of what can be done to it.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
+**A region can be locked** once it is finished: its fields go dead, its
+outline cannot be reshaped or nudged, and Delete and Merge are not offered
+until it is unlocked again. It is not `skip` — a locked region is still
+lettered, and what the lock stops is you changing it. The lock is written into
+the plan, so it travels with the translations, and a re-extraction brings a
+locked region through exactly as it was left rather than rebuilding it around
+the fresh reading.
+
 **The plan format is at version 4**, and plans written by every earlier build
 still open. Version 4 added the fields the milestones still to come will need —
-a lock on a region, an angle, an outline colour, and the chapter's own details
-— all optional and all inert: nothing writes them and nothing reads them yet.
-They went in together because the reader rejects unknown keys by design, so
-adding them one at a time would have meant a format change per milestone. See
-**The plan file** below.
+the lock above, an angle, an outline colour, and the chapter's own details.
+Apart from the lock, nothing writes them and nothing reads them yet. They went
+in together because the reader rejects unknown keys by design, so adding them
+one at a time would have meant a format change per milestone. See **The plan
+file** below.
 
 Plugins are experimental and off by default: Preferences ▸ this window ▸
 experimental features turns on a Plugins menu that runs a plan-in, plan-out
@@ -1040,11 +1048,17 @@ Loading validates: unknown keys, malformed or self-intersecting polygons, bad
 colours, duplicate ids, a region naming an image the `images` list does not
 have, and image-hash mismatches are all errors that name the offending line.
 
+- `locked: true` marks a region finished. `review` then refuses to change it
+  until it is unlocked — a plugin included, whose other work still lands — and
+  a re-extraction brings it through untouched instead of rebuilding it around
+  the fresh reading. It is not `skip`: `apply` letters a locked region exactly
+  as it letters any other.
+
 A plan may also carry fields that nothing acts on yet, added together so that
-the milestones which will use them do not each cost a format change: `locked`,
-`angle` and `stroke_color` on a region, and the chapter's own details on the
-header — `series`, `title`, `volume`, `number`, `year`, `publisher`, `writer`
-and `reading_direction`. All are optional, `extract` writes none of them, and
+the milestones which will use them do not each cost a format change: `angle`
+and `stroke_color` on a region, and the chapter's own details on the header —
+`series`, `title`, `volume`, `number`, `year`, `publisher`, `writer` and
+`reading_direction`. All are optional, `extract` writes none of them, and
 every one defaults to the value that means "as before", so a plan that leaves
 them out is exactly the plan this wrote before they existed. Setting one today
 changes nothing about what `apply` renders.

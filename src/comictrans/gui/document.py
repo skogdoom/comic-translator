@@ -236,6 +236,24 @@ def region_flags(region: Region, *, overlapping_ids: frozenset[str]) -> RegionFl
 
 
 @dataclass(frozen=True, slots=True)
+class PluginOutcome:
+    """What running one plugin over the plan came to.
+
+    Two facts rather than one, because a plugin can do nothing *and* have been
+    held back — a plugin whose only proposed changes were to locked regions
+    changes the plan not at all, and saying "made no change" without saying
+    why would be true and useless.
+    """
+
+    changed: bool
+    """Whether the plan moved, and so whether this cost an undo step."""
+
+    held_back: tuple[str, ...]
+    """Ids of locked regions the plugin proposed changing, which were put
+    back as they were. Empty for the ordinary run."""
+
+
+@dataclass(frozen=True, slots=True)
 class ImageSummary:
     """Counts for one page, for the page list without opening it."""
 
@@ -380,8 +398,21 @@ class PlanDocument:
         Usually one field. A caller passing two is saying they are one edit —
         a polygon and the geometry that describes it — and the first names
         the undo run.
+
+        **A locked region refuses everything but its own lock.** Every field
+        setter on this class goes through here, which is the whole reason the
+        guard is here and not in each of them: a setter added later is covered
+        without anybody remembering to cover it. The window disables what it
+        will not accept rather than letting this fire, so reaching this is a
+        window that offered an edit it should not have — which is a bug, and
+        reads better as one than as an edit that silently does nothing.
         """
         current = self.region(region_id)
+        if current.locked and tuple(changes) != ("locked",):
+            raise ValueError(
+                f"region {region_id!r} is locked; unlock it before changing "
+                f"{', '.join(sorted(changes))}"
+            )
         updated = replace(current, **changes)  # type: ignore[arg-type]
         if updated == current:
             # Nothing changed, so there is nothing to undo. Without this a
@@ -480,19 +511,48 @@ class PlanDocument:
         self._record(with_image_order(self.plan, names), run=None)
         return True
 
-    def apply_plugin(self, plan: Plan) -> bool:
-        """Move to ``plan``, as one whole-plan undo step. False when nothing changed.
+    def apply_plugin(self, plan: Plan) -> PluginOutcome:
+        """Move to ``plan``, as one whole-plan undo step.
 
         What a plugin run becomes once it is trusted: ``plugins.run_plugin``
-        has already refused anything that changed the plan's shape, so the
-        only question left here is the one ``reorder_images`` asks too — did
-        this actually change anything, since a plugin whose ``run`` is a
-        no-op should not cost an undo step or mark the plan dirty.
+        has already refused anything that changed the plan's shape, so two
+        questions are left. Did this actually change anything — the one
+        ``reorder_images`` asks too, since a plugin whose ``run`` is a no-op
+        should not cost an undo step or mark the plan dirty. And did it try to
+        change a region that is locked.
+
+        **A locked region is put back.** A plugin returns a whole plan rather
+        than calling a setter, so it is the one edit path that does not reach
+        the guard in :meth:`_update`; without this it could rewrite a region
+        the lock exists to protect. The rest of the plugin's work is kept,
+        which is the half that matters — the example plugin that ships writes
+        a note onto *every* region, and refusing the whole run because one
+        region is locked would make it useless on any plan that had locked
+        one. The regions held back are named so the window can say so rather
+        than leaving somebody to notice.
+
+        The whole region goes back, not just the fields the lock covers: a
+        plugin that unlocked a region and rewrote it in the same returned plan
+        would otherwise have found the way around the lock in one step.
         """
+        held_back: list[str] = []
+        regions: list[Region] = []
+        # run_plugin has already held the plugin to the same regions in the
+        # same order, so these line up one to one; strict says so out loud if
+        # that ever stops being true.
+        for current, proposed in zip(self.plan.regions, plan.regions, strict=True):
+            if current.locked and proposed != current:
+                held_back.append(current.id)
+                regions.append(current)
+            else:
+                regions.append(proposed)
+        if held_back:
+            plan = replace(plan, regions=tuple(regions))
+
         if plan == self.plan:
-            return False
+            return PluginOutcome(changed=False, held_back=tuple(held_back))
         self._record(plan, run=None)
-        return True
+        return PluginOutcome(changed=True, held_back=tuple(held_back))
 
     def set_translation(self, region_id: str, translation: str) -> Region:
         return self._update(region_id, translation=translation)
@@ -502,6 +562,20 @@ class PlanDocument:
 
     def set_skip(self, region_id: str, skip: bool) -> Region:
         return self._update(region_id, skip=skip)
+
+    def set_locked(self, region_id: str, locked: bool) -> Region:
+        """Mark a region finished, or let it be edited again.
+
+        The one edit a locked region accepts, for the obvious reason: it is
+        the way back out. Not ``skip`` and not a quieter form of it — a locked
+        region is rendered exactly as an unlocked one is, and what the lock
+        stops is this program changing it, not ``apply`` drawing it.
+
+        It lives in the plan rather than in settings because the plan is the
+        thing handed to somebody else, and "these are final, leave them" is
+        worth handing over with the translations it applies to.
+        """
+        return self._update(region_id, locked=locked)
 
     def set_font(self, region_id: str, font: str | None) -> Region:
         """``None`` clears the override, falling back to the plan header's font."""
@@ -682,6 +756,12 @@ class PlanDocument:
             raise ValueError("a region cannot be merged with itself")
         if first.image != second.image:
             raise ValueError("regions on different pages cannot be merged")
+        # Either half, because a merge destroys both: the survivor is
+        # reshaped and retexted, and the other stops existing. A lock on
+        # either is a reason not to start.
+        for region in (first, second):
+            if region.locked:
+                raise ValueError(f"region {region.id!r} is locked; unlock it before merging")
         if not polygons_overlap(first.polygon, second.polygon):
             raise ValueError("those outlines do not overlap")
 
@@ -723,8 +803,13 @@ class PlanDocument:
         gone from the file the next time it is saved, the same as deleting
         its block by hand. Undo covers it while the session lasts, which is
         the same safety net every other edit here gets.
+
+        Refused on a locked region, which is the edit a lock most obviously
+        exists to stop.
         """
         region = self.region(region_id)
+        if region.locked:
+            raise ValueError(f"region {region_id!r} is locked; unlock it before deleting")
         self._record(
             replace(self.plan, regions=tuple(r for r in self.plan.regions if r.id != region_id)),
             run=None,

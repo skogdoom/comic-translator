@@ -359,7 +359,7 @@ def test_apply_plugin_is_one_undo_step_covering_every_region_it_touched() -> Non
     before = doc.plan
     touched = replace(before, regions=tuple(replace(r, notes="checked") for r in before.regions))
 
-    assert doc.apply_plugin(touched)
+    assert doc.apply_plugin(touched).changed
 
     assert all(r.notes == "checked" for r in doc.plan.regions)
     assert doc.dirty
@@ -371,8 +371,10 @@ def test_apply_plugin_is_one_undo_step_covering_every_region_it_touched() -> Non
 def test_apply_plugin_is_a_no_op_when_nothing_changed() -> None:
     doc = _three_pages()
 
-    assert not doc.apply_plugin(doc.plan)
+    outcome = doc.apply_plugin(doc.plan)
 
+    assert not outcome.changed
+    assert outcome.held_back == ()
     assert not doc.dirty
     assert not doc.can_undo
 
@@ -1214,3 +1216,177 @@ def test_undo_is_the_whole_plan_and_refuses_nothing() -> None:
     assert doc.undo()
 
     assert doc.region("r1").translation != "FIRST REGION"
+
+
+# -- locking ------------------------------------------------------------
+
+
+def test_a_locked_region_refuses_every_field_edit() -> None:
+    """One guard at the chokepoint, so a setter added later is covered too.
+
+    Every named setter is listed rather than a representative one: the point
+    of the guard living in ``_update`` is that it reaches all of them, and a
+    test of one would not notice a setter that had been routed around it.
+    """
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+
+    refusals = (
+        lambda: doc.set_translation("r1", "NEW"),
+        lambda: doc.set_notes("r1", "a note"),
+        lambda: doc.set_skip("r1", True),
+        lambda: doc.set_font("r1", "Chalkboard SE"),
+        lambda: doc.set_font_size("r1", 22),
+        lambda: doc.set_source_text("r1", "CIAO"),
+        lambda: doc.set_fill_color("r1", Color(1, 2, 3)),
+        lambda: doc.set_text_color("r1", Color(4, 5, 6)),
+        lambda: doc.set_erase("r1", Erase.POLYGON),
+        lambda: doc.set_polygon("r1", Box(0, 0, 50, 50).as_polygon()),
+    )
+    for refuse in refusals:
+        with pytest.raises(ValueError, match="is locked"):
+            refuse()
+
+
+def test_the_lock_is_the_one_edit_a_locked_region_accepts() -> None:
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+
+    assert doc.region("r1").locked
+    doc.set_locked("r1", False)  # unlocking is how you get back in
+    assert not doc.region("r1").locked
+    assert doc.set_translation("r1", "NEW").translation == "NEW"
+
+
+def test_locking_is_one_undo_step_like_any_other_edit() -> None:
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+
+    assert doc.undo()
+    assert not doc.region("r1").locked
+
+
+def test_a_locked_region_refuses_to_be_deleted() -> None:
+    doc = _document(_apart(1), _apart(2))
+    doc.set_locked("r1", True)
+
+    with pytest.raises(ValueError, match="is locked"):
+        doc.delete_region("r1")
+    assert doc.region("r1").id == "r1", "still there"
+
+
+def test_a_merge_is_refused_when_either_half_is_locked() -> None:
+    """Either, because a merge destroys both — one survives reshaped and
+    retexted, the other stops existing."""
+    for locked_id in ("page-001-001", "page-001-002"):
+        doc = _halves()
+        doc.set_locked(locked_id, True)
+        with pytest.raises(ValueError, match="is locked"):
+            doc.merge_regions("page-001-001", "page-001-002")
+
+
+def test_locking_does_not_change_whether_a_region_is_rendered() -> None:
+    """A lock is about this program, not about ``apply``. It is not ``skip``."""
+    doc = _document(_apart(1))
+    before = doc.region("r1")
+    doc.set_locked("r1", True)
+    after = doc.region("r1")
+
+    assert after.is_actionable == before.is_actionable
+    assert after.skip == before.skip
+    assert replace(after, locked=False) == before, "the lock is the only difference"
+
+
+def test_a_plugin_cannot_edit_a_locked_region() -> None:
+    """The one edit path that does not reach the guard in ``_update``.
+
+    A plugin returns a whole plan rather than calling a setter, so the lock
+    has to be enforced where that plan is taken. Found by testing the window
+    rather than by reading the code, which is why it is a test now.
+    """
+    doc = _document(_apart(1), _apart(2))
+    doc.set_locked("r1", True)
+    rewritten = replace(
+        doc.plan,
+        regions=tuple(replace(r, translation="BY A PLUGIN") for r in doc.plan.regions),
+    )
+
+    outcome = doc.apply_plugin(rewritten)
+
+    assert outcome.held_back == ("r1",)
+    assert doc.region("r1").translation == "HELLO EVERYONE", "put back as it was"
+    assert doc.region("r2").translation == "BY A PLUGIN", "and the rest of the run kept"
+    assert outcome.changed
+
+
+def test_a_plugin_cannot_unlock_a_region_and_edit_it_in_one_go() -> None:
+    """The whole region goes back, not just the fields the lock covers."""
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+    sneaky = replace(
+        doc.plan,
+        regions=tuple(
+            replace(r, locked=False, translation="BY A PLUGIN") for r in doc.plan.regions
+        ),
+    )
+
+    outcome = doc.apply_plugin(sneaky)
+
+    assert outcome.held_back == ("r1",)
+    assert doc.region("r1").locked, "still locked"
+    assert doc.region("r1").translation == "HELLO EVERYONE"
+    assert not outcome.changed, "nothing else was proposed, so nothing moved"
+
+
+def test_a_plugin_may_still_lock_a_region() -> None:
+    """The guard is about editing a region that is *already* locked. Locking
+    one is an edit like any other, and a plugin that marks what it has
+    checked is a reasonable thing to write."""
+    doc = _document(_apart(1))
+    locking = replace(doc.plan, regions=tuple(replace(r, locked=True) for r in doc.plan.regions))
+
+    outcome = doc.apply_plugin(locking)
+
+    assert outcome.changed
+    assert outcome.held_back == ()
+    assert doc.region("r1").locked
+
+
+def test_a_plugin_held_back_entirely_costs_no_undo_step() -> None:
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+    doc.end_edit_run()
+    undo_depth = len(doc._undo)
+    rewritten = replace(
+        doc.plan,
+        regions=tuple(replace(r, notes="BY A PLUGIN") for r in doc.plan.regions),
+    )
+
+    outcome = doc.apply_plugin(rewritten)
+
+    assert not outcome.changed
+    assert outcome.held_back == ("r1",)
+    assert len(doc._undo) == undo_depth, "nothing happened, so there is nothing to take back"
+
+
+def test_a_locked_region_a_plugin_left_alone_is_not_reported_as_held_back() -> None:
+    """Held back means the plugin asked and was refused.
+
+    A plugin that never proposed anything for a locked region has not been
+    held back by it, and a window saying so would be warning about nothing —
+    on a plan with locked regions that would be every run of every plugin.
+    """
+    doc = _document(_apart(1), _apart(2))
+    doc.set_locked("r1", True)
+    touched = replace(
+        doc.plan,
+        regions=tuple(
+            replace(r, notes="BY A PLUGIN") if r.id == "r2" else r for r in doc.plan.regions
+        ),
+    )
+
+    outcome = doc.apply_plugin(touched)
+
+    assert outcome.changed
+    assert outcome.held_back == (), "nothing was refused"
+    assert doc.region("r2").notes == "BY A PLUGIN"

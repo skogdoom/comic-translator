@@ -6468,3 +6468,132 @@ def test_with_the_caret_on_the_page_undo_is_the_whole_plan(
     window._on_undo()
 
     assert window.document.region("page-001-001").translation != "FIRST"  # type: ignore[union-attr]
+
+
+# -- locking a region ---------------------------------------------------
+
+
+def test_locking_a_region_takes_the_inspector_out_of_service(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Every field dead except the lock, which is the way back out of one."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    inspector = window._inspector
+    assert inspector._translation.isEnabled()
+
+    window._lock_action.setChecked(True)
+
+    assert not inspector._translation.isEnabled()
+    assert not inspector._skip.isEnabled()
+    assert not inspector._erase.isEnabled()
+    assert not inspector._font.isEnabled()
+    assert inspector._locked.isEnabled(), "the way back out stays live"
+    assert inspector._locked.isChecked()
+
+    window._lock_action.setChecked(False)
+
+    assert inspector._translation.isEnabled(), "and everything comes back"
+
+
+def test_the_lock_checkbox_and_the_menu_command_are_the_same_switch(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    window._inspector._locked.setChecked(True)
+
+    assert window.document.region("page-001-001").locked  # type: ignore[union-attr]
+    assert window._lock_action.isChecked(), "the menu follows the panel"
+
+
+def test_the_lock_command_follows_the_selection(qapp: object, two_page_plan: Path) -> None:
+    """Set rather than toggled, and silently.
+
+    The tick tracking the selection is the easy half. The half worth a test
+    is that following it says nothing: the command is set to the value the
+    newly selected region already holds, so letting that reach the handler
+    changes no region — it announces an edit nobody made. Measured before it
+    was asserted; without the signal blocker the bar reads
+    "page-001-002 is unlocked" after nothing but a click.
+    """
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._lock_action.setChecked(True)
+    window.statusBar().clearMessage()
+
+    window._go_to_region("page-001-002")
+
+    assert not window._lock_action.isChecked()
+    assert not window.document.region("page-001-002").locked  # type: ignore[union-attr]
+    assert window.statusBar().currentMessage() == "", "selecting is not an edit"
+
+    window._go_to_region("page-001-001")
+
+    assert window._lock_action.isChecked()
+    assert window.statusBar().currentMessage() == ""
+
+
+def test_a_locked_region_is_not_offered_the_commands_that_would_edit_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    assert window._delete_region_action.isEnabled()
+    assert window._merge_action.isEnabled()
+    assert window._edit_shape_action.isEnabled()
+
+    window._lock_action.setChecked(True)
+
+    assert not window._delete_region_action.isEnabled()
+    assert not window._merge_action.isEnabled()
+    assert not window._edit_shape_action.isEnabled()
+    assert window._add_region_action.isEnabled(), "a lock is about its region, not the page"
+    assert window._lock_action.isEnabled(), "and the lock itself stays reachable"
+
+
+def test_the_region_menu_offers_the_lock(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+
+    menu = window._region_menu("page-001-001")
+
+    assert window._lock_action in menu.actions()
+
+
+def test_the_arrow_keys_do_not_move_a_locked_region(qapp: object, two_page_plan: Path) -> None:
+    """The canvas refuses the gesture, rather than the document refusing it.
+
+    The polygon is unchanged either way, which is why that assertion alone
+    was not enough — measured: with the canvas guard removed the keys still
+    move nothing, because ``set_polygon`` raises. But raising out of a key
+    press is reported to whoever pressed it, so a lock would answer an arrow
+    key with an error about an edit they did not know they had asked for.
+    Watching the signal is what tells the two apart.
+    """
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._lock_action.setChecked(True)
+    before = window.document.region("page-001-001").polygon  # type: ignore[union-attr]
+    nudges: list[str] = []
+    window._canvas.polygon_nudged.connect(lambda region_id, _polygon: nudges.append(region_id))
+
+    QTest.keyClick(window._canvas, Qt.Key.Key_Right)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Left, Qt.KeyboardModifier.ShiftModifier)
+
+    assert nudges == [], "the canvas never asked for the move"
+    assert window.document.region("page-001-001").polygon == before  # type: ignore[union-attr]
+
+
+def test_a_modifier_drag_is_not_offered_over_a_locked_region(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._go_to_region("page-001-001")
+    inside = QPointF(canvas.mapFromScene(QPointF(*BALLOON_A.center)))
+    assert canvas.wants_move_cursor(inside, Qt.KeyboardModifier.ControlModifier)
+
+    window._lock_action.setChecked(True)
+
+    assert not canvas.wants_move_cursor(inside, Qt.KeyboardModifier.ControlModifier)

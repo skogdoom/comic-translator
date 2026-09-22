@@ -8,6 +8,7 @@ and only when you save it.</p>
 <a href="#work">How the work goes</a><br>
 <a href="#colours">The outline colours</a><br>
 <a href="#flags">The flags</a><br>
+<a href="#locking">Marking a region finished</a><br>
 <a href="#preview">What the preview tells you</a><br>
 <a href="#around">Getting around</a><br>
 <a href="#plugins">Plugins</a><br>
@@ -103,6 +104,31 @@ others because it is a decision rather than a defect.</p>
 Region</b> walks them in order, so a chapter can be worked through without
 opening every page to look.</p>
 
+<h2><a name="locking"></a>Marking a region finished</h2>
+
+<p><b>Lock Region</b> &mdash; Ctrl+L, or the checkbox in the <b>Region</b>
+panel, or the balloon's own right-click menu &mdash; says this one is done.
+While it is locked the panel's fields go dead, the outline cannot be reshaped
+or nudged, and Delete and Merge are not offered. A plugin cannot change it
+either &mdash; whatever else the plugin does still happens, the locked regions
+are left as they were, and the status line says how many. The lock itself
+stays available, because it is the way back out: unlock it and everything
+comes back.</p>
+
+<p><b>It is not the same as skip, and the two are next to each other.</b>
+<i>skip</i> means do not letter this region &mdash; the artwork is left as it
+is. <i>locked</i> means do not change this region, and a locked one is
+lettered exactly as an unlocked one would be. One is about what gets drawn,
+the other about what you can still edit.</p>
+
+<p><b>It travels with the plan, and it survives a re-extraction.</b> The lock
+is written into the plan file, so it goes wherever the plan goes rather than
+staying on this machine. And if you extract over the same pages again, a
+locked region comes through exactly as you left it &mdash; outline, colours
+and text &mdash; instead of being rebuilt around the new reading. That is
+most of the reason to lock one: it is how you tell a second pass that this
+balloon is settled.</p>
+
 <h2><a name="preview"></a>What the preview tells you</h2>
 
 <p><b>Render Preview</b> swaps the page for the same page rendered. It calls
@@ -150,7 +176,7 @@ typing.</p>
 
 <p><b>Right-click a balloon</b> &mdash; Control-click on a Mac with one
 button &mdash; for a menu of the things you can do to it: extract its text,
-or edit its shape. It selects the balloon first, the same as a plain click
+edit its shape, or lock it. It selects the balloon first, the same as a plain click
 would, so the menu always acts on the one under the pointer rather than
 whichever was selected before. It only appears while you are simply looking
 at the page; reshaping, drawing or merging already give a click a meaning of

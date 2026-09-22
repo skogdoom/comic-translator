@@ -142,6 +142,7 @@ def _appearance_for(region: Region, document: PlanDocument) -> RegionAppearance:
         polygon=region.polygon,
         color=color,
         flagged=document.flags(region.id).any,
+        locked=region.locked,
     )
 
 
@@ -503,6 +504,15 @@ class MainWindow(QMainWindow):
         self._delete_region_action.triggered.connect(self._on_delete_region)
         edit_menu.addAction(self._delete_region_action)
 
+        # Checkable rather than a pair of Lock and Unlock items: it is one
+        # state with two values, and a tick beside it says which one this
+        # region is in without the menu having to be opened twice to find out.
+        self._lock_action = QAction(self.tr("&Lock Region"), self)
+        self._lock_action.setCheckable(True)
+        self._lock_action.setShortcut(QKeySequence("Ctrl+L"))
+        self._lock_action.toggled.connect(self._on_lock_toggled)
+        edit_menu.addAction(self._lock_action)
+
         edit_menu.addSeparator()
         self._header_action = QAction(self.tr("Plan &Header…"), self)
         self._header_action.triggered.connect(self._on_edit_header)
@@ -829,6 +839,25 @@ class MainWindow(QMainWindow):
         self._close_run_dock()
         self.resize(1200, 800)
 
+    @property
+    def _current_is_locked(self) -> bool:
+        """Whether the selected region refuses edits.
+
+        Asked of the document each time rather than cached beside the
+        selection: the lock is in the plan, and undo, redo and a plugin all
+        move the plan without going near whatever this window remembered.
+        False when nothing is selected, and false when the selection has gone
+        out from under us — every caller here is deciding what to grey out,
+        and a menu is the wrong place to raise about a missing region.
+        """
+        document, region_id = self.document, self._current_region
+        if document is None or region_id is None:
+            return False
+        try:
+            return document.region(region_id).locked
+        except KeyError:
+            return False
+
     def _update_actions_enabled(self) -> None:
         has_document = self.document is not None
         for action in (
@@ -882,9 +911,27 @@ class MainWindow(QMainWindow):
         self._extract_text_action.setEnabled(
             has_image and self._current_region is not None and self._read_job is None
         )
-        self._edit_shape_action.setEnabled(can_edit_shapes)
+        # A locked region refuses every edit but its own lock, so the commands
+        # that would edit it are not offered at all: an enabled command that
+        # raises when used is worse than one that is plainly unavailable.
+        # Adding a region stays offered — a lock is about the region it is on,
+        # not about the page that region sits on.
+        locked = self._current_is_locked
+        self._edit_shape_action.setEnabled(can_edit_shapes and not locked)
         self._add_region_action.setEnabled(can_edit_shapes)
-        self._delete_region_action.setEnabled(can_edit_shapes and self._current_region is not None)
+        self._delete_region_action.setEnabled(
+            can_edit_shapes and self._current_region is not None and not locked
+        )
+        self._lock_action.setEnabled(has_image and self._current_region is not None)
+        # Set, not toggled: this follows the selection rather than asking for
+        # a change. Measured, because the obvious guess is wrong — letting it
+        # through does *not* lock the region that was just clicked, since the
+        # value being set is the one that region already holds and the edit
+        # no-ops. What it does is announce "page-001-002 is unlocked" in the
+        # status bar for an edit nobody made, and re-enter this method from
+        # inside itself on the way.
+        with QSignalBlocker(self._lock_action):
+            self._lock_action.setChecked(locked)
         # Something to merge with: another region on this page.
         on_page = (
             len(self.document.regions_for(self._current_image))
@@ -892,7 +939,7 @@ class MainWindow(QMainWindow):
             else 0
         )
         self._merge_action.setEnabled(
-            can_edit_shapes and self._current_region is not None and on_page > 1
+            can_edit_shapes and self._current_region is not None and on_page > 1 and not locked
         )
         if not can_edit_shapes:
             self._canvas.set_mode(CanvasMode.SELECT)
@@ -1291,6 +1338,7 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction(self._extract_text_action)
         menu.addAction(self._edit_shape_action)
+        menu.addAction(self._lock_action)
         return menu
 
     def _on_region_context_menu(self, region_id: str, global_pos: QPoint) -> None:
@@ -1362,6 +1410,31 @@ class MainWindow(QMainWindow):
         self._update_actions_enabled()
         self.statusBar().showMessage(
             self.tr("deleted {0} — Ctrl+Z puts it back").format(going), 5000
+        )
+
+    def _on_lock_toggled(self, locked: bool) -> None:
+        """Lock or unlock the selected region, from the menu or Ctrl+L.
+
+        The inspector is told rather than left to notice: locking is the one
+        edit that changes what every *other* field in that panel will accept,
+        so the panel has to be rebuilt around the new answer.
+        """
+        if self.document is None or self._current_region is None:
+            return
+        region_id = self._current_region
+        try:
+            self.document.set_locked(region_id, locked)
+        except (KeyError, ComictransError) as exc:  # gone underneath us
+            self._report_failure(self.tr("locking {0}").format(region_id), exc)
+            return
+        self._inspector.set_region(self.document, region_id)
+        self._refresh_page_visuals()
+        self._update_actions_enabled()
+        self.statusBar().showMessage(
+            self.tr("{0} is locked — edits are refused until it is unlocked").format(region_id)
+            if locked
+            else self.tr("{0} is unlocked").format(region_id),
+            5000,
         )
 
     # -- reading one region ----------------------------------------------
@@ -2240,12 +2313,30 @@ class MainWindow(QMainWindow):
         except PluginError as exc:
             self._report_failure(self.tr("running {0}").format(plugin.name), exc)
             return
-        if self.document.apply_plugin(after):
+        outcome = self.document.apply_plugin(after)
+        if outcome.changed:
             self._reload_from_document()
             self._follow_the_change(before)
-            self.statusBar().showMessage(self.tr("{0} ran").format(plugin.name), 3000)
+        # Four messages rather than one built from pieces: a translator needs
+        # the whole sentence, and "made no change" on its own would be true
+        # and misleading for a plugin whose every change was to a locked
+        # region.
+        held = len(outcome.held_back)
+        if outcome.changed and held:
+            message = self.tr("{0} ran — %n locked region(s) left as they are", None, held).format(
+                plugin.name
+            )
+        elif outcome.changed:
+            message = self.tr("{0} ran").format(plugin.name)
+        elif held:
+            message = self.tr(
+                "{0} changed nothing but %n locked region(s), which were left as they are",
+                None,
+                held,
+            ).format(plugin.name)
         else:
-            self.statusBar().showMessage(self.tr("{0} made no change").format(plugin.name), 3000)
+            message = self.tr("{0} made no change").format(plugin.name)
+        self.statusBar().showMessage(message, 3000)
 
     def _on_edit_header(self) -> None:
         """Edit the settings every region is drawn under.

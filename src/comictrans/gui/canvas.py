@@ -130,6 +130,10 @@ class RegionAppearance:
     polygon: Polygon
     color: QColor
     flagged: bool
+    locked: bool = False
+    """Finished, so the canvas offers no gesture that would reshape or move
+    it. Decided by the caller like everything else here — the canvas is told
+    which regions are locked rather than asking what a lock means."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -428,6 +432,18 @@ class PageCanvas(QGraphicsView):
         """Which regions are currently drawn over the page."""
         return frozenset(self._items)
 
+    @property
+    def _locked_ids(self) -> frozenset[str]:
+        """Which drawn regions refuse to be reshaped or moved.
+
+        Read off the appearances rather than kept beside them, so there is
+        one place a region's lock is recorded and no second copy to fall out
+        of step when ``set_regions`` replaces them.
+        """
+        return frozenset(
+            region_id for region_id, appearance in self._appearances.items() if appearance.locked
+        )
+
     def set_regions(self, regions: Sequence[RegionAppearance]) -> None:
         """Replace the outlines, keeping the page, the zoom and the selection.
 
@@ -664,6 +680,8 @@ class PageCanvas(QGraphicsView):
         self._handles.clear()
         if self._mode is not CanvasMode.RESHAPE or self._selected_id is None:
             return
+        if self._selected_id in self._locked_ids:
+            return  # nothing to drag, so nothing that looks draggable
         item = self._items.get(self._selected_id)
         if item is None:
             return
@@ -736,6 +754,8 @@ class PageCanvas(QGraphicsView):
             CanvasMode.RESHAPE,
         ):
             return False
+        if self._selected_id in self._locked_ids:
+            return False
         item = self._items.get(self._selected_id) if self._selected_id else None
         if item is None:
             return False
@@ -753,10 +773,14 @@ class PageCanvas(QGraphicsView):
         return min(grown, max(base, NUDGE_MAX_STEP))
 
     def _nudge(self, dx: int, dy: int) -> bool:
-        """Move the selected region by whole pixels. False if there is none."""
+        """Move the selected region by whole pixels. False if there is none.
+
+        False on a locked region too, so the key falls through to the view
+        and scrolls the page instead of silently doing nothing.
+        """
         region_id = self._selected_id
         item = self._items.get(region_id) if region_id else None
-        if region_id is None or item is None:
+        if region_id is None or item is None or region_id in self._locked_ids:
             return False
         moved = self._offset_polygon(item.points(), dx, dy)
         if moved == item.points():
@@ -766,10 +790,15 @@ class PageCanvas(QGraphicsView):
         return True
 
     def _begin_drag(self, view_pos: QPointF) -> bool:
-        """Take hold of a corner, or of the whole shape. False if neither."""
+        """Take hold of a corner, or of the whole shape. False if neither.
+
+        A locked region offers neither, which is what makes the whole of
+        reshaping and moving refuse it: the corner drag and the modifier
+        drag both start here.
+        """
         region_id = self._selected_id
         item = self._items.get(region_id) if region_id else None
-        if region_id is None or item is None:
+        if region_id is None or item is None or region_id in self._locked_ids:
             return False
         scene_point = self.mapToScene(view_pos.toPoint())
         vertex = self.handle_at(view_pos)

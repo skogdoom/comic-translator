@@ -279,3 +279,58 @@ def test_re_extracting_still_takes_the_pages_themselves_from_the_fresh_run() -> 
 
     assert merged.image_names() == ("a.png",), "a page that is gone is gone"
     assert merged.sha256_for("a.png") == "f" * 64, "and the hash is this run's"
+
+
+def test_a_lock_on_its_own_counts_as_hand_work() -> None:
+    """With nothing else on the region: marking one finished is a decision,
+    and a re-extraction that quietly dropped it would be worse than no lock."""
+    assert has_hand_work(replace(_region("r1", BOX), locked=True))
+    assert not has_hand_work(_region("r1", BOX)), "and an untouched one still is not"
+
+
+def test_a_locked_region_comes_through_a_re_extraction_untouched() -> None:
+    """Not merely carried — kept. "Finished" is a statement that a better
+    reading is not wanted, so the fresh polygon and colours are the thing the
+    lock exists to keep out."""
+    old = replace(
+        _region("r1", BOX, source="CIAO"),
+        translation="HELLO",
+        locked=True,
+        fill_color=Color(1, 2, 3),
+        text_color=Color(4, 5, 6),
+    )
+    fresh = replace(_region("r9", NUDGED, source="CIAO A TUTTI"), order=7)
+
+    merged, report = merge_plans(_plan(old), _plan(fresh))
+
+    kept = merged.regions[0]
+    assert report.carried == ("r9",)
+    assert kept.polygon == old.polygon, "the outline it was left with"
+    assert (kept.fill_color, kept.text_color) == (old.fill_color, old.text_color)
+    assert (kept.source_text, kept.translation) == ("CIAO", "HELLO")
+    assert kept.locked
+    # What the fresh run still decides: where it sits and what it is called,
+    # because ids are positional and a re-extraction renumbers them.
+    assert (kept.id, kept.order) == ("r9", 7)
+
+
+def test_an_unlocked_region_still_takes_the_fresh_reading() -> None:
+    """The case above is the exception; this is the rule it is an exception to."""
+    old = replace(_region("r1", BOX), translation="HELLO", fill_color=Color(1, 2, 3))
+    fresh = _region("r9", NUDGED)
+
+    merged, _ = merge_plans(_plan(old), _plan(fresh))
+
+    carried = merged.regions[0]
+    assert carried.polygon == fresh.polygon, "the freshly detected outline"
+    assert carried.fill_color == fresh.fill_color
+    assert carried.translation == "HELLO", "but the hand work survives"
+
+
+def test_a_locked_region_with_no_match_is_reported_as_dropped() -> None:
+    old = replace(_region("r1", BOX), locked=True)
+    elsewhere = _region("r9", Box(900, 900, 1000, 1000))
+
+    _, report = merge_plans(_plan(old), _plan(elsewhere))
+
+    assert report.dropped == ("r1",), "data loss, and worth saying so"
