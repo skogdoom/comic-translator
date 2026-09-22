@@ -16,8 +16,8 @@ render rather than after.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QSignalBlocker, Qt
+from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QKeyEvent, QPalette
 from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
 from .. import fonts
@@ -60,6 +60,9 @@ line was the other field that could, and stopped — see ``inspector``'s
 """
 
 
+_TAKES_THE_SUGGESTION = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab)
+
+
 class FontBox(QComboBox):
     """An editable font picker. ``allow_default`` adds the "no override" entry.
 
@@ -96,11 +99,28 @@ class FontBox(QComboBox):
         # match began with what was typed, and every step of that is an edit
         # the field writes through — "Sans" put "Sansc Sans MS" in the plan
         # header, measured.
+        #
+        # Enter and Tab take the suggestion marked in that list, as they did
+        # when inline completion finished the name for you; without this a
+        # fragment typed and entered stayed a fragment, and a plan saved
+        # holding "Sans". Escape keeps what was typed, and a name nothing
+        # here contains — a font from another Mac — has no list to take
+        # anything from, so it is kept as typed.
         completer = self.completer()
         if completer is not None:
             completer.setCompletionMode(completer.CompletionMode.PopupCompletion)
             completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
             completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            # Queued, so it runs once Qt has refiltered the list and shown
+            # it: showing it clears any mark made sooner, measured, and
+            # textEdited is sooner still — the list then holds the previous
+            # keystroke's matches.
+            completer.completionModel().modelReset.connect(
+                self._mark_best_match, Qt.ConnectionType.QueuedConnection
+            )
+            popup = completer.popup()
+            if popup is not None:
+                popup.installEventFilter(self)
 
         self.currentTextChanged.connect(lambda _text: self._on_text_changed())
         self._fit_width()
@@ -108,6 +128,66 @@ class FontBox(QComboBox):
     def _on_text_changed(self) -> None:
         self._mark_resolvable()
         self._fit_width()
+
+    # -- completing a name -------------------------------------------------
+
+    def _mark_best_match(self) -> None:
+        """Mark the suggestion Enter and Tab will take, without taking it.
+
+        A family typed in full is marked over a longer one containing it, so
+        "Sans" stays Sans where both exist; otherwise the first in the list.
+
+        Marked with the popup's selection signals blocked, because the
+        completer listens to them and writes whatever is marked straight
+        into the field — measured: marked that way, the text was replaced
+        before anything was pressed, and Escape could not give it back. The
+        view hears of a new current row through those same signals, so it is
+        asked to repaint here instead. Whether it would have repainted anyway
+        is not something an offscreen test can see; the request costs
+        nothing.
+        """
+        completer = self.completer()
+        popup = completer.popup() if completer is not None else None
+        if completer is None or popup is None:
+            return
+        model = completer.completionModel()
+        if model.rowCount() == 0:
+            return
+        typed = completer.completionPrefix().strip().casefold()
+        names = [str(model.index(row, 0).data()).casefold() for row in range(model.rowCount())]
+        best = names.index(typed) if typed in names else 0
+        selection = popup.selectionModel()
+        with QSignalBlocker(selection):
+            popup.setCurrentIndex(model.index(best, 0))
+        popup.viewport().update()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
+        """Enter and Tab take the marked suggestion.
+
+        Enter is Qt's own once something is marked; this only makes sure
+        something is, should a key beat the queued mark to it. Tab is done
+        here outright, because Qt's completer takes a suggestion on Enter
+        and not on Tab — measured, "Comic" and Tab left "Comic". The key
+        still goes on afterwards, so focus moves to the next field as a Tab
+        should.
+        """
+        completer = self.completer()
+        popup = completer.popup() if completer is not None else None
+        if (
+            popup is not None
+            and watched == popup
+            and isinstance(event, QKeyEvent)
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() in _TAKES_THE_SUGGESTION
+            and popup.isVisible()
+        ):
+            if not popup.currentIndex().isValid():
+                self._mark_best_match()
+            if event.key() == Qt.Key.Key_Tab and popup.currentIndex().isValid():
+                chosen = str(popup.currentIndex().data())
+                popup.hide()
+                self.setCurrentText(chosen)
+        return super().eventFilter(watched, event)
 
     def _room_for_text(self) -> int:
         """Pixels the name gets: what it needs, floored and capped."""

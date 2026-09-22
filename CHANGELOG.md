@@ -30,8 +30,11 @@ plan that says nothing new is byte for byte the file it was.
   "Somic Sans MS", "Samic Sans MS", "Sanic Sans MS" and "Sansc Sans MS", one
   undo step each. They were marked red as not installed, which is how they
   showed, but they still reached the plan. Typing now writes what was typed,
-  and the families containing it are offered in a list underneath to pick
-  from.
+  and the families containing it are offered in a list underneath with the
+  likeliest marked — a name typed in full, else the first. **Enter or Tab
+  takes it**, as finishing the name used to; Escape keeps what was typed; and
+  a name nothing here contains, such as a font from another Mac, is kept as
+  typed, since there is nothing to take.
 - **A comic's languages are picked by name.** The plan header, Extract Pages
   and Preferences show *Italian (it)* where they showed `it`, and offer every
   language with a two-letter code, found by typing any part of its name. The

@@ -2771,6 +2771,154 @@ def test_typing_part_of_a_font_name_writes_only_what_was_typed(
         dialog.hide()
 
 
+def test_a_fragment_entered_in_the_header_becomes_the_font_it_found(
+    qapp: object, two_page_plan: Path, font_dir: Path
+) -> None:
+    """Typed "Sans", pressed Enter, saved the plan naming "Sans". Reported.
+
+    Inline completion used to finish the name, garbling the plan on the way;
+    the popup that replaced it wrote only what was typed, and then kept it.
+    Enter takes the suggestion the list marks, as finishing the name did.
+    """
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+    written: list[str] = []
+    dialog.edited.connect(
+        lambda: written.append(window.document.plan.header.font)  # type: ignore[union-attr]
+    )
+    popup = _type_into(dialog, dialog._font, "Sans")
+    try:
+        assert popup.currentIndex().data() == "Comic Sans MS", "marked, for Enter to take"
+        assert dialog._font.currentText() == "Sans", "and only marked: nothing is replaced yet"
+
+        QTest.keyClick(popup, Qt.Key.Key_Return)
+        QApplication.processEvents()
+
+        assert window.document.plan.header.font == "Comic Sans MS"  # type: ignore[union-attr]
+        assert written == ["S", "Sa", "San", "Sans", "Comic Sans MS"]
+    finally:
+        popup.hide()
+        dialog.hide()
+
+
+def _type_into(holder: QWidget, box: object, text: str) -> QWidget:
+    """Type ``text`` into a font field on screen, and hand back its popup."""
+    from comictrans.gui.font_box import FontBox
+
+    assert isinstance(box, FontBox)
+    holder.show()
+    holder.activateWindow()
+    line_edit = box.lineEdit()
+    assert line_edit is not None
+    line_edit.setFocus()
+    line_edit.clear()
+    QApplication.processEvents()
+    QTest.keyClicks(line_edit, text)
+    QApplication.processEvents()
+    completer = box.completer()
+    assert completer is not None
+    popup = completer.popup()
+    assert popup is not None
+    return popup
+
+
+def _font_field(*families: str) -> tuple[QWidget, object, QLineEdit]:
+    """A font field listing exactly ``families``, and a field after it for Tab."""
+    from comictrans.gui.font_box import FontBox
+
+    holder = QWidget()
+    layout = QFormLayout(holder)
+    box = FontBox(allow_default=False)
+    box._loaded = True
+    box._fill(families)
+    after = QLineEdit()
+    layout.addRow("font", box)
+    layout.addRow("next", after)
+    return holder, box, after
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab])
+def test_enter_and_tab_take_the_marked_suggestion(qapp: object, key: Qt.Key) -> None:
+    holder, box, after = _font_field("Comic Sans MS", "Marker Felt")
+    popup = _type_into(holder, box, "Comic")
+    try:
+        QTest.keyClick(popup, key)
+        QApplication.processEvents()
+
+        assert box.value() == "Comic Sans MS"  # type: ignore[attr-defined]
+        assert not popup.isVisible()
+        if key == Qt.Key.Key_Tab:
+            assert after.hasFocus(), "Tab still moves on to the next field"
+    finally:
+        holder.hide()
+
+
+def test_escape_keeps_what_was_typed(qapp: object) -> None:
+    holder, box, _after = _font_field("Comic Sans MS", "Marker Felt")
+    popup = _type_into(holder, box, "Comic")
+    try:
+        QTest.keyClick(popup, Qt.Key.Key_Escape)
+        QApplication.processEvents()
+
+        assert box.value() == "Comic"  # type: ignore[attr-defined]
+        assert not box.resolvable(), "shown as not installed, like any such name"  # type: ignore[attr-defined]
+    finally:
+        holder.hide()
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Tab])
+def test_a_name_nothing_here_contains_is_kept(qapp: object, key: Qt.Key) -> None:
+    """A font from another Mac: nothing is offered, so nothing is taken."""
+    holder, box, _after = _font_field("Comic Sans MS", "Marker Felt")
+    popup = _type_into(holder, box, "Helvetica")
+    try:
+        assert not popup.isVisible()
+        QTest.keyClick(box.lineEdit(), key)  # type: ignore[attr-defined]
+        QApplication.processEvents()
+
+        assert box.value() == "Helvetica"  # type: ignore[attr-defined]
+    finally:
+        holder.hide()
+
+
+def test_a_name_typed_in_full_is_not_traded_for_a_longer_one(qapp: object) -> None:
+    """ "Sans" is marked over "Comic Sans MS", which only contains it."""
+    holder, box, _after = _font_field("Comic Sans MS", "Sans")
+    popup = _type_into(holder, box, "sans")
+    try:
+        assert popup.currentIndex().data() == "Sans"
+        QTest.keyClick(popup, Qt.Key.Key_Return)
+        QApplication.processEvents()
+
+        assert box.value() == "Sans"  # type: ignore[attr-defined]
+    finally:
+        holder.hide()
+
+
+def test_enter_straight_after_typing_still_takes_a_suggestion(qapp: object) -> None:
+    """The mark is made once the list has settled; a key can get there first."""
+    holder, box, _after = _font_field("Comic Sans MS", "Marker Felt")
+    holder.show()
+    holder.activateWindow()
+    line_edit = box.lineEdit()  # type: ignore[attr-defined]
+    line_edit.setFocus()
+    line_edit.clear()
+    QApplication.processEvents()
+    try:
+        QTest.keyClicks(line_edit, "Mark")
+        popup = box.completer().popup()  # type: ignore[attr-defined]
+        assert popup.isVisible() and not popup.currentIndex().isValid(), "nothing marked yet"
+        QTest.keyClick(popup, Qt.Key.Key_Return)
+        QApplication.processEvents()
+
+        assert box.value() == "Marker Felt"  # type: ignore[attr-defined]
+    finally:
+        holder.hide()
+
+
 def test_the_cleanup_leaves_a_completer_popup_to_the_combo_that_owns_it(
     qapp: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
