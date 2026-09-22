@@ -70,6 +70,21 @@ class TextCase(StrEnum):
     PRESERVE = "preserve"
 
 
+class ReadingDirection(StrEnum):
+    """Which way the pages of this chapter are meant to be read.
+
+    A fact about the comic rather than about the translation, which is why it
+    sits in the header beside the rest of them. A plan that does not say holds
+    ``None``: unstated is not the same claim as left-to-right, and a reader
+    that has to pick one should know it is picking rather than being told.
+
+    Nothing reads this yet — see ``planfile.schema.READABLE_VERSIONS``.
+    """
+
+    LEFT_TO_RIGHT = "ltr"
+    RIGHT_TO_LEFT = "rtl"
+
+
 @dataclass(frozen=True, slots=True)
 class Color:
     """An 8-bit RGB colour."""
@@ -251,8 +266,31 @@ class Region:
 
     low_confidence: bool = False
     skip: bool = False
+
+    locked: bool = False
+    """Finished, and not to be edited without unlocking it first.
+
+    Not ``skip``, which the labels have to keep apart: ``skip`` means do not
+    render this region, ``locked`` means do not change it, and a locked region
+    still renders. Nothing enforces it yet."""
+
     erase: Erase | None = None
     """How this region is painted over. ``None`` follows the run's own flag."""
+
+    stroke_color: Color | None = None
+    """Outline drawn around the lettering, or ``None`` for no outline.
+
+    Deliberately not implied by ``erase: none``, so that a plan already
+    lettering a caption over artwork does not quietly start outlining it.
+    Nothing draws it yet."""
+
+    angle: float = 0.0
+    """Tilt of this region, in degrees, positive counter-clockwise.
+
+    ``0.0`` is the upright region every plan holds today. Nothing rotates
+    anything by it yet — the typesetter still fits level text inside whatever
+    polygon it is given, which is why this is a field rather than a change to
+    what a polygon means."""
 
     font: str | None = None
     font_size: int | None = None
@@ -307,6 +345,30 @@ class PlanHeader:
     case: TextCase
     font_size_min_ratio: float
     condense_min: float
+
+    # What the comic is. Nothing measures any of it from the pages and nothing
+    # reads it back yet: `extract` fills in none of these, and a plan that
+    # names none is the plan this wrote before they existed. Empty is a valid
+    # answer for every one of them, which is what lets that stay true.
+    series: str = ""
+    title: str = ""
+    volume: str = ""
+    number: str = ""
+    """Free text, not a number: an issue is as often ``1.5`` or ``Annual`` as
+    it is ``7``, and a plan that could not say so would be worse than one that
+    does not check."""
+
+    year: int | None = None
+    """The year of publication, or ``None`` for a plan that does not say.
+
+    The one of these that is a number rather than text, because a year is one
+    and a typo in it is worth catching — see ``schema.YEAR_RANGE``."""
+
+    publisher: str = ""
+    writer: str = ""
+    reading_direction: ReadingDirection | None = None
+    """Which way this chapter's pages read, or ``None`` for a plan that does
+    not say. Unstated rather than assumed; see :class:`ReadingDirection`."""
 
 
 @dataclass(frozen=True, slots=True)

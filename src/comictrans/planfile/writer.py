@@ -20,6 +20,7 @@ from .schema import (
     FILE_HEADER_COMMENT,
     HEADER_KEY_ORDER,
     IMAGE_KEY_ORDER,
+    OPTIONAL_HEADER_KEYS,
     PLAN_VERSION,
     REGION_KEY_ORDER,
 )
@@ -76,8 +77,14 @@ def region_to_node(region: Region) -> CommentedMap:
         values["low_confidence"] = True
     if region.skip:
         values["skip"] = True
+    if region.locked:
+        values["locked"] = True
     if region.erase is not None:
         values["erase"] = str(region.erase)
+    if region.stroke_color is not None:
+        values["stroke_color"] = region.stroke_color.to_hex()
+    if region.angle != 0.0:
+        values["angle"] = region.angle
     if region.font is not None:
         values["font"] = region.font
     if region.font_size is not None:
@@ -107,13 +114,36 @@ def header_to_node(header: PlanHeader) -> CommentedMap:
         "font_size_min_ratio": header.font_size_min_ratio,
         "condense_min": header.condense_min,
     }
+    # The chapter's own details, written only where the plan actually says
+    # something — so a plan that knows none of them looks exactly as it did
+    # before the keys existed, rather than gaining eight empty lines.
+    if header.series:
+        values["series"] = header.series
+    if header.title:
+        values["title"] = header.title
+    if header.volume:
+        values["volume"] = header.volume
+    if header.number:
+        values["number"] = header.number
+    if header.year is not None:
+        values["year"] = header.year
+    if header.publisher:
+        values["publisher"] = header.publisher
+    if header.writer:
+        values["writer"] = header.writer
+    if header.reading_direction is not None:
+        values["reading_direction"] = str(header.reading_direction)
+
     # Driven by the schema's own order, the way the regions and the images are
     # — the point of that module is that the reader and the writer cannot
     # disagree, and a key order written out again here is a second opinion. A
-    # header field added there and forgotten here now raises rather than
-    # quietly going unwritten.
+    # *required* header field added there and forgotten here still raises
+    # rather than quietly going unwritten; an optional one absent from `values`
+    # is a plan that does not say, and is skipped.
     node = CommentedMap()
     for key in HEADER_KEY_ORDER:
+        if key in OPTIONAL_HEADER_KEYS and key not in values:
+            continue
         node[key] = values[key]
     return node
 

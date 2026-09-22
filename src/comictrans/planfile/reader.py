@@ -24,6 +24,7 @@ from ..model import (
     PlanImage,
     Point,
     Polygon,
+    ReadingDirection,
     Region,
     TextCase,
     polygon_is_simple,
@@ -31,6 +32,7 @@ from ..model import (
 )
 from ..util import sha256_file
 from .schema import (
+    ANGLE_RANGE,
     CONDENSE_MIN_RANGE,
     FONT_SIZE_MIN_RATIO_RANGE,
     IMAGE_KEYS,
@@ -41,11 +43,13 @@ from .schema import (
     REGION_KEYS,
     REQUIRED_REGION_KEYS,
     TOP_LEVEL_KEYS,
+    YEAR_RANGE,
 )
 
 _VALID_GEOMETRY = {str(value) for value in Geometry}
 _VALID_CASE = {str(value) for value in TextCase}
 _VALID_ERASE = {str(value) for value in Erase}
+_VALID_READING_DIRECTION = {str(value) for value in ReadingDirection}
 
 
 def _line_of(node: Any, key: str | None = None) -> int | None:
@@ -102,12 +106,14 @@ class _Cursor:
             raise self.fail(f"{key} must not be empty", key)
         return value
 
-    def integer(self, key: str, *, minimum: int | None = None) -> int:
+    def integer(self, key: str, *, minimum: int | None = None, maximum: int | None = None) -> int:
         value = self.get(key)
         if isinstance(value, bool) or not isinstance(value, int):
             raise self.fail(f"{key} must be a whole number, got {value!r}", key)
         if minimum is not None and value < minimum:
             raise self.fail(f"{key} must be >= {minimum}, got {value}", key)
+        if maximum is not None and value > maximum:
+            raise self.fail(f"{key} must be <= {maximum}, got {value}", key)
         return value
 
     def number(self, key: str, *, minimum: float, maximum: float) -> float:
@@ -261,6 +267,12 @@ def _parse_region(
     font_size = cursor.integer("font_size", minimum=1) if "font_size" in node else None
     font = cursor.string("font", allow_empty=False) if "font" in node else None
     mode = Erase(cursor.choice("erase", _VALID_ERASE)) if "erase" in node else None
+    stroke = cursor.color("stroke_color") if "stroke_color" in node else None
+    angle = (
+        cursor.number("angle", minimum=ANGLE_RANGE[0], maximum=ANGLE_RANGE[1])
+        if "angle" in node
+        else 0.0
+    )
 
     return Region(
         id=region_id,
@@ -276,7 +288,10 @@ def _parse_region(
         notes=cursor.string("notes") if "notes" in node else "",
         low_confidence=cursor.flag("low_confidence"),
         skip=cursor.flag("skip"),
+        locked=cursor.flag("locked"),
         erase=mode,
+        stroke_color=stroke,
+        angle=angle,
         font=font,
         font_size=font_size,
     )
@@ -292,12 +307,33 @@ def _parse_header(node: Any, path: Path | None) -> PlanHeader:
             f"{PLAN_VERSION} and reads {readable}",
             "version",
         )
+    # The chapter's own details, every one optional. Absent means the plan does
+    # not say, which is a valid answer and the one nearly every plan gives.
+    direction = (
+        ReadingDirection(cursor.choice("reading_direction", _VALID_READING_DIRECTION))
+        if "reading_direction" in node
+        else None
+    )
+    year = (
+        cursor.integer("year", minimum=YEAR_RANGE[0], maximum=YEAR_RANGE[1])
+        if "year" in node
+        else None
+    )
+
     return PlanHeader(
         # Always the current version in memory: a version 1 file is upgraded
         # as it is read, and saving it writes the upgraded form.
         version=PLAN_VERSION,
         generator=cursor.string("generator"),
         created=cursor.string("created"),
+        series=cursor.string("series") if "series" in node else "",
+        title=cursor.string("title") if "title" in node else "",
+        volume=cursor.string("volume") if "volume" in node else "",
+        number=cursor.string("number") if "number" in node else "",
+        year=year,
+        publisher=cursor.string("publisher") if "publisher" in node else "",
+        writer=cursor.string("writer") if "writer" in node else "",
+        reading_direction=direction,
         source_language=cursor.string("source_language", allow_empty=False),
         target_language=cursor.string("target_language", allow_empty=False),
         ocr_engine=cursor.string("ocr_engine"),

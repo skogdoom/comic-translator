@@ -13,29 +13,46 @@ from comictrans.model import (
     Plan,
     PlanHeader,
     PlanImage,
+    ReadingDirection,
     Region,
     TextCase,
 )
 from comictrans.planfile import dumps, load_plan, loads, write_plan
-from comictrans.planfile.schema import PLAN_VERSION, REGION_KEY_ORDER
+from comictrans.planfile.schema import OPTIONAL_HEADER_KEYS, PLAN_VERSION, REGION_KEY_ORDER
 from comictrans.util import sha256_file
 
 from .conftest import make_plan, save_page
 
 
-def _header() -> PlanHeader:
-    return PlanHeader(
-        version=PLAN_VERSION,
-        generator="comictrans 0.1.0",
-        created="2026-09-06T19:00:00Z",
-        source_language="it",
-        target_language="en",
-        ocr_engine="apple-vision",
-        font="Comic Sans MS",
-        case=TextCase.UPPER,
-        font_size_min_ratio=0.012,
-        condense_min=0.9,
-    )
+def _header(**overrides: object) -> PlanHeader:
+    base: dict[str, object] = {
+        "version": PLAN_VERSION,
+        "generator": "comictrans 0.1.0",
+        "created": "2026-09-06T19:00:00Z",
+        "source_language": "it",
+        "target_language": "en",
+        "ocr_engine": "apple-vision",
+        "font": "Comic Sans MS",
+        "case": TextCase.UPPER,
+        "font_size_min_ratio": 0.012,
+        "condense_min": 0.9,
+    }
+    base.update(overrides)
+    return PlanHeader(**base)  # type: ignore[arg-type]
+
+
+CHAPTER_DETAILS: dict[str, object] = {
+    "series": "Corto Maltese",
+    "title": "Una ballata del mare salato",
+    "volume": "1",
+    "number": "1.5",
+    "year": 1967,
+    "publisher": "Casterman",
+    "writer": "Hugo Pratt",
+    "reading_direction": ReadingDirection.RIGHT_TO_LEFT,
+}
+"""Every header field version 4 added, all set. ``number`` is deliberately not
+a whole number: an issue is as often ``1.5`` as ``7``."""
 
 
 def _region(**overrides: object) -> Region:
@@ -56,8 +73,10 @@ def _region(**overrides: object) -> Region:
     return Region(**base)  # type: ignore[arg-type]
 
 
-def _plan(*regions: Region, digests: dict[str, str] | None = None) -> Plan:
-    return make_plan(_header(), regions or (_region(),), digests)
+def _plan(
+    *regions: Region, digests: dict[str, str] | None = None, header: PlanHeader | None = None
+) -> Plan:
+    return make_plan(header or _header(), regions or (_region(),), digests)
 
 
 def test_round_trip_preserves_every_field() -> None:
@@ -70,14 +89,29 @@ def test_round_trip_preserves_every_field() -> None:
             font="Chalkboard SE",
             font_size=22,
             geometry=Geometry.APPROXIMATE,
-        )
+            locked=True,
+            stroke_color=Color(0, 0, 0),
+            angle=20.5,
+        ),
+        header=_header(**CHAPTER_DETAILS),
     )
     assert loads(dumps(original)) == original
 
 
 def test_keys_are_written_in_schema_order() -> None:
     text = dumps(
-        _plan(_region(low_confidence=True, skip=True, font="X", font_size=9, erase=Erase.FLAT))
+        _plan(
+            _region(
+                low_confidence=True,
+                skip=True,
+                font="X",
+                font_size=9,
+                erase=Erase.FLAT,
+                locked=True,
+                stroke_color=Color(0, 0, 0),
+                angle=-12.5,
+            )
+        )
     )
     region_block = text.split("regions:", 1)[1]
     positions = [region_block.find(f"{key}:") for key in REGION_KEY_ORDER]
@@ -432,3 +466,85 @@ def test_a_version_2_plan_reads_without_an_erase_anywhere() -> None:
 
     assert plan.regions[0].erase is None
     assert plan.header.version == PLAN_VERSION, "and it is a current plan in memory"
+
+
+def test_a_version_3_plan_arrives_with_every_version_4_field_at_its_default() -> None:
+    # Everything version 4 added is optional, so a version 3 file is a version
+    # 4 file that uses none of it.
+    text = dumps(_plan()).replace(f"version: {PLAN_VERSION}", "version: 3")
+
+    plan = loads(text)
+
+    region = plan.regions[0]
+    assert (region.locked, region.stroke_color, region.angle) == (False, None, 0.0)
+    header = plan.header
+    assert header.version == PLAN_VERSION, "and it is a current plan in memory"
+    assert (header.series, header.title, header.volume, header.number) == ("", "", "", "")
+    assert (header.year, header.publisher, header.writer, header.reading_direction) == (
+        None,
+        "",
+        "",
+        None,
+    )
+
+
+def test_saving_a_version_3_plan_moves_it_to_4_and_changes_nothing_else() -> None:
+    """The upgrade is the version number and not one line besides.
+
+    Every field version 4 added defaults to the value that means "as before"
+    and the writer omits each one at that value, so the file a version 3 plan
+    saves as is the file it would have saved as before the fields existed.
+
+    **What this cannot see**, established by mutation rather than assumed: the
+    older text is built from a dump, so a writer that put ``series: ''`` into
+    *every* plan would put it on both sides of this comparison and cancel out.
+    That the chapter details are omitted at all is held by
+    ``test_a_plan_with_no_chapter_details_writes_none_of_their_keys``, which
+    reads the header block directly. What this one holds is the upgrade path:
+    that reading an older plan and writing it back moves the version line and
+    disturbs nothing around it.
+    """
+    current = dumps(_plan(_region(translation="I CAN'T BELIEVE IT!", notes="check the accent")))
+    older = current.replace(f"version: {PLAN_VERSION}", "version: 3")
+
+    saved = dumps(loads(older))
+
+    differing = [
+        (before, after)
+        for before, after in zip(older.splitlines(), saved.splitlines(), strict=True)
+        if before != after
+    ]
+    assert differing == [("version: 3", f"version: {PLAN_VERSION}")]
+
+
+def test_a_plan_with_no_chapter_details_writes_none_of_their_keys() -> None:
+    header_block = dumps(_plan()).split("images:", 1)[0]
+    for key in OPTIONAL_HEADER_KEYS:
+        assert f"{key}:" not in header_block, f"{key} is written only when the plan says it"
+
+
+def test_a_year_outside_four_digits_is_rejected() -> None:
+    text = dumps(_plan(header=_header(year=1967))).replace("year: 1967", "year: 19")
+    with pytest.raises(PlanError, match="year must be >= 1000"):
+        loads(text)
+
+
+def test_an_angle_beyond_a_full_turn_is_rejected() -> None:
+    text = dumps(_plan(_region(angle=20.0))).replace("angle: 20.0", "angle: 400.0")
+    with pytest.raises(PlanError, match="angle must be between"):
+        loads(text)
+
+
+def test_an_unknown_reading_direction_is_rejected() -> None:
+    plan = _plan(header=_header(reading_direction=ReadingDirection.RIGHT_TO_LEFT))
+    text = dumps(plan).replace("reading_direction: rtl", "reading_direction: sideways")
+    with pytest.raises(PlanError, match="reading_direction must be one of"):
+        loads(text)
+
+
+def test_a_stroke_colour_that_is_not_a_colour_is_rejected() -> None:
+    text = dumps(_plan(_region(stroke_color=Color(0, 0, 0)))).replace(
+        "stroke_color: '#000000'", "stroke_color: black"
+    )
+    with pytest.raises(PlanError, match="stroke_color"):
+        loads(text)
