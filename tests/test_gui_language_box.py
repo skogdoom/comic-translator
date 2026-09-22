@@ -146,8 +146,9 @@ def test_typing_part_of_a_name_offers_the_language(qapp: object) -> None:
 
     Typed as keys rather than set as a prefix, because the completer's model
     filters the same way whatever its mode, and it is the mode that decides
-    whether anything is offered: inline completion, Qt's default, shows
-    nothing for a match in the middle of a name.
+    what typing does. Inline completion, Qt's default, finishes a match in
+    the middle of a name as though it were at the start: "tal" becomes
+    "talalan (ca)", and no popup is ever made.
     """
     box = _box("")
     box.show()

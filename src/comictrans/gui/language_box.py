@@ -150,10 +150,11 @@ class LanguageBox(QComboBox):
 
         # A popup of every name containing what was typed, so "tal" offers
         # Italian: nobody needs to know which word a name starts with. Both
-        # lines are needed. Qt's default for a combo is inline completion,
-        # which offers nothing at all for a match in the middle of a name —
-        # measured, typing "tal" shows no popup and no suggestion. It is
-        # already case-insensitive, so that is left alone.
+        # lines are needed, and the first is not cosmetic. Qt's default for a
+        # combo is inline completion, which finishes what was typed as though
+        # the match began with it — measured, "tal" becomes "talalan (ca)",
+        # the tail of Catalan, and every one of those is an edit that writes
+        # through. It is already case-insensitive, so that is left alone.
         completer = self.completer()
         if completer is not None:
             completer.setCompletionMode(completer.CompletionMode.PopupCompletion)
