@@ -853,6 +853,35 @@ Alpha is fine: WebP stores it, so it would join `ALPHA_FORMATS` rather than
 warn like JPEG does. The format is also capped at 16383 pixels a side, which
 no comic page reaches and a double-page scan at 1200 DPI would.
 
+**The lock, enforced where the plan rules live rather than in the window.**
+4.27 put the plugin half of the lock in `gui.document.apply_plugin`, which is
+where a plugin's returned plan is taken. That was the smaller and more honest
+change against the code as it stands — the commit point already holds both
+the old plan and the new one, so the regions held back fall out of the
+comparison for free and `plugins.run_plugin` keeps its single job of
+validating and refusing.
+
+It is arguably in the wrong module. `locked` is a field on `Region`, not a GUI
+concept, and `run_plugin` is already where "what a plugin may not do" is
+written down — `_check_same_shape` refuses a plugin that adds, removes,
+reorders or moves a region. A lock is the same kind of rule and sits oddly
+apart from it.
+
+**What decides it is whether a plugin ever runs outside the window.** Today
+none can: there is no plugin subcommand, `discover_plugins` is called only
+from `main_window`, and so the window is the only door. A CLI plugin runner
+would add a second one, and that second door would not inherit the lock —
+which is the same shape of bug 4.27 shipped with and had to be told about.
+So: if a plugin runner reaches the command line, move the rule into
+`run_plugin` in the same change rather than afterwards.
+
+The one cost to weigh when moving it. `run_plugin` returns a `Plan` and
+nothing else, and the window needs to know *which* regions were held back in
+order to say so — `apply_plugin` returns a `PluginOutcome` carrying exactly
+that. Moving the rule means either widening what `run_plugin` returns or
+giving the caller a second way to ask, and the first is an interface change
+that milestone 33 may want to make anyway.
+
 **Packaging for Windows and Linux.** Asked about, and kept here rather than
 sequenced: it is cross-cutting, and *Why this order* says what that costs —
 packaging bundles whatever the application is by the time it runs, so doing it

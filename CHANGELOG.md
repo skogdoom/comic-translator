@@ -27,7 +27,12 @@ plan that says nothing new is byte for byte the file it was.
   Ctrl+L, the checkbox in the Region panel, or the balloon's own right-click
   menu — says this one is done. A locked region's fields go dead, its outline
   cannot be reshaped or nudged, and Delete and Merge stop being offered; the
-  lock itself stays live, because it is the way back out. It is not `skip`,
+  lock itself stays live, because it is the way back out. **A plugin cannot
+  edit one either** — a plugin hands back a whole plan rather than calling one
+  field at a time, so it is the one path that could otherwise walk past the
+  lock. Its other work still lands; only the locked regions are put back, and
+  the window says how many, so a plugin that writes to every region still does
+  its job everywhere else. It is not `skip`,
   and the labels say so: `skip` means do not letter this region, `locked`
   means do not change it, and a locked region is lettered exactly as any
   other. The lock lives in the plan rather than in this machine's settings,

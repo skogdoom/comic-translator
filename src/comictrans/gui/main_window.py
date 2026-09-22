@@ -2313,12 +2313,30 @@ class MainWindow(QMainWindow):
         except PluginError as exc:
             self._report_failure(self.tr("running {0}").format(plugin.name), exc)
             return
-        if self.document.apply_plugin(after):
+        outcome = self.document.apply_plugin(after)
+        if outcome.changed:
             self._reload_from_document()
             self._follow_the_change(before)
-            self.statusBar().showMessage(self.tr("{0} ran").format(plugin.name), 3000)
+        # Four messages rather than one built from pieces: a translator needs
+        # the whole sentence, and "made no change" on its own would be true
+        # and misleading for a plugin whose every change was to a locked
+        # region.
+        held = len(outcome.held_back)
+        if outcome.changed and held:
+            message = self.tr("{0} ran — %n locked region(s) left as they are", None, held).format(
+                plugin.name
+            )
+        elif outcome.changed:
+            message = self.tr("{0} ran").format(plugin.name)
+        elif held:
+            message = self.tr(
+                "{0} changed nothing but %n locked region(s), which were left as they are",
+                None,
+                held,
+            ).format(plugin.name)
         else:
-            self.statusBar().showMessage(self.tr("{0} made no change").format(plugin.name), 3000)
+            message = self.tr("{0} made no change").format(plugin.name)
+        self.statusBar().showMessage(message, 3000)
 
     def _on_edit_header(self) -> None:
         """Edit the settings every region is drawn under.

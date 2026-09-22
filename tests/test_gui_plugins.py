@@ -661,3 +661,28 @@ def test_a_failed_plugin_shows_its_error_instead_of_settings(
     detail = dialog._detail.itemAt(0).widget()
     assert isinstance(detail, QLabel)
     assert "could not be loaded" in detail.text()
+
+
+def test_a_plugin_is_held_back_by_a_locked_region_and_the_bar_says_so(
+    qapp: object, one_page_plan: Path, _empty_plugin_directory: Path
+) -> None:
+    """The window has to say it, or the region simply looks unchanged.
+
+    "made no change" would be true here and useless: the plugin did propose
+    something, and what stopped it was the lock rather than the plugin.
+    """
+    _write(_empty_plugin_directory, "uppercase", UPPERCASE_NOTES)
+    window = MainWindow()
+    window.open_plan(one_page_plan)
+    window._on_preferences_changed(Preferences(experimental="yes"))
+    window._go_to_region("page-001-001")
+    window._lock_action.setChecked(True)
+    before = window.document.region("page-001-001").notes  # type: ignore[union-attr]
+
+    action = next(a for a in window._plugin_run_actions if a.text() == "Uppercase Notes")
+    action.trigger()
+
+    assert window.document.region("page-001-001").notes == before  # type: ignore[union-attr]
+    message = window.statusBar().currentMessage()
+    assert "1 locked region" in message, message
+    assert "made no change" not in message

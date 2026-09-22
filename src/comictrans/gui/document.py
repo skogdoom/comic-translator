@@ -236,6 +236,24 @@ def region_flags(region: Region, *, overlapping_ids: frozenset[str]) -> RegionFl
 
 
 @dataclass(frozen=True, slots=True)
+class PluginOutcome:
+    """What running one plugin over the plan came to.
+
+    Two facts rather than one, because a plugin can do nothing *and* have been
+    held back — a plugin whose only proposed changes were to locked regions
+    changes the plan not at all, and saying "made no change" without saying
+    why would be true and useless.
+    """
+
+    changed: bool
+    """Whether the plan moved, and so whether this cost an undo step."""
+
+    held_back: tuple[str, ...]
+    """Ids of locked regions the plugin proposed changing, which were put
+    back as they were. Empty for the ordinary run."""
+
+
+@dataclass(frozen=True, slots=True)
 class ImageSummary:
     """Counts for one page, for the page list without opening it."""
 
@@ -493,19 +511,48 @@ class PlanDocument:
         self._record(with_image_order(self.plan, names), run=None)
         return True
 
-    def apply_plugin(self, plan: Plan) -> bool:
-        """Move to ``plan``, as one whole-plan undo step. False when nothing changed.
+    def apply_plugin(self, plan: Plan) -> PluginOutcome:
+        """Move to ``plan``, as one whole-plan undo step.
 
         What a plugin run becomes once it is trusted: ``plugins.run_plugin``
-        has already refused anything that changed the plan's shape, so the
-        only question left here is the one ``reorder_images`` asks too — did
-        this actually change anything, since a plugin whose ``run`` is a
-        no-op should not cost an undo step or mark the plan dirty.
+        has already refused anything that changed the plan's shape, so two
+        questions are left. Did this actually change anything — the one
+        ``reorder_images`` asks too, since a plugin whose ``run`` is a no-op
+        should not cost an undo step or mark the plan dirty. And did it try to
+        change a region that is locked.
+
+        **A locked region is put back.** A plugin returns a whole plan rather
+        than calling a setter, so it is the one edit path that does not reach
+        the guard in :meth:`_update`; without this it could rewrite a region
+        the lock exists to protect. The rest of the plugin's work is kept,
+        which is the half that matters — the example plugin that ships writes
+        a note onto *every* region, and refusing the whole run because one
+        region is locked would make it useless on any plan that had locked
+        one. The regions held back are named so the window can say so rather
+        than leaving somebody to notice.
+
+        The whole region goes back, not just the fields the lock covers: a
+        plugin that unlocked a region and rewrote it in the same returned plan
+        would otherwise have found the way around the lock in one step.
         """
+        held_back: list[str] = []
+        regions: list[Region] = []
+        # run_plugin has already held the plugin to the same regions in the
+        # same order, so these line up one to one; strict says so out loud if
+        # that ever stops being true.
+        for current, proposed in zip(self.plan.regions, plan.regions, strict=True):
+            if current.locked and proposed != current:
+                held_back.append(current.id)
+                regions.append(current)
+            else:
+                regions.append(proposed)
+        if held_back:
+            plan = replace(plan, regions=tuple(regions))
+
         if plan == self.plan:
-            return False
+            return PluginOutcome(changed=False, held_back=tuple(held_back))
         self._record(plan, run=None)
-        return True
+        return PluginOutcome(changed=True, held_back=tuple(held_back))
 
     def set_translation(self, region_id: str, translation: str) -> Region:
         return self._update(region_id, translation=translation)

@@ -1049,9 +1049,10 @@ colours, duplicate ids, a region naming an image the `images` list does not
 have, and image-hash mismatches are all errors that name the offending line.
 
 - `locked: true` marks a region finished. `review` then refuses to change it
-  until it is unlocked, and a re-extraction brings it through untouched
-  instead of rebuilding it around the fresh reading. It is not `skip`:
-  `apply` letters a locked region exactly as it letters any other.
+  until it is unlocked — a plugin included, whose other work still lands — and
+  a re-extraction brings it through untouched instead of rebuilding it around
+  the fresh reading. It is not `skip`: `apply` letters a locked region exactly
+  as it letters any other.
 
 A plan may also carry fields that nothing acts on yet, added together so that
 the milestones which will use them do not each cost a format change: `angle`
