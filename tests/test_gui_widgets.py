@@ -2385,7 +2385,7 @@ def test_the_header_dialog_writes_through_as_it_is_edited(
     dialog._font.setCurrentText("Chalkboard SE")
     dialog._case.setCurrentIndex(dialog._case.findData(TextCase.PRESERVE))
     dialog._condense.setValue(0.8)
-    dialog._target_language.setText("sv")
+    dialog._target_language.setCurrentText("sv")
 
     header = window.document.plan.header  # type: ignore[union-attr]
     assert header.font == "Chalkboard SE"
@@ -4786,8 +4786,8 @@ def test_the_dialog_asks_for_the_four_things_it_is_scoped_to(
 ) -> None:
     dialog = ExtractDialog(None, None)
     dialog._source.setText(str(loose_pages))
-    dialog._source_language.setText("fr")
-    dialog._target_language.setText("sv")
+    dialog._source_language.setCurrentText("fr")
+    dialog._target_language.setCurrentText("sv")
     dialog._languages.setText("fr, pt-BR")
     dialog._engine.setCurrentIndex(dialog._engine.findData("tesseract"))
 
@@ -4803,7 +4803,7 @@ def test_the_dialog_asks_for_the_four_things_it_is_scoped_to(
 def test_the_ocr_languages_default_to_the_source_language(qapp: object, loose_pages: Path) -> None:
     dialog = ExtractDialog(None, None)
     dialog._source.setText(str(loose_pages))
-    dialog._source_language.setText("de")
+    dialog._source_language.setCurrentText("de")
 
     assert dialog.request().config.ocr.languages == ("de",)
 
@@ -4977,7 +4977,7 @@ def test_the_preferences_dialog_writes_through_as_it_is_edited(qapp: object) -> 
     seen: list[Preferences] = []
     dialog.changed.connect(lambda: seen.append(dialog.preferences()))
 
-    dialog._source_language.setText("de")
+    dialog._source_language.setCurrentText("de")
     dialog._erase.setCurrentIndex(dialog._erase.findData("polygon"))
 
     assert len(seen) >= 2, "each field is its own edit; there is nothing to apply"
@@ -4988,7 +4988,7 @@ def test_the_preferences_dialog_writes_through_as_it_is_edited(qapp: object) -> 
 def test_the_preferences_dialog_shows_what_it_was_given(qapp: object, font_dir: Path) -> None:
     dialog = PreferencesDialog(_preferences(), None)
 
-    assert dialog._source_language.text() == "ja"
+    assert dialog._source_language.value() == "ja"
     assert dialog._engine.currentData() == "tesseract"
     assert dialog._font.value() == "Marker Felt"
     assert dialog._format.currentData() == "tiff"
@@ -5104,7 +5104,7 @@ def test_a_language_change_that_changes_no_language_says_nothing(
 def test_the_dialog_carries_the_remembered_directory_through_untouched(qapp: object) -> None:
     """It is remembered, not chosen, so the dialog never shows or clears it."""
     dialog = PreferencesDialog(_preferences(last_directory="/tmp/somewhere"), None)
-    dialog._target_language.setText("fr")
+    dialog._target_language.setCurrentText("fr")
 
     assert dialog.preferences().last_directory == "/tmp/somewhere"
 

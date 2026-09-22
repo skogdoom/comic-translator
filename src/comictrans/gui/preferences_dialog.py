@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 from . import erase_choices, translations
 from .extract_dialog import ENGINE_CHOICES
 from .font_box import FontBox
+from .language_box import LanguageBox
 from .note import Note
 from .preferences import ON, Preferences
 from .render_dialog import FORMAT_CHOICES
@@ -200,8 +201,10 @@ class PreferencesDialog(QDialog):
         self.setWindowTitle(self.tr("Preferences"))
         self._preferences = preferences
 
-        self._source_language = QLineEdit(preferences.source_language)
-        self._target_language = QLineEdit(preferences.target_language)
+        self._source_language = LanguageBox()
+        self._source_language.set_value(preferences.source_language)
+        self._target_language = LanguageBox()
+        self._target_language.set_value(preferences.target_language)
         self._ocr_languages = QLineEdit(preferences.ocr_languages)
         self._ocr_languages.setPlaceholderText(self.tr("same as the source language"))
         _wide_enough_for_its_placeholder(self._ocr_languages)
@@ -350,8 +353,8 @@ class PreferencesDialog(QDialog):
         layout.addWidget(buttons)
         self.setMinimumWidth(520)
 
-        self._source_language.textChanged.connect(self._commit)
-        self._target_language.textChanged.connect(self._commit)
+        self._source_language.currentTextChanged.connect(self._commit)
+        self._target_language.currentTextChanged.connect(self._commit)
         self._ocr_languages.textChanged.connect(self._commit)
         self._engine.currentIndexChanged.connect(self._commit)
         self._font.currentTextChanged.connect(self._commit)
@@ -396,8 +399,8 @@ class PreferencesDialog(QDialog):
         """
         return replace(
             self._preferences,
-            source_language=self._source_language.text().strip(),
-            target_language=self._target_language.text().strip(),
+            source_language=self._source_language.value(),
+            target_language=self._target_language.value(),
             ocr_languages=self._ocr_languages.text().strip(),
             ocr_engine=str(self._engine.currentData()),
             font=self._font.value() or "",
@@ -484,8 +487,8 @@ class PreferencesDialog(QDialog):
                 self._experimental,
             ):
                 blockers.enter_context(QSignalBlocker(widget))
-            self._source_language.setText(preferences.source_language)
-            self._target_language.setText(preferences.target_language)
+            self._source_language.set_value(preferences.source_language)
+            self._target_language.set_value(preferences.target_language)
             self._ocr_languages.setText(preferences.ocr_languages)
             self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
             self._font.set_value(preferences.font or None)

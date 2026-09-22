@@ -56,7 +56,7 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 16 | Languages by name, not by code | M |
+| 34 | OCR languages from what is installed | M |
 | 31 | A reader window | M |
 | 17 | A shape palette for drawing a region | M |
 | 26 | Rotate a region | M |
@@ -83,8 +83,10 @@ shipped the region context menu without the lock/unlock command its own
 section asked for, because 4.27 had not landed and it was built without it
 rather than wait; 4.27 has now landed and put that third command in the menu
 where it belongs. What is left below is no longer sorted by how often it is
-met — 16 leads because it is the last of the small window jobs, not because
-anything depends on it.
+met. 16 has shipped as well, and 34 leads because it is what 16 left: the
+language pair is named now and the OCR languages are not, which makes that
+field the one place the window still asks for a code. Nothing depends on
+it.
 
 **The schema change has shipped, and four milestones are cheaper for it.**
 Milestone 29 took the plan format to version 4 and added every field this file
@@ -146,7 +148,7 @@ what a
 plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 16 and 17 land would mean checking it twice. Each of
+checking it before 34 and 17 land would mean checking it twice. Each of
 those milestones still updates the guide for its own change, as every
 milestone here does; 24 is the sweep for what that misses.
 
@@ -240,39 +242,48 @@ It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
 
-## 16 Languages by name, not by code
+## 34 OCR languages from what is installed
 
-`it` and `en` in the header dialog and in preferences should read `Italian`
-and `English`, chosen from a list rather than typed.
+The source and target languages are picked by name now — milestone 16. The
+OCR languages field beside them is still typed, as codes, and was split off
+rather than built with them, because it is a different widget answering a
+different question: not which language the comic is in, but which ones the
+recogniser on this machine can read.
 
-**There are three vocabularies here and they are not the same.** This is the
-whole of the work; the dropdown is the easy half.
+What is true of the field today, measured rather than assumed:
 
-| Field | What it holds today | Who reads it |
-| --- | --- | --- |
-| `source_language`, `target_language` | a short code — `it`, `en` | the plan, and pyphen for hyphenation |
-| `ocr_languages` | comma-separated recogniser codes — `ita` for Tesseract | `get_recognizer` |
-| the window's own `language` | a catalogue name — `sv` | `gui/translations` |
+- **It holds the same kind of tag as the source language**, not a
+  recogniser's own codes — the source language is its default when it is
+  left empty, in the window and on the command line alike. Vision is handed
+  the tags as they are. Tesseract is handed them through
+  `tesseract_languages`, a seven-entry table from `it` to `ita`; anything
+  else goes through as its first subtag. `sv` reaches Tesseract as `sv`, and
+  Tesseract refuses it: `Failed loading language 'sv'` — its data file is
+  `swe`. A Tesseract name typed directly works for Tesseract and means
+  nothing to Vision.
+- **What can be read depends on the machine.** Tesseract says what it has:
+  `tesseract --list-langs`, or `pytesseract.get_languages()`, which here
+  answers `eng`, `ita`, `osd` — and `osd` is orientation detection, not a
+  language, so the answer needs filtering before it can be a list. Vision has
+  `supportedRecognitionLanguagesAndReturnError_`, which cannot be run off a
+  Mac and so has not been.
+- **The list depends on the field beside it.** `recogniser` is `auto`,
+  `vision` or `tesseract`, and each has a different list; `auto` means
+  whichever of the two is available here.
+- **It is plural and ordered.** It takes several, in order, and a checklist
+  keeps which but not the order.
 
-The third is already a named dropdown and is the model to copy —
-`preferences_dialog.language_name` turns a code into the language's own name
-and is tested. The first two are free text and cannot simply become the same
-list: a Tesseract code is not an ISO 639-1 code, several scripts of one
-language are separate Tesseract data files, and the recogniser list depends
-on what is installed on the machine rather than on what the world contains.
+Two things 16 settled that this should keep: the field shows a name and
+stores a code (`language_box` names any tag Qt can, with the code beside it),
+and a code the list does not have stays usable and is never corrected — a
+plan or a preference naming a language this machine has not installed is
+marked, the way a font it does not have is, rather than dropped.
 
-Three things not to lose:
-
-- **The plan still stores codes.** A name in the window, a code in the file;
-  a plan whose header reads `Italian` is a plan another version cannot read.
-- **An unknown code must stay usable.** A dropdown that only offers what it
-  knows makes a language it has not heard of impossible to type, and a plan
-  written by hand with a code this list lacks must still open and still show
-  something. Editable combo, or a list with a free-text row.
-- **OCR languages are plural and ordered.** The field takes several; a single
-  dropdown cannot replace it. This half may be better as a checklist of what
-  is actually installed, which is a different widget and arguably its own
-  milestone if it grows.
+Open: whether the Tesseract table should grow into a real mapping (Qt knows
+the three-letter codes — `QLocale.languageToCode(..., ISO639Part2T)` gives
+`deu` for German — but Tesseract's own names are not uniformly those:
+`chi_sim`, `chi_tra`), or whether a list of what is installed makes the table
+unnecessary by offering Tesseract's names directly for Tesseract.
 
 ## 31 A reader window
 
