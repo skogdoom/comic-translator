@@ -252,6 +252,7 @@ def close_windows_opened_since(before: set[object]) -> None:
     at — which fails as "the widget ignored the event" a long way from the
     test that actually leaked.
     """
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 
     for widget in QApplication.topLevelWidgets():
@@ -262,7 +263,17 @@ def close_windows_opened_since(before: set[object]) -> None:
             # a click that never comes. Hidden is all this needs — a window
             # that is not on screen is not over anybody's pointer.
             widget.hide()
-            widget.deleteLater()
+            # A popup is hidden but not deleted: it has no parent, so it is
+            # listed here as a window of its own, yet something else owns it
+            # and deletes it. A completer's list is the case that bites —
+            # deleted here before the combo it belongs to, the completer
+            # deletes it a second time when the combo goes, and the suite
+            # dies of a segmentation fault in whichever later test first
+            # runs an event loop. Measured: which of the two goes first is
+            # the order this list comes back in, which is not stable, so it
+            # crashed three runs in four.
+            if widget.windowType() != Qt.WindowType.Popup:
+                widget.deleteLater()
     QApplication.processEvents()
 
 
