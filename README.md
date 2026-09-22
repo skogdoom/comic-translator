@@ -66,6 +66,15 @@ Mac — for a menu of what can be done to it.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
+**A comic's languages are picked by name.** Wherever the window asks which
+language a chapter is in or is going into — the plan header, Extract Pages,
+Preferences — it shows *Italian (it)* rather than `it`, from a list that
+finds a language by any part of its name. The plan still records the code.
+One the list does not have, such as `pt-BR`, can still be typed, and one a
+plan already names is shown as it is and never corrected. The OCR languages
+field is still typed as codes; a list of what the recogniser actually has
+installed is milestone 34.
+
 **A region can be locked** once it is finished: its fields go dead, its
 outline cannot be reshaped or nudged, and Delete and Merge are not offered
 until it is unlocked again. It is not `skip` — a locked region is still
@@ -894,7 +903,8 @@ read once per session; **Edit > Rescan Fonts** looks again after you install
 one.
 
 **Edit > Plan Header…** changes the settings every region is drawn under:
-the font, the case, the two fit limits, and the language pair. It reports how
+the font, the case, the two fit limits, and the language pair — each language
+shown by name and recorded as its code. It reports how
 many regions actually follow the header font, since any of them can override
 it. Fields write through as you type, like the region fields, and each one is
 its own undo step. What the tool *recorded* — which OCR engine ran, what wrote

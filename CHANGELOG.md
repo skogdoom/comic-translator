@@ -23,6 +23,20 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A comic's languages are picked by name.** The plan header, Extract Pages
+  and Preferences show *Italian (it)* where they showed `it`, and offer every
+  language with a two-letter code, found by typing any part of its name. The
+  plan still records the code, and nothing about the file changes. The code
+  stays beside the name because the name alone is not enough: Qt calls `it`
+  and a Tesseract `ita` both "Italian", and `pt` and `pt-BR` both
+  "Portuguese", so a field showing only names would show different plans the
+  same way. A code the list lacks can still be typed, and one a plan already
+  names — even a name written by hand where a code belongs — is shown and
+  handed back exactly as it was, never corrected. Names are in English
+  whatever language the window is in; Qt can name a language in English or
+  in itself, and in nothing else. The OCR languages field is still typed, as
+  codes: which languages a recogniser can read depends on the recogniser and
+  on what is installed, and that is its own milestone.
 - **A region can be marked finished, and then left alone.** **Lock Region** —
   Ctrl+L, the checkbox in the Region panel, or the balloon's own right-click
   menu — says this one is done. A locked region's fields go dead, its outline

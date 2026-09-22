@@ -862,6 +862,7 @@ about_dialog.py  what about.py found, plus the Python and Qt versions
 help_dialog.py   the bundled guide, in a window you can leave open
 header_dialog.py the settings every region is drawn under
 font_box.py     a font field offering only what fonts.py can resolve
+language_box.py a language field: the name shown, the code stored
 run_report.py   what a finished run is worth showing — no widget
 run_job.py      a pipeline pass on a worker thread, reporting by signal
 render_dialog.py where to write, in what format, erasing how

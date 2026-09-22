@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QLabel,
-    QLineEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +32,7 @@ from ..model import TextCase
 from ..planfile.schema import CONDENSE_MIN_RANGE, FONT_SIZE_MIN_RATIO_RANGE
 from .document import PlanDocument
 from .font_box import FontBox
+from .language_box import LanguageBox
 
 _RATIO_DECIMALS = 4
 _CONDENSE_DECIMALS = 2
@@ -71,8 +71,12 @@ class HeaderDialog(QDialog):
         self._condense.setSingleStep(0.01)
         self._condense.setValue(header.condense_min)
 
-        self._source_language = QLineEdit(header.source_language)
-        self._target_language = QLineEdit(header.target_language)
+        # Shown by name, stored as the code the plan already has; see
+        # ``language_box``.
+        self._source_language = LanguageBox()
+        self._source_language.set_value(header.source_language)
+        self._target_language = LanguageBox()
+        self._target_language.set_value(header.target_language)
 
         form = QFormLayout()
         form.addRow(self.tr("font"), self._font)
@@ -105,8 +109,8 @@ class HeaderDialog(QDialog):
         self._case.currentIndexChanged.connect(self._on_case_changed)
         self._min_ratio.valueChanged.connect(self._on_min_ratio_changed)
         self._condense.valueChanged.connect(self._on_condense_changed)
-        self._source_language.textChanged.connect(self._on_source_language_changed)
-        self._target_language.textChanged.connect(self._on_target_language_changed)
+        self._source_language.currentTextChanged.connect(self._on_source_language_changed)
+        self._target_language.currentTextChanged.connect(self._on_target_language_changed)
 
     def font_reach(self) -> str:
         """How much of the plan the header font actually decides.
@@ -153,14 +157,16 @@ class HeaderDialog(QDialog):
         self._document.set_header_condense_min(value)
         self._commit()
 
-    def _on_source_language_changed(self, text: str) -> None:
-        if text.strip():
-            self._document.set_header_source_language(text)
+    def _on_source_language_changed(self, _text: str) -> None:
+        # The code, not the text: the field shows "Italian (it)" and the
+        # plan records ``it``. Empty is skipped, as an empty font is.
+        if code := self._source_language.value():
+            self._document.set_header_source_language(code)
             self._commit()
 
-    def _on_target_language_changed(self, text: str) -> None:
-        if text.strip():
-            self._document.set_header_target_language(text)
+    def _on_target_language_changed(self, _text: str) -> None:
+        if code := self._target_language.value():
+            self._document.set_header_target_language(code)
             self._commit()
 
     def repopulate(self) -> None:
@@ -185,8 +191,8 @@ class HeaderDialog(QDialog):
             self._case.setCurrentIndex(self._case.findData(header.case))
             self._min_ratio.setValue(header.font_size_min_ratio)
             self._condense.setValue(header.condense_min)
-            self._source_language.setText(header.source_language)
-            self._target_language.setText(header.target_language)
+            self._source_language.set_value(header.source_language)
+            self._target_language.set_value(header.target_language)
         self._font_reach.setText(self.font_reach())
 
 

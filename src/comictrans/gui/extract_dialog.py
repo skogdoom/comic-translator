@@ -62,6 +62,7 @@ from ..sources import (
     default_unpack_dir,
     is_container,
 )
+from .language_box import LanguageBox
 from .note import quieten
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
@@ -198,8 +199,10 @@ class ExtractDialog(QDialog):
         # to the gap leaves the two fields seven pixels apart.
         plan_row.addSpacing(button_width + plan_row.spacing())
 
-        self._source_language = QLineEdit(preferences.source_language)
-        self._target_language = QLineEdit(preferences.target_language)
+        self._source_language = LanguageBox()
+        self._source_language.set_value(preferences.source_language)
+        self._target_language = LanguageBox()
+        self._target_language.set_value(preferences.target_language)
         self._languages = QLineEdit(preferences.ocr_languages)
         self._languages.setPlaceholderText(self.tr("same as the source language"))
         self._languages.setToolTip(
@@ -430,7 +433,7 @@ class ExtractDialog(QDialog):
         ``extract`` uses with no flag, so a plan written from this window and
         one written by ``comictrans extract <dir>`` come out the same.
         """
-        source_language = self._source_language.text().strip() or DEFAULT_SOURCE_LANGUAGE
+        source_language = self._source_language.value() or DEFAULT_SOURCE_LANGUAGE
         typed = [part.strip() for part in self._languages.text().split(",")]
         languages = tuple(part for part in typed if part) or (source_language,)
         return ExtractRequest(
@@ -445,7 +448,7 @@ class ExtractDialog(QDialog):
                 detect=DetectConfig(),
             ),
             source_language=source_language,
-            target_language=self._target_language.text().strip() or DEFAULT_TARGET_LANGUAGE,
+            target_language=self._target_language.value() or DEFAULT_TARGET_LANGUAGE,
             # Empty stays None, which is extract walking its own fallback
             # chain — the behaviour with no --font, and what this dialog did
             # before there was anywhere to record an answer.
