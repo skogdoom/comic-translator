@@ -123,7 +123,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2327"/>
+        <location filename="../../main_window.py" line="2326"/>
         <source>{0} ran — %n locked region(s) left as they are</source>
         <translation>
             <numerusform>{0} ran — %n locked region left as it is</numerusform>

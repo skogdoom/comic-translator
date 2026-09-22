@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 
-from PySide6.QtCore import QCoreApplication, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -71,7 +71,8 @@ by different names. The row this adds is the one only a region has: a region
 may decline to decide and follow the run, and a run has nothing to follow.
 
 Short words: this box sits in a dock whose width every field's size hint
-pushes at (see 4 in known-bugs.md), and the tooltip carries the detail."""
+pushes at, and the tooltip carries the detail. The region line above it is
+the one field that no longer pushes — see :class:`ElidedLabel`."""
 
 _FONT_SIZE_AUTO = 0
 """The spin box's special value for "no override", shown as the word "auto"."""
@@ -176,6 +177,104 @@ class FlagList(QListWidget):
         self._fit_to_rows()
 
 
+_ID_MIN_CHARS = 24
+_ID_MAX_CHARS = 44
+"""How wide the region line asks to be, in characters.
+
+The same bargain ``font_box`` strikes with a family name, and for the same
+two reasons: a floor because a field too narrow to read is no use, and a
+ceiling because this width is what the panel's own minimum is built from —
+a region id long enough must not be able to push the Region dock wide.
+
+44 shows ``page-001-001  (exact, order 1)`` whole, which is the shape
+``extract`` writes; past that the id is elided and the tooltip has the rest.
+"""
+
+
+class ElidedLabel(QLabel):
+    """A one-line label that shortens its text to fit instead of pushing.
+
+    A plain ``QLabel`` reports the full width of its text as the width it
+    needs, and a form passes that up to the panel and the panel to the dock —
+    so the Region dock used to change width every time the selection moved to
+    a region whose id was longer, taking the width from the page beside it.
+    Measured on the fixture ids: 415px of dock against 538px, and 123px of
+    canvas gone, on nothing but a click.
+
+    So it asks for a width that has nothing to do with its text — a floor and
+    a ceiling in characters, exactly as ``font_box`` bounds the width of a
+    family name — and elides into whatever it is actually given. The hint
+    being a constant is the whole of the fix: a hint that cannot grow with
+    the id cannot push the panel, whichever way the form is sizing its
+    fields.
+
+    **``QSizePolicy.Ignored`` was tried here and is wrong**, which is worth
+    recording because it looks right and passes on Linux. A form asks
+    ``QFormLayout`` how to size its fields, and the answer is not the same
+    everywhere: this project's own ``_widen_for_special_value`` already
+    notes that macOS asks for ``FieldsStayAtSizeHint`` where every other
+    platform the suite runs on stretches fields to the panel. Under a policy
+    that stretches, ``Ignored`` gets the full width and everything looks
+    fine. Under one that sizes a field to its hint, a widget whose hint is
+    ignored is given **nothing** — measured at zero pixels, which is a region
+    line nobody can see, and is what shipped to a Mac before this note
+    existed.
+
+    **The text is in two parts**, which is the one thing here that is not
+    ``HintLine``. It elides to the right, because a hint reads from the front;
+    this cannot, because what identifies a region is the *tail* of its id, and
+    the geometry and order after it are a suffix that must not be eaten
+    either. So the first part is elided in the middle and the second is kept
+    whole.
+
+    The full text is on the tooltip, which is what makes eliding honest rather
+    than lossy — the id is also in the plan file and in the page list.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._elidable = ""
+        self._fixed = ""
+
+    def set_parts(self, elidable: str, fixed: str = "") -> None:
+        """Show ``elidable`` shortened as needed, with ``fixed`` kept whole."""
+        self._elidable, self._fixed = elidable, fixed
+        self.setToolTip(f"{elidable}{fixed}".strip())
+        self._relayout()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        """As much as the line is worth, never as much as the line is."""
+        return QSize(self._chars(_ID_MAX_CHARS), super().sizeHint().height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        """And a floor, so a narrowed panel still shows something."""
+        return QSize(self._chars(_ID_MIN_CHARS), super().minimumSizeHint().height())
+
+    def _chars(self, count: int) -> int:
+        """``count`` characters wide, measured from the font rather than set
+        in pixels, so these hold at whatever size the interface is run at."""
+        return QFontMetrics(self.font()).averageCharWidth() * count
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        # How much fits changed, so what to cut did too.
+        self._relayout()
+
+    def _relayout(self) -> None:
+        metrics = QFontMetrics(self.font())
+        room = self.contentsRect().width() - metrics.horizontalAdvance(self._fixed)
+        elided = metrics.elidedText(self._elidable, Qt.TextElideMode.ElideMiddle, max(0, room))
+        shown = f"{elided}{self._fixed}"
+        # Guarded for the reason ``HintLine._elide`` and ``FlagList._fit_to_rows``
+        # are: setting the text is what triggers the next layout pass, which is
+        # what calls this again. Carried on their evidence rather than on any
+        # of its own — removing it here changes nothing the suite can see, and
+        # a runaway layout pass is a hang, which is the class of thing the
+        # offscreen platform the widget tests run under is least likely to show.
+        if shown != self.text():
+            self.setText(shown)
+
+
 def _erase_index(mode: Erase | None) -> int:
     """Which row of the erase box a region's value is."""
     for index, (_label, value, _hint) in enumerate(ERASE_CHOICES):
@@ -201,7 +300,8 @@ class RegionInspector(QWidget):
         self._document: PlanDocument | None = None
         self._region_id: str | None = None
 
-        self._id_label = QLabel("—")
+        self._id_label = ElidedLabel()
+        self._id_label.set_parts("—")
         self._flags = FlagList()
         # Typeable, not just readable. A region drawn by hand has no OCR
         # reading and no other way to get one — nothing in review reads a
@@ -345,7 +445,7 @@ class RegionInspector(QWidget):
 
     def _populate(self, document: PlanDocument | None, region: Region | None) -> None:
         if document is None or region is None:
-            self._id_label.setText("—")
+            self._id_label.set_parts("—")
             self._flags.set_flags(None)
             self._source_text.setPlainText("")
             self._translation.setPlainText("")
@@ -362,9 +462,12 @@ class RegionInspector(QWidget):
         # The geometry stays as the plan spells it — ``exact``, ``approximate``,
         # ``manual`` are the file's own vocabulary and the file is never
         # translated. The word around it is this window's, and is.
-        self._id_label.setText(
-            self.tr("{0}  ({1}, order {2})").format(region.id, region.geometry.value, region.order)
-        )
+        # Two parts, because the id is the half that may be shortened and the
+        # half whose *tail* identifies the region — see :class:`ElidedLabel`.
+        # The gap between them is layout rather than language, so it is not in
+        # the translated string.
+        suffix = self.tr("({0}, order {1})").format(region.geometry.value, region.order)
+        self._id_label.set_parts(region.id, f"  {suffix}")
         self._flags.set_flags(document.flags(region.id))
         self._source_text.setPlainText(region.source_text)
         self._translation.setPlainText(region.translation)

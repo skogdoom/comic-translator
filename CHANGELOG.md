@@ -41,6 +41,16 @@ plan that says nothing new is byte for byte the file it was.
   comes through exactly as you left it, outline and colours and text,
   instead of being rebuilt around the fresh reading. That is most of the
   reason to want one.
+- **The Region panel stays where it is.** Its dock used to take its width from
+  whichever region was selected: a long region id — they are built from the
+  page filename — pushed the panel wider and took the room off the page beside
+  it, then gave it back on the next click. Measured on the fixture ids, 415px
+  of dock against 538px and 123px of canvas, on nothing but a selection
+  change. The region line now shortens itself to fit instead of pushing, with
+  the middle of the id elided so the digits that identify it survive, and the
+  whole thing on the tooltip. This was recorded as a known bug — as the floor
+  it put under the panel's width, which turned out to be the smaller half of
+  it — and that entry is now gone.
 - **Every field the roadmap still wanted, added at once.** A region may now
   carry `locked` (finished, not to be edited), `angle` (a tilt in degrees) and
   `stroke_color` (an outline around the lettering, or none); the header may
@@ -437,10 +447,6 @@ summary.
   a filled caption box comes back as an approximate polygon covering about
   60% of its width. Nothing is damaged; the typesetter simply works with less
   room than the art offers.
-- **A long region id sets a floor under the Region panel's width** — region
-  ids are built from the page filename, and a long one stops the panel from
-  being made narrow. Space only: nothing is hidden and no plan data is
-  affected.
 
 ### Not in this release
 
