@@ -887,7 +887,8 @@ families installed here that this tool can actually render with: found on
 disk, and each one checked to have a real bold, since emphasis is bold and a
 bold is never synthesised. Qt knows a wider set than that, so the list is
 built from the same resolver `apply` uses rather than from Qt, and everything
-it offers will render. The fields stay typeable, and a name this machine does
+it offers will render. The fields stay typeable — any part of a name offers
+the families containing it — and a name this machine does
 not have is kept exactly as written and marked rather than swapped for
 something installed — you find out before you render, not after. The list is
 read once per session; **Edit > Rescan Fonts** looks again after you install

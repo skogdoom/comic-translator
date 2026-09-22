@@ -90,8 +90,15 @@ class FontBox(QComboBox):
         # size hint left six pixels for a thirteen-character font name.
         self._chrome = self.sizeHint().width()
 
+        # A popup of every family containing what was typed, so "Sans"
+        # offers Comic Sans MS. The popup is not cosmetic: Qt's default for a
+        # combo is inline completion, which finishes the text as though the
+        # match began with what was typed, and every step of that is an edit
+        # the field writes through — "Sans" put "Sansc Sans MS" in the plan
+        # header, measured.
         completer = self.completer()
         if completer is not None:
+            completer.setCompletionMode(completer.CompletionMode.PopupCompletion)
             completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
             completer.setFilterMode(Qt.MatchFlag.MatchContains)
 
