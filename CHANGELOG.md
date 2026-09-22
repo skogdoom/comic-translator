@@ -23,6 +23,19 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A region can be marked finished, and then left alone.** **Lock Region** —
+  Ctrl+L, the checkbox in the Region panel, or the balloon's own right-click
+  menu — says this one is done. A locked region's fields go dead, its outline
+  cannot be reshaped or nudged, and Delete and Merge stop being offered; the
+  lock itself stays live, because it is the way back out. It is not `skip`,
+  and the labels say so: `skip` means do not letter this region, `locked`
+  means do not change it, and a locked region is lettered exactly as any
+  other. The lock lives in the plan rather than in this machine's settings,
+  so it travels with the translations it applies to — **and it survives a
+  re-extraction**: extract over the same pages again and a locked region
+  comes through exactly as you left it, outline and colours and text,
+  instead of being rebuilt around the fresh reading. That is most of the
+  reason to want one.
 - **Every field the roadmap still wanted, added at once.** A region may now
   carry `locked` (finished, not to be edited), `angle` (a tilt in degrees) and
   `stroke_color` (an outline around the lettering, or none); the header may

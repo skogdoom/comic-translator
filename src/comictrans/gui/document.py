@@ -380,8 +380,21 @@ class PlanDocument:
         Usually one field. A caller passing two is saying they are one edit —
         a polygon and the geometry that describes it — and the first names
         the undo run.
+
+        **A locked region refuses everything but its own lock.** Every field
+        setter on this class goes through here, which is the whole reason the
+        guard is here and not in each of them: a setter added later is covered
+        without anybody remembering to cover it. The window disables what it
+        will not accept rather than letting this fire, so reaching this is a
+        window that offered an edit it should not have — which is a bug, and
+        reads better as one than as an edit that silently does nothing.
         """
         current = self.region(region_id)
+        if current.locked and tuple(changes) != ("locked",):
+            raise ValueError(
+                f"region {region_id!r} is locked; unlock it before changing "
+                f"{', '.join(sorted(changes))}"
+            )
         updated = replace(current, **changes)  # type: ignore[arg-type]
         if updated == current:
             # Nothing changed, so there is nothing to undo. Without this a
@@ -502,6 +515,20 @@ class PlanDocument:
 
     def set_skip(self, region_id: str, skip: bool) -> Region:
         return self._update(region_id, skip=skip)
+
+    def set_locked(self, region_id: str, locked: bool) -> Region:
+        """Mark a region finished, or let it be edited again.
+
+        The one edit a locked region accepts, for the obvious reason: it is
+        the way back out. Not ``skip`` and not a quieter form of it — a locked
+        region is rendered exactly as an unlocked one is, and what the lock
+        stops is this program changing it, not ``apply`` drawing it.
+
+        It lives in the plan rather than in settings because the plan is the
+        thing handed to somebody else, and "these are final, leave them" is
+        worth handing over with the translations it applies to.
+        """
+        return self._update(region_id, locked=locked)
 
     def set_font(self, region_id: str, font: str | None) -> Region:
         """``None`` clears the override, falling back to the plan header's font."""
@@ -682,6 +709,12 @@ class PlanDocument:
             raise ValueError("a region cannot be merged with itself")
         if first.image != second.image:
             raise ValueError("regions on different pages cannot be merged")
+        # Either half, because a merge destroys both: the survivor is
+        # reshaped and retexted, and the other stops existing. A lock on
+        # either is a reason not to start.
+        for region in (first, second):
+            if region.locked:
+                raise ValueError(f"region {region.id!r} is locked; unlock it before merging")
         if not polygons_overlap(first.polygon, second.polygon):
             raise ValueError("those outlines do not overlap")
 
@@ -723,8 +756,13 @@ class PlanDocument:
         gone from the file the next time it is saved, the same as deleting
         its block by hand. Undo covers it while the session lasts, which is
         the same safety net every other edit here gets.
+
+        Refused on a locked region, which is the edit a lock most obviously
+        exists to stop.
         """
         region = self.region(region_id)
+        if region.locked:
+            raise ValueError(f"region {region_id!r} is locked; unlock it before deleting")
         self._record(
             replace(self.plan, regions=tuple(r for r in self.plan.regions if r.id != region_id)),
             run=None,

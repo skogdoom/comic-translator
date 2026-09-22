@@ -1214,3 +1214,82 @@ def test_undo_is_the_whole_plan_and_refuses_nothing() -> None:
     assert doc.undo()
 
     assert doc.region("r1").translation != "FIRST REGION"
+
+
+# -- locking ------------------------------------------------------------
+
+
+def test_a_locked_region_refuses_every_field_edit() -> None:
+    """One guard at the chokepoint, so a setter added later is covered too.
+
+    Every named setter is listed rather than a representative one: the point
+    of the guard living in ``_update`` is that it reaches all of them, and a
+    test of one would not notice a setter that had been routed around it.
+    """
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+
+    refusals = (
+        lambda: doc.set_translation("r1", "NEW"),
+        lambda: doc.set_notes("r1", "a note"),
+        lambda: doc.set_skip("r1", True),
+        lambda: doc.set_font("r1", "Chalkboard SE"),
+        lambda: doc.set_font_size("r1", 22),
+        lambda: doc.set_source_text("r1", "CIAO"),
+        lambda: doc.set_fill_color("r1", Color(1, 2, 3)),
+        lambda: doc.set_text_color("r1", Color(4, 5, 6)),
+        lambda: doc.set_erase("r1", Erase.POLYGON),
+        lambda: doc.set_polygon("r1", Box(0, 0, 50, 50).as_polygon()),
+    )
+    for refuse in refusals:
+        with pytest.raises(ValueError, match="is locked"):
+            refuse()
+
+
+def test_the_lock_is_the_one_edit_a_locked_region_accepts() -> None:
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+
+    assert doc.region("r1").locked
+    doc.set_locked("r1", False)  # unlocking is how you get back in
+    assert not doc.region("r1").locked
+    assert doc.set_translation("r1", "NEW").translation == "NEW"
+
+
+def test_locking_is_one_undo_step_like_any_other_edit() -> None:
+    doc = _document(_apart(1))
+    doc.set_locked("r1", True)
+
+    assert doc.undo()
+    assert not doc.region("r1").locked
+
+
+def test_a_locked_region_refuses_to_be_deleted() -> None:
+    doc = _document(_apart(1), _apart(2))
+    doc.set_locked("r1", True)
+
+    with pytest.raises(ValueError, match="is locked"):
+        doc.delete_region("r1")
+    assert doc.region("r1").id == "r1", "still there"
+
+
+def test_a_merge_is_refused_when_either_half_is_locked() -> None:
+    """Either, because a merge destroys both — one survives reshaped and
+    retexted, the other stops existing."""
+    for locked_id in ("page-001-001", "page-001-002"):
+        doc = _halves()
+        doc.set_locked(locked_id, True)
+        with pytest.raises(ValueError, match="is locked"):
+            doc.merge_regions("page-001-001", "page-001-002")
+
+
+def test_locking_does_not_change_whether_a_region_is_rendered() -> None:
+    """A lock is about this program, not about ``apply``. It is not ``skip``."""
+    doc = _document(_apart(1))
+    before = doc.region("r1")
+    doc.set_locked("r1", True)
+    after = doc.region("r1")
+
+    assert after.is_actionable == before.is_actionable
+    assert after.skip == before.skip
+    assert replace(after, locked=False) == before, "the lock is the only difference"

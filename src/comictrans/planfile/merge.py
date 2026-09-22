@@ -9,6 +9,13 @@ Only what a person put there is carried — the translation where it was
 actually edited, plus notes, skip and the font overrides. Everything measured
 from the page (polygon, colours, confidence, the OCR text) comes from the
 fresh run, which is the point of re-extracting.
+
+**A locked region is the exception, and is the reason locking exists.** It
+comes through as it was left — polygon, colours and text with it — rather
+than being rebuilt around the fresh reading, because "this one is finished"
+is precisely a statement that a better reading is not wanted. It still takes
+its id and its place in the plan from the fresh run, since ids are positional
+and a re-extraction renumbers them.
 """
 
 from __future__ import annotations
@@ -43,11 +50,16 @@ def has_hand_work(region: Region) -> bool:
     An edited translation counts, and so does a cleared one: blanking a
     translation is how you tell apply to leave a balloon alone, which is a
     decision worth keeping.
+
+    So does a lock, on its own and with nothing else on the region: marking
+    one finished is a person's decision about it, and a lock that a
+    re-extraction quietly dropped would be worse than no lock at all.
     """
     return (
         region.translation.strip() != region.source_text.strip()
         or bool(region.notes.strip())
         or region.skip
+        or region.locked
         or region.font is not None
         or region.font_size is not None
     )
@@ -105,6 +117,16 @@ def merge_plans(
             regions.append(new)
             continue
         carried.append(new.id)
+        if old.locked:
+            # Locked means finished, so the fresh reading is not an
+            # improvement on it — it is the thing the lock exists to keep
+            # out. The region comes through as it was left, polygon and
+            # colours included, and takes only what belongs to the fresh
+            # run: where it sits in the plan, and what it is called there.
+            # Its id moves because ids are positional and this run renumbered
+            # them, which is already true of every other carried region.
+            regions.append(replace(old, id=new.id, image=new.image, order=new.order))
+            continue
         regions.append(
             replace(
                 new,

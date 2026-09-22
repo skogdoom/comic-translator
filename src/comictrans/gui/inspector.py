@@ -223,6 +223,12 @@ class RegionInspector(QWidget):
         self._notes.setMaximumHeight(_NOTES_HEIGHT)
         self._notes.setPlaceholderText(self.tr("never rendered; kept when re-extracting"))
         self._skip = QCheckBox(self.tr("skip: leave this region untouched"))
+        # Named against `skip` rather than on its own, because the two are a
+        # checkbox apart and mean opposite halves of the same sentence: skip
+        # stops the region being *rendered*, locked stops it being *changed*.
+        # Saying "still lettered" in the label is what keeps the next person
+        # from reading this one as a quieter skip.
+        self._locked = QCheckBox(self.tr("locked: finished — still lettered, but not editable"))
         self._erase = QComboBox()
         for label, mode, hint in ERASE_CHOICES:
             self._erase.addItem(label, None if mode is None else str(mode))
@@ -242,6 +248,7 @@ class RegionInspector(QWidget):
         form.addRow(self.tr("translation"), self._translation)
         form.addRow(self.tr("notes"), self._notes)
         form.addRow("", self._skip)
+        form.addRow("", self._locked)
         form.addRow(erase_choices.ERASE_FIELD, self._erase)
         form.addRow(self.tr("fill colour"), self._fill_color)
         form.addRow(self.tr("text colour"), self._text_color)
@@ -258,6 +265,7 @@ class RegionInspector(QWidget):
         self._translation.textChanged.connect(self._on_translation_changed)
         self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
+        self._locked.toggled.connect(self._on_locked_changed)
         self._font.currentTextChanged.connect(self._on_font_changed)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
         self._erase.currentIndexChanged.connect(self._on_erase_changed)
@@ -285,14 +293,20 @@ class RegionInspector(QWidget):
                 blockers.enter_context(QSignalBlocker(widget))
             self._populate(document, region)
 
-        enabled = region is not None
+        # A locked region shows what it holds and accepts nothing: the
+        # document refuses every edit but the lock itself, so a field left
+        # live here would be one that raises the moment it is used.
+        editable = region is not None and not region.locked
         for widget in self._fields():
-            widget.setEnabled(enabled)
+            widget.setEnabled(editable)
 
-        # After the blanket enable, not inside _populate: a region nothing is
-        # painted over in has no use for a fill colour, and the field saying
-        # so beats a note nobody reads.
-        painting = region is not None and region.erase is not Erase.NONE
+        # After the blanket enable, not inside _populate, and both for the
+        # same reason: these two are exceptions to it. The lock stays live on
+        # a locked region because it is the way back out of one, and a region
+        # nothing is painted over in has no use for a fill colour — the field
+        # saying so beats a note nobody reads.
+        self._locked.setEnabled(region is not None)
+        painting = editable and region is not None and region.erase is not Erase.NONE
         self._fill_color.setEnabled(painting)
         self._fill_color.setToolTip(
             "" if painting else self.tr("unused: nothing is painted over in this region")
@@ -321,6 +335,7 @@ class RegionInspector(QWidget):
             self._translation,
             self._notes,
             self._skip,
+            self._locked,
             self._erase,
             self._fill_color,
             self._text_color,
@@ -336,6 +351,7 @@ class RegionInspector(QWidget):
             self._translation.setPlainText("")
             self._notes.setPlainText("")
             self._skip.setChecked(False)
+            self._locked.setChecked(False)
             self._erase.setCurrentIndex(0)
             self._fill_color.set_color(Color(255, 255, 255))
             self._text_color.set_color(Color(0, 0, 0))
@@ -360,6 +376,7 @@ class RegionInspector(QWidget):
         for prose in (self._source_text, self._translation, self._notes):
             prose.put_the_caret_at_the_end()
         self._skip.setChecked(region.skip)
+        self._locked.setChecked(region.locked)
         self._erase.setCurrentIndex(_erase_index(region.erase))
         self._fill_color.set_color(region.fill_color)
         self._text_color.set_color(region.text_color)
@@ -419,6 +436,15 @@ class RegionInspector(QWidget):
         if self._document is not None and self._region_id is not None:
             self._document.set_notes(self._region_id, self._notes.toPlainText())
         self._commit()
+
+    def _on_locked_changed(self, checked: bool) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_locked(self._region_id, checked)
+            # Everything else in the panel has just become live or dead, and
+            # nothing else repopulates it: this is the one field whose edit
+            # changes what the rest of them will accept.
+            self.set_region(self._document, self._region_id)
+            self.edited.emit()
 
     def _on_skip_changed(self, checked: bool) -> None:
         if self._document is not None and self._region_id is not None:
