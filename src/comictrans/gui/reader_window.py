@@ -73,7 +73,7 @@ from PySide6.QtWidgets import (
 
 from ..errors import ComictransError, InputError
 from ..reading import Pages, Size, group_of, pages_to_keep, spreads
-from . import about
+from . import about, help_dialog
 from .canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_STEP
 from .help_dialog import LANGUAGE_DEFAULT, HelpDialog
 
@@ -97,9 +97,15 @@ def decode_page(data: bytes) -> QImage:
     buffer.setData(QByteArray(data))
     buffer.open(QIODevice.OpenModeFlag.ReadOnly)
     reader = QImageReader(buffer)
+    size = reader.size()
     image = reader.read()
     if image.isNull():
-        raise InputError(f"not an image Qt can read: {reader.errorString()}")
+        # The size, when the header gave one, because the likeliest reason a
+        # page with a readable header will not decode is that it is larger
+        # than Qt will hold — 256MB, its default, which nothing here raises —
+        # and Qt's own word for that is "Unable to read image data".
+        what = f"this {size.width()}x{size.height()} image" if size.isValid() else "it"
+        raise InputError(f"Qt could not decode {what}: {reader.errorString()}")
     if not image.hasAlphaChannel():
         return image
     flat = QImage(image.size(), QImage.Format.Format_RGB32)
@@ -541,7 +547,7 @@ class ReaderWindow(QMainWindow):
         self._close_action.setShortcut(QKeySequence.StandardKey.Close)
         self._close_action.triggered.connect(self.close)
 
-        self._help_action = QAction(self.tr("{0} &Help").format(about.NAME), self)
+        self._help_action = QAction(help_dialog.TITLE, self)
         self._help_action.setShortcut(QKeySequence.StandardKey.HelpContents)
         self._help_action.triggered.connect(self._on_help)
 

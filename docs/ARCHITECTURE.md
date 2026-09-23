@@ -53,6 +53,9 @@ regions they do have, and the plan is a version 2 one from then on.
   extensions that spell them — and for nothing about how to decide one, which
   is the point: reading asks the file's first bytes and writing has only a
   name to go on. See "Chapters written as one file".
+- `reading` is what the reader window stands on: `sources` and `imaging` for
+  pages, and nothing about plans. It has no Qt, so what it decides — which
+  pages pair, which are kept — is tested without a display.
 
 That is not tidiness for its own sake. It means the review GUI's
 `gui.document` — the module that loads a plan, tracks edits, and saves —
@@ -526,6 +529,25 @@ The container is opened read-only like every other source, and the folder it
 becomes is the source tree from then on — which is what `--debug-dir` is
 checked against, before the folder exists.
 
+**The reader window is the exception, because it has no plan.** Everything
+above is about a plan finding its pages again, and `comictrans read` makes no
+plan: it reads a chapter to show it. Unpacking for it would leave a folder
+beside somebody's `.cbz` for opening it, so it reads the file where it is,
+a page when one is asked for, and writes nothing.
+
+It does that through **the same door `unpack` uses**, not a second one. Each
+reader — zip, rar, PDF — is a context manager that decides which entries are
+pages and hands them over, each with a `load` that reads it; `unpack` writes
+them out in a loop, and `open_chapter` gives them to the window by index. The
+refusals are made once, before either sees an entry: a page claiming more
+than `MAX_PAGE_BYTES`, a link, a resource fork, a hidden file. A second way
+into an archive would lose all four without anything saying so, which is why
+there is a test that builds an archive carrying every one of them and checks
+that the reader is handed exactly the pages `unpack` writes. `load` records
+nothing and can be called again: whoever calls it decides what a skip or a
+doubt is for, which for `unpack` is its report and for the window is the
+message drawn where the page would be.
+
 **Which of the three it is, its first bytes decide.** `chapter_kind` reads a
 kilobyte and matches a signature; the extension is consulted only for a file
 whose bytes cannot be had, which is a path being typed into the window and
@@ -843,6 +865,32 @@ And `contains_box` rejects on bounding box before running any
 `pointPolygonTest`. Simplifying every candidate eagerly cost 13 s on the same
 page.
 
+## The reader window
+
+`comictrans read` opens a chapter to read rather than to translate. It is
+its own window, not a mode of the review window, and that is what keeps it
+small: it holds a chapter rather than a plan, so there is no document, no
+undo and nothing to save. It shares the review window's start-up — the log,
+the crash traces, the language — through `gui.app._application`, and its
+preferences, for the language and for where the RAR tool is.
+
+**What it holds is bounded, however long the chapter.** Pages are read
+through `reading.open_pages` — see "Chapters that arrive as one file" for why
+a chapter file is not unpacked — and decoded on one worker thread, which is
+the only thing that reads the chapter: a zip handle, a RAR tool and a PDF
+reader are none of them made for two threads at once. The spread on screen
+and one either side are kept decoded, six pages at most; anything else is
+decoded again when it is wanted. Measured on an eleven-megapixel page, that
+costs 55–71ms through Qt's decoder against 44MB to hold it, and Qt rather than
+Pillow because Pillow took 143–242ms for the same page.
+
+**Two pages at a time needs to know where the spreads are before it gets to
+them.** A page wider than tall is shown alone and the pairing starts again
+after it, so one spread early in a chapter moves every pair after it. When
+there is nothing to decode, the worker measures the rest of the chapter from
+each page's header, and the pairing is regrouped around the page being read
+as the sizes arrive.
+
 ## The review GUI
 
 `src/comictrans/gui/` splits along the same line as everything else: what
@@ -882,7 +930,8 @@ crash.py        fatal-signal traces to a second file — no Qt
 translations.py which language the window speaks, and where its words are
 main_window.py wires the widgets together; the only module that knows
                about all of them at once
-app.py         available() / run() — the CLI's entry point
+reader_window.py the reader: a chapter paged through, decoded on a thread
+app.py         available() / run() / read() — the CLI's entry points
 ```
 
 `document.py`, `preview.py`, `sampling.py`, `about.py`, `preferences.py`,

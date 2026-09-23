@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 31 | A reader window | M |
 | 17 | A shape palette for drawing a region | M |
 | 26 | Rotate a region | M |
 | 30 | Drawing a region with a brush | M |
@@ -83,7 +82,8 @@ section asked for, because 4.27 had not landed and it was built without it
 rather than wait; 4.27 has now landed and put that third command in the menu
 where it belongs. What is left below is no longer sorted by how often it is
 met. 16 and 34 have shipped as well, which leaves no field in the window
-that asks for a code without offering names beside it.
+that asks for a code without offering names beside it, and so has 31, the
+reader window, which waited on nothing above it.
 
 **The schema change has shipped, and four milestones are cheaper for it.**
 Milestone 29 took the plan format to version 4 and added every field this file
@@ -127,12 +127,6 @@ judgement and not a dependency — both need 17, neither needs the other, and 26
 was sequenced there before the brush had a number. The question that kept the
 brush out of 17 has been answered, so nothing holds it where it is except that
 somebody has to be second.
-
-**31 is early because nothing holds it back.** It opens a chapter file rather
-than a plan, so it waits on no schema, no field and no milestone above it, and
-the part that looked like new work turns out to be a seam that already exists —
-see its own section. It is the only thing in this table that makes the tool do
-something for a page nobody is translating.
 
 **33 and 32 are last by judgement rather than by dependency**, which is worth
 saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
@@ -238,55 +232,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 31 A reader window
-
-Read a chapter without translating it: page through it, zoom, one page or two.
-
-**Its own window, started on its own.** Not a mode of the review window and not
-reached from it — a separate window with its own entry point, which on the
-command line means a fifth subcommand beside `extract`, `apply`, `review` and
-`validate`. It opens a chapter rather than a plan, and that is what keeps it
-small: no document, no undo, nothing dirty, nothing to save. Being reachable
-from the review window later is a thing it could grow, not a thing it needs.
-
-**It reads what `extract` reads**: a folder of pages, one image — `.jpg`,
-`.jpeg`, `.png`, `.tif`, `.tiff` — or a chapter file: `.cbz`, `.cbr`, `.zip`,
-`.rar`, `.pdf`.
-
-**It must not unpack, and it does not have to.** `sources.unpack` writes
-`<stem>-pages` beside the container on purpose, because the plan naming those
-pages has to keep finding them. A reader has no plan and wants no directory:
-opening somebody's `.cbz` to read it must not leave a folder next to it. The
-seam for that already exists — `unpack` is a thin write-loop around
-`_reader_for(source)`, which yields `(name, bytes)` per entry for zip, rar and
-PDF alike. Reading through it writes nothing and inherits what that path
-already enforces: the 512MB `MAX_PAGE_BYTES` cap, the symlink rejection, and
-the `__MACOSX` and hidden-file skips. A second archive reader would lose all
-four silently, which is why this is the milestone's first design constraint
-rather than a note about efficiency — and why `docs/SECURITY.md` gains a line
-saying the reader goes through the same door.
-
-**What the window does**: arrow keys page through, a zoom control, a switch
-between one page and two, and a slider at the bottom carrying *page 4 of 83* —
-slider and count both hidden until the pointer is over them.
-
-Three things to settle when it is picked up:
-
-- **A page that is already a spread.** A double-width scan shown beside its
-  neighbour is wrong, and showing it alone is the usual answer. The cue is the
-  page's own aspect ratio, which means a threshold, which means measuring the
-  fixtures rather than picking a number.
-- **Reading direction.** Two pages have a left and a right, and a manga chapter
-  reads the other way round. A chapter file carries no such fact, so this is a
-  toggle defaulted left-to-right. 18 puts reading direction in the plan header;
-  this window does not open plans, so that is a connection it could make later
-  and not a dependency.
-- **What paging costs.** `load_page` is 0.28s and a 68MB traced peak for one
-  11MP page — see *Ideas*. A reader is the one place that is felt on a keypress
-  rather than once per run, so the caching question is real here in a way it is
-  not anywhere else. `gui/preview_cache.py` caches something different, but it
-  is the thing to read before a second cache is written.
 
 ## 17 A shape palette for drawing a region
 
@@ -422,7 +367,9 @@ What it is:
   bibliographic: **reading direction**, left-to-right or right-to-left, which
   a manga chapter needs and which 20 writes into the spine. Empty is still a
   valid answer for every one of them, so a plan that names none stays exactly
-  the plan written today.
+  the plan written today. The reader window has a direction toggle of its own
+  and opens chapters rather than plans, so reading this field is a connection
+  it could make later, not one it waits on.
 - **The header dialog grows a section**, and `extract` fills in nothing: none
   of this is measurable from the pages, so every field is typed or imported.
 

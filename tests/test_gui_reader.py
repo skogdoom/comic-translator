@@ -299,7 +299,7 @@ def test_a_page_that_cannot_be_read_says_so_in_its_place(qapp: object, tmp_path:
             return texts[0] if texts else ""
 
         _until(lambda: "could not be read" in said())
-        assert said().startswith("Page 2 could not be read: not an image Qt can read")
+        assert said().startswith("Page 2 could not be read: Qt could not decode it")
 
 
 # -- zoom ---------------------------------------------------------------------
@@ -384,3 +384,16 @@ def test_read_refuses_what_extract_refuses(
 ) -> None:
     assert main(["read", str(tmp_path / "missing.cbz")]) == EXIT_FATAL
     assert "input path does not exist" in capsys.readouterr().err
+
+
+def test_help_opens_the_guide_where_this_window_is_described(qapp: object, tmp_path: Path) -> None:
+    from comictrans.gui.help_dialog import document
+    from comictrans.gui.reader_window import GUIDE_SECTION
+
+    assert f'<a name="{GUIDE_SECTION}"></a>' in document()
+
+    with _reader(_chapter(tmp_path, [PAGE])) as window:
+        window._help_action.trigger()
+
+        assert window._help is not None and window._help.isVisible()
+        window._help.hide()

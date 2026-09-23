@@ -1,4 +1,4 @@
-"""The audit's checks that need a window: plugins, and the guide.
+"""The audit's checks that need a window: plugins, the guide, and the reader.
 
 Split from ``test_security.py`` for the reason ``CLAUDE.md`` gives — without
 the ``gui`` extra, pytest skips every widget test — and a module-level
@@ -127,3 +127,30 @@ def test_the_guide_cannot_navigate_anywhere(qapp: object) -> None:
 
     assert dialog._browser.openLinks() is False
     assert dialog._browser.openExternalLinks() is False
+
+
+# -- what the reader window will hold -----------------------------------------
+
+
+def test_the_reader_refuses_a_page_larger_than_qt_will_decode(qapp: object) -> None:
+    """A page is held decoded, so how large one may decode to is a bound.
+
+    Qt's default allocation limit, 256MB, is what sets it: nothing here
+    raises the limit, and this is what would notice if something did. Qt
+    judges a page before decoding it, at four bytes a pixel whatever it
+    holds, so this one — 88KB on disk — counts as 275MB and is refused,
+    measured, though the grey page it is would have decoded to 69MB. Small
+    on disk and large decoded is the shape a bomb takes.
+    """
+    import io
+
+    from PIL import Image
+
+    from comictrans.errors import InputError
+    from comictrans.gui.reader_window import decode_page
+
+    buffer = io.BytesIO()
+    Image.new("L", (9000, 8000), 255).save(buffer, "PNG")
+
+    with pytest.raises(InputError, match=r"this 9000x8000 image"):
+        decode_page(buffer.getvalue())
