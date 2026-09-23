@@ -183,6 +183,9 @@ _NOT_LANGUAGES = frozenset({"osd", "equ"})
 """Installed, but not a language: orientation and script detection, and
 equations. Script models are left out too — they list as ``script/Latin``."""
 
+_LISTABLE = re.compile(r"[a-z_]+")
+"""The names pytesseract keeps of what ``tesseract --list-langs`` prints."""
+
 _PSM_SPARSE = "--psm 11"
 """Sparse text: find as much text as possible in no particular order. Comic
 pages are scattered balloons, not a column of prose."""
@@ -235,28 +238,69 @@ def tesseract_languages(languages: tuple[str, ...]) -> str:
     return "+".join(dict.fromkeys(names)) or "eng"
 
 
+def _installed_names() -> tuple[str, ...]:
+    """The data files this machine's Tesseract lists, by its own names.
+
+    Empty when Tesseract is not here to ask, or will not answer. Asking runs
+    the binary: about 12ms warm, measured, and 650ms the first time on a
+    cold disk.
+    """
+    if not available():
+        return ()
+    try:
+        return tuple(str(name) for name in pytesseract.get_languages(config=""))
+    except Exception:  # a binary that answers --version but not this
+        log.warning("tesseract would not list its languages", exc_info=True)
+        return ()
+
+
 def installed_languages() -> tuple[str, ...]:
     """What this machine's Tesseract has data for, as the tags the fields hold.
 
     ``ita`` comes back as ``it``, ``chi_tra`` as ``zh-Hant``; a file with no
     tag of its own — ``ita_old``, ``jpn_vert``, ``ceb`` — as its own name,
     which :func:`tesseract_name` hands back unchanged. Empty when Tesseract is
-    not here to ask. Asking runs the binary: about 12ms warm, measured, and
-    650ms the first time on a cold disk.
+    not here to ask.
     """
-    if not available():
-        return ()
-    try:
-        names = pytesseract.get_languages(config="")
-    except Exception:  # a binary that answers --version but not this
-        log.warning("tesseract would not list its languages", exc_info=True)
-        return ()
     tags = (
         _TAGS.get(name, name)
-        for name in (str(name) for name in names)
+        for name in _installed_names()
         if name not in _NOT_LANGUAGES and "/" not in name
     )
     return tuple(dict.fromkeys(tags))
+
+
+def check_languages(languages: tuple[str, ...]) -> None:
+    """Refuse languages this machine's Tesseract has no data file for.
+
+    Tesseract refuses a missing language on every page it is handed, so a
+    run that would fail on its first page is refused before it starts —
+    once, and before anything has been written. Nothing is refused when
+    Tesseract cannot be asked: its absence is reported where it is run.
+
+    Only a name pytesseract could have listed is checked. It keeps what
+    matches ``[a-z_]+`` of what Tesseract lists and drops the rest —
+    measured, ``script/Latin`` is listed by Tesseract and not by it — so any
+    other name is left for Tesseract to settle. That, and a file that is
+    listed but will not load, is refused by
+    :meth:`TesseractRecognizer.recognize` instead, page by page.
+    """
+    listed = set(_installed_names())
+    if not listed:
+        return
+    missing: dict[str, str] = {}
+    for tag in languages:
+        name = tesseract_name(tag)
+        if _LISTABLE.fullmatch(name) and name not in listed:
+            missing.setdefault(name, tag.strip())
+    if not missing:
+        return
+    wanted = ", ".join(
+        f"{name}.traineddata" if tag == name else f"{tag} ({name}.traineddata)"
+        for name, tag in missing.items()
+    )
+    it_has = ", ".join(installed_languages()) or "no languages at all"
+    raise OcrUnavailableError(f"Tesseract has no data for {wanted}. It has: {it_has}.")
 
 
 def _group_words(data: dict[str, list[Any]], min_height: int) -> list[OcrLine]:
@@ -307,12 +351,15 @@ class TesseractRecognizer:
         if not available():
             raise OcrUnavailableError(f"Tesseract unavailable: {unavailable_reason()}")
 
-        data = pytesseract.image_to_data(
-            Image.fromarray(page.rgb),
-            lang=tesseract_languages(config.languages),
-            config=_PSM_SPARSE,
-            output_type=pytesseract.Output.DICT,
-        )
+        try:
+            data = pytesseract.image_to_data(
+                Image.fromarray(page.rgb),
+                lang=tesseract_languages(config.languages),
+                config=_PSM_SPARSE,
+                output_type=pytesseract.Output.DICT,
+            )
+        except pytesseract.TesseractError as exc:
+            raise OcrUnavailableError(f"Tesseract failed: {exc.message}") from exc
         min_height = max(1, round(config.minimum_text_height_ratio * page.height))
         lines = _group_words(data, min_height)
         log.debug("tesseract: %d lines on %s", len(lines), page.path.name)

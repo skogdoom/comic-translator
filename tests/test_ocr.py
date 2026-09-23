@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from comictrans.config import OcrConfig
+from comictrans.config import ExtractConfig, OcrConfig
 from comictrans.errors import OcrUnavailableError
+from comictrans.extract import extract
 from comictrans.model import Box
 from comictrans.ocr import get_recognizer, installed_languages, reads, resolved_engine
 from comictrans.ocr.base import OcrLine, TextRecognizer
@@ -20,6 +23,8 @@ from comictrans.ocr.tesseract import (
     tesseract_name,
 )
 from comictrans.ocr.vision import VisionRecognizer, _to_pixel_box
+
+from .conftest import ART_DARK, make_page_array, save_page
 
 
 class _Rect:
@@ -187,7 +192,15 @@ def test_unknown_engine_is_an_error() -> None:
         get_recognizer(OcrConfig(engine="ocropus"))
 
 
-def test_explicitly_named_engine_is_returned_without_probing() -> None:
+def test_explicitly_named_engine_is_returned_even_where_it_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its absence is an error where it is run, not a quiet downgrade here."""
+    from comictrans.ocr import tesseract, vision
+
+    monkeypatch.setattr(vision, "available", lambda: False)
+    monkeypatch.setattr(tesseract, "available", lambda: False)
+
     assert get_recognizer(OcrConfig(engine="tesseract")).name == "tesseract"
     assert get_recognizer(OcrConfig(engine="vision")).name == "apple-vision"
 
@@ -213,6 +226,113 @@ def test_auto_falls_back_to_tesseract(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _line(text: str, left: int, top: int) -> OcrLine:
     return OcrLine(text=text, box=Box(left, top, left + 100, top + 30), confidence=0.9)
+
+
+# -- a language Tesseract does not have ------------------------------------
+
+
+@pytest.fixture
+def tesseract_has(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """A Tesseract that is here and lists these data files; extend to change."""
+    from comictrans.ocr import tesseract
+
+    files = ["eng", "ita", "osd"]
+    monkeypatch.setattr(tesseract, "available", lambda: True)
+    monkeypatch.setattr(tesseract.pytesseract, "get_languages", lambda config="": list(files))
+    return files
+
+
+def test_a_language_tesseract_lacks_is_refused_by_tag_and_file(tesseract_has: list[str]) -> None:
+    """What was asked for, the file that would be needed, and what there is."""
+    from comictrans.ocr import tesseract
+
+    with pytest.raises(OcrUnavailableError) as refused:
+        tesseract.check_languages(("it", "sv", "swe", "jpn_vert"))
+
+    assert str(refused.value) == (
+        "Tesseract has no data for sv (swe.traineddata), jpn_vert.traineddata. It has: en, it."
+    ), "each missing file once, under the first tag that asked for it"
+
+
+@pytest.mark.parametrize("languages", [("it",), ("it-IT", "ita", "en"), ("en", "eng"), ()])
+def test_every_spelling_of_what_tesseract_has_is_accepted(
+    tesseract_has: list[str], languages: tuple[str, ...]
+) -> None:
+    from comictrans.ocr import tesseract
+
+    tesseract.check_languages(languages)
+
+
+def test_a_name_tesseract_cannot_be_asked_about_is_left_to_it(tesseract_has: list[str]) -> None:
+    """pytesseract lists nothing but ``[a-z_]+``, so ``script/Latin`` never is.
+
+    Refusing it would refuse a file that may well be there.
+    """
+    from comictrans.ocr import tesseract
+
+    tesseract.check_languages(("script/Latin",))
+
+
+@pytest.mark.parametrize("listed", [None, []], ids=["no tesseract", "lists nothing"])
+def test_nothing_is_refused_where_tesseract_cannot_be_asked(
+    monkeypatch: pytest.MonkeyPatch, listed: list[str] | None
+) -> None:
+    """Its absence is reported where it is run, not as every language missing."""
+    from comictrans.ocr import tesseract
+
+    monkeypatch.setattr(tesseract, "available", lambda: listed is not None)
+    monkeypatch.setattr(tesseract.pytesseract, "get_languages", lambda config="": listed)
+
+    tesseract.check_languages(("sv",))
+
+
+def test_tesseract_is_refused_a_language_before_it_is_handed_a_page(
+    tesseract_has: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Named, or fallen back to: either way it is asked once, up front."""
+    from comictrans.ocr import vision
+
+    monkeypatch.setattr(vision, "available", lambda: False)
+    for engine in ("tesseract", "auto"):
+        with pytest.raises(OcrUnavailableError, match=r"no data for sv \(swe"):
+            get_recognizer(OcrConfig(engine=engine, languages=("sv",)))
+
+    tesseract_has.append("swe")
+    assert get_recognizer(OcrConfig(engine="tesseract", languages=("sv",))).name == "tesseract"
+
+
+def test_vision_is_not_refused_what_tesseract_lacks(tesseract_has: list[str]) -> None:
+    assert get_recognizer(OcrConfig(engine="vision", languages=("sv",))).name == "apple-vision"
+
+
+def test_a_page_tesseract_fails_on_is_a_failure_in_the_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not a traceback: the rest of the chapter is still read, and this is named.
+
+    For what the up-front check lets past — a data file that is listed but
+    will not load, measured to fail exactly like one that is not there.
+    """
+    from comictrans.ocr import tesseract
+
+    def fail(*args: object, **kwargs: object) -> object:
+        raise tesseract.pytesseract.TesseractError(1, "Failed loading language 'xyz'")
+
+    monkeypatch.setattr(tesseract, "available", lambda: True)
+    monkeypatch.setattr(tesseract.pytesseract, "image_to_data", fail)
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    for name in ("p1.png", "p2.png"):
+        save_page(make_page_array((200, 100), ART_DARK, []), pages / name)
+
+    _plan, report = extract(
+        pages, pages / "plan.yaml", TesseractRecognizer(), "Comic Sans MS", ExtractConfig()
+    )
+
+    assert report.failures == [
+        (pages / "p1.png", "Tesseract failed: Failed loading language 'xyz'"),
+        (pages / "p2.png", "Tesseract failed: Failed loading language 'xyz'"),
+    ]
 
 
 def test_lines_sort_top_to_bottom_then_left_to_right() -> None:

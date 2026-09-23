@@ -601,6 +601,34 @@ def test_a_run_that_cannot_start_leaves_no_pages_behind(
     assert not (tmp_path / "chapter-pages").exists()
 
 
+def test_a_language_tesseract_lacks_is_refused_before_anything_is_unpacked(
+    chapter: Path,
+    tmp_path: Path,
+    font_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Once, in a line, and not as a traceback from the first page.
+
+    The real recogniser lookup, not the fixture's fake: what is under test is
+    that it is what refuses.
+    """
+    from comictrans import ocr
+    from comictrans.ocr import tesseract
+
+    monkeypatch.setattr("comictrans.cli.get_recognizer", ocr.get_recognizer)
+    monkeypatch.setattr(tesseract, "available", lambda: True)
+    monkeypatch.setattr(tesseract.pytesseract, "get_languages", lambda config="": ["eng", "ita"])
+
+    code = main(["extract", str(chapter), "--ocr", "tesseract", "--source-lang", "sv"])
+
+    err = capsys.readouterr().err
+    assert code == EXIT_FATAL
+    assert "Tesseract has no data for sv (swe.traineddata). It has: en, it." in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "chapter-pages").exists()
+
+
 def test_a_page_that_may_not_be_a_scan_is_named_in_the_summary(
     tmp_path: Path,
     font_dir: Path,
