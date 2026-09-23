@@ -12,12 +12,19 @@ those things itself.
 half-written value is still worth keeping: committing on focus loss would
 leave an edit sitting in a widget nothing else in the window knows about, so
 the dirty marker would be wrong and closing the window straight after typing
-would discard the text without asking. That holds for the font override as
-much as for the prose — a name typed but not tabbed away from is an edit,
-and a half-typed font name is not a problem to guard against here, because
-nothing resolves a font until something renders. The cost is that an undo
-stack built over this has to coalesce consecutive keystrokes rather than
-treat each one as a step of its own.
+would discard the text without asking. The cost is that an undo stack built
+over this has to coalesce consecutive keystrokes rather than treat each one
+as a step of its own.
+
+**The font override is the exception**, because half a font name is not a
+font. It used to write through like the rest, on the grounds that nothing
+resolves a font until something renders — and a plan was saved naming
+"Sans", which nothing ever would. ``font_box`` now records only a family
+from its list: one typed in full is recorded at once, and a fragment waits
+for Enter, Tab or the field being left, which take the best match, or for
+Escape, which puts back what was there. So a fragment is the one thing typed
+here that closing the window straight afterwards does discard — deliberately,
+since it was never a value.
 """
 
 from __future__ import annotations
@@ -366,7 +373,7 @@ class RegionInspector(QWidget):
         self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
         self._locked.toggled.connect(self._on_locked_changed)
-        self._font.currentTextChanged.connect(self._on_font_changed)
+        self._font.chosen.connect(self._on_font_chosen)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
         self._erase.currentIndexChanged.connect(self._on_erase_changed)
         self._fill_color.picked.connect(self._on_fill_color_picked)
@@ -554,7 +561,7 @@ class RegionInspector(QWidget):
             self._document.set_skip(self._region_id, checked)
         self._commit()
 
-    def _on_font_changed(self, _text: str) -> None:
+    def _on_font_chosen(self) -> None:
         if self._document is not None and self._region_id is not None:
             self._document.set_font(self._region_id, self._font.value())
         self._commit()

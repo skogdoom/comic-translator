@@ -9,7 +9,8 @@ a plan that lies about where its text came from.
 
 Fields write straight through to the document as they are edited, the same
 as the region inspector, so there is nothing to apply and nothing to cancel.
-Ctrl+Z after closing takes a change back, one field at a time.
+Ctrl+Z after closing takes a change back, one field at a time. The font is
+the one that waits for a whole name, for the reason ``font_box`` gives.
 """
 
 from __future__ import annotations
@@ -105,7 +106,7 @@ class HeaderDialog(QDialog):
         layout.addWidget(buttons)
         self.setMinimumWidth(420)
 
-        self._font.currentTextChanged.connect(self._on_font_changed)
+        self._font.chosen.connect(self._on_font_chosen)
         self._case.currentIndexChanged.connect(self._on_case_changed)
         self._min_ratio.valueChanged.connect(self._on_min_ratio_changed)
         self._condense.valueChanged.connect(self._on_condense_changed)
@@ -132,11 +133,12 @@ class HeaderDialog(QDialog):
         self._font_reach.setText(self.font_reach())
         self.edited.emit()
 
-    def _on_font_changed(self, text: str) -> None:
-        # An empty font is not a legal header value, so a field being cleared
-        # on the way to a new name writes nothing rather than raising.
-        if text.strip():
-            self._document.set_header_font(text)
+    def _on_font_chosen(self) -> None:
+        # The field only settles on an installed family, and never on empty
+        # here, where there is no default to fall back to; the check is for
+        # a field that one day does.
+        if font := self._font.value():
+            self._document.set_header_font(font)
             self._commit()
 
     def _on_case_changed(self, index: int) -> None:
