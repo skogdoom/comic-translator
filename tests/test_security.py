@@ -38,7 +38,7 @@ from comictrans.errors import InputError
 from comictrans.extract import default_plan_path, extract
 from comictrans.model import Box
 from comictrans.planfile import load_plan, loads, write_plan
-from comictrans.sources import MAX_PAGE_BYTES, unpack
+from comictrans.sources import MAX_PAGE_BYTES, open_chapter, unpack
 from comictrans.validate import validate_plan
 
 from .conftest import (
@@ -398,6 +398,39 @@ def test_a_directory_traversal_and_a_bomb_in_the_same_archive_leave_a_usable_cha
 
     assert len(report.pages) == 1
     assert sorted(name for name, _ in report.skipped) == ["__MACOSX/page-001.png", "notes.txt"]
+
+
+def test_reading_a_chapter_goes_through_the_door_unpacking_does(tmp_path: Path) -> None:
+    """The reader window is handed exactly the pages unpack would write.
+
+    Every refusal at once — a link, a claimed bomb, a resource fork, a hidden
+    file, something that is not an image — so a second way into an archive,
+    one that skipped any of them, would show here as a page too many.
+    """
+    chapter = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(chapter, "w") as archive:
+        for name in ("page-001.png", "page-002.png", "page-003.png"):
+            archive.writestr(name, b"x" * 64)
+        archive.writestr("__MACOSX/page-001.png", b"")
+        archive.writestr(".page-004.png", b"x")
+        archive.writestr("notes.txt", b"hello")
+        link = zipfile.ZipInfo("page-005.png")
+        link.create_system = 3
+        link.external_attr = 0o120777 << 16
+        archive.writestr(link, "/etc/passwd")
+    _lie_about_size(chapter, "page-003.png", MAX_PAGE_BYTES + 1)
+    before = sorted(tmp_path.iterdir())
+
+    with open_chapter(chapter) as pages:
+        read = [pages.label(index) for index in range(len(pages))]
+        skipped = pages.skipped
+    assert sorted(tmp_path.iterdir()) == before, "reading writes nothing"
+
+    report = unpack(chapter, tmp_path / "pages")
+    assert read == ["page-001.png", "page-002.png"]
+    assert [path.name for path in report.pages] == ["001-page-001.png", "002-page-002.png"]
+    assert skipped == report.skipped
+    assert len(skipped) == 5
 
 
 # -- what an untrusted plan file may do ---------------------------------------

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import sys
 import zipfile
 from collections.abc import Iterator
@@ -26,6 +27,7 @@ from comictrans.sources import (
     check_readable,
     default_unpack_dir,
     is_container,
+    open_chapter,
     unpack,
 )
 
@@ -818,3 +820,71 @@ def test_a_named_unrar_tool_that_does_not_work_is_named_in_the_refusal(
 
     with pytest.raises(InputError, match="'/nowhere/unrar' was named and did not work"):
         unpack(archive)
+
+
+# -- reading a chapter where it is ----------------------------------------------
+
+
+def test_a_chapter_is_read_where_it_is_in_any_order_and_leaves_nothing(tmp_path: Path) -> None:
+    """What the reader window does with a chapter: no directory, no copy."""
+    archive = _three_page_cbz(tmp_path)
+    unpacked = unpack(archive, tmp_path / "unpacked")
+    written = [path.read_bytes() for path in unpacked.pages]
+    shutil.rmtree(tmp_path / "unpacked")
+    before = sorted(tmp_path.iterdir())
+
+    with open_chapter(archive) as pages:
+        labels = [pages.label(index) for index in range(len(pages))]
+        backwards = [pages.read(index) for index in (2, 0, 1, 2)]
+
+    assert labels == ["Chapter 1/page1.png", "Chapter 1/page2.png", "Chapter 1/page10.png"]
+    assert backwards == [written[2], written[0], written[1], written[2]]
+    assert sorted(tmp_path.iterdir()) == before
+
+
+def test_a_pdf_is_read_where_it_is_as_well(tmp_path: Path) -> None:
+    source = _pdf(tmp_path, [_scan(201), _scan(120)])
+    written = [path.read_bytes() for path in unpack(source, tmp_path / "out").pages]
+
+    with open_chapter(source) as pages:
+        assert [pages.read(1), pages.read(0)] == [written[1], written[0]]
+        assert [pages.label(0), pages.label(1)] == ["page 1", "page 2"]
+
+
+def test_a_pdf_page_that_is_not_a_page_says_why_when_it_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where unpack would skip it; a reader has the page open and says so."""
+    monkeypatch.setattr("comictrans.sources.IMAGE_SUFFIXES", frozenset({".png"}))
+    source = _pdf(tmp_path, [_scan(201)])
+
+    with (
+        open_chapter(source) as pages,
+        pytest.raises(InputError, match=r"page 1: its image is .jpg"),
+    ):
+        pages.read(0)
+
+
+@pytest.mark.parametrize(
+    ("make", "refusal"),
+    [
+        (lambda tmp: tmp / "missing.cbz", "does not exist"),
+        (lambda tmp: _cbz(tmp, {"notes.txt": "hello"}), "no pages found in chapter.cbz"),
+        (lambda tmp: _write(tmp / "chapter.cbz", b"PK\x03\x04" + b"\x00" * 200), "cannot read"),
+        (lambda tmp: _write(tmp / "notes.txt", b"hello"), "is not a chapter file"),
+    ],
+    ids=["missing", "no pages", "broken", "not a chapter"],
+)
+def test_what_unpack_refuses_opening_refuses_too(tmp_path: Path, make: Any, refusal: str) -> None:
+    source = make(tmp_path)
+    before = sorted(tmp_path.iterdir())
+
+    with pytest.raises(InputError, match=refusal), open_chapter(source):
+        pass
+
+    assert sorted(tmp_path.iterdir()) == before
+
+
+def _write(path: Path, data: bytes) -> Path:
+    path.write_bytes(data)
+    return path
