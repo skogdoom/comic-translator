@@ -53,6 +53,16 @@ plan that says nothing new is byte for byte the file it was.
   the files named otherwise: `zh-Hant` is `chi_tra`, `sr-Latn` is `srp_latn`,
   `nb` is `nor`. Tesseract's own names — `jpn_vert` for vertical Japanese —
   still go through as given, in the window and after `--lang` alike.
+- **A language Tesseract has no data for is refused before the run, in a
+  line.** Asked for one — `sv`, on a machine without `swe.traineddata` —
+  Tesseract failed on the first page, and the command line ended in a Python
+  traceback; the window showed it as a `TesseractError`, the form it keeps
+  for bugs. Tesseract is now asked what it has before a page is read or a
+  chapter file unpacked, and the run is refused with what is missing and
+  what there is: *Tesseract has no data for sv (swe.traineddata). It has: en,
+  it.* A data file Tesseract lists but cannot load still gets as far as the
+  pages — it fails exactly like a missing one, measured — and each page it
+  fails on is now named in the report, as any page that fails is.
 - **A font field records a font, not what is being typed.** Reported: a plan
   could be saved naming "Sans". The font fields wrote through as they were
   typed in, like every other field, and with Qt's inline completion that was

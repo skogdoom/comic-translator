@@ -32,6 +32,11 @@ def get_recognizer(config: OcrConfig) -> TextRecognizer:
 
     ``auto`` prefers Apple Vision and falls back to Tesseract, loudly. Naming a
     backend explicitly makes its absence an error rather than a downgrade.
+
+    Tesseract is asked here whether it has every language in ``config``, and
+    refused if it has not — see :func:`tesseract.check_languages`. Every
+    caller asks for a recogniser before it unpacks a chapter file, so a run
+    Tesseract would refuse leaves nothing behind.
     """
     from . import tesseract, vision
 
@@ -39,6 +44,7 @@ def get_recognizer(config: OcrConfig) -> TextRecognizer:
     if engine in {"vision", "apple-vision"}:
         return vision.VisionRecognizer()
     if engine == "tesseract":
+        tesseract.check_languages(config.languages)
         return tesseract.TesseractRecognizer()
     if engine != "auto":
         raise OcrUnavailableError(f"unknown OCR engine {config.engine!r}")
@@ -53,6 +59,7 @@ def get_recognizer(config: OcrConfig) -> TextRecognizer:
             "OCR quality will be noticeably worse on comic lettering.",
             reason,
         )
+        tesseract.check_languages(config.languages)
         return tesseract.TesseractRecognizer()
 
     raise OcrUnavailableError(
@@ -121,9 +128,10 @@ def reads(engine: str, tag: str, installed: tuple[str, ...]) -> bool:
 def unread_languages(recognizer_name: str, languages: tuple[str, ...]) -> tuple[str, ...]:
     """Which of ``languages`` the recogniser that ran could not read.
 
-    Vision's only: Tesseract refuses a language it has no file for, loudly,
-    and the run stops there, while Vision reads on with its own defaults and
-    says nothing — see :func:`vision.vision_languages`.
+    Vision's only: Tesseract refuses a language it has no file for, and the
+    run is refused before it starts — see :func:`get_recognizer` — while
+    Vision reads on with its own defaults and says nothing — see
+    :func:`vision.vision_languages`.
     """
     from . import vision
 

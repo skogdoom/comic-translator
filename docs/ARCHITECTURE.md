@@ -367,6 +367,11 @@ defaulting to `it` and `en`. Nothing downstream hardcodes a language:
   warning rather than failing the run — lines then break only between words.
 - The Tesseract adapter maps BCP-47 tags to traineddata names and passes an
   unmapped one through unchanged, so a traineddata name given directly works.
+  `get_recognizer` asks Tesseract which data files it has and refuses a
+  language it lacks there, rather than letting Tesseract refuse it on every
+  page: by then a chapter file has been unpacked. Only names pytesseract can
+  list are checked — it drops anything outside `[a-z_]+`, so `script/Latin`
+  never appears — and anything else is left for Tesseract to settle.
 
 ## Coordinate convention
 
