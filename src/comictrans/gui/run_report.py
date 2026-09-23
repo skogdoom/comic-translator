@@ -70,6 +70,7 @@ NOT_TRANSLATED = RunText.tr("not translated")
 COULD_NOT_READ = RunText.tr("could not read")
 NO_REGIONS = RunText.tr("no regions found")
 NOT_AN_IMAGE = RunText.tr("not read as a page")
+LANGUAGE_NOT_READ = RunText.tr("language not read")
 
 _EMPTY_TRANSLATION = "no translation"
 """What ``render`` writes as the detail for a region with nothing to letter.
@@ -210,12 +211,25 @@ def extract_rows(report: ExtractReport) -> tuple[RunRow, ...]:
     The plan the run just wrote flags every one of them, the page list counts
     them, and Next Flagged Region walks them; a second copy in a panel would
     go stale the moment one was fixed. What is here is what the plan cannot
-    tell you: pages it does not cover, and pages it covers with nothing on.
+    tell you: a language the recogniser read without, first, because it is
+    true of every page; then pages it does not cover, and pages it covers
+    with nothing on.
     """
     rows: list[RunRow] = [
+        RunRow(
+            image="",
+            problem=LANGUAGE_NOT_READ,
+            detail=RunText.tr(
+                "Apple Vision cannot read {0}, and read every page with its own defaults instead"
+            ).format(language),
+            in_plan=False,
+        )
+        for language in report.unread_languages
+    ]
+    rows.extend(
         RunRow(image=path.name, problem=COULD_NOT_READ, detail=reason, in_plan=False)
         for path, reason in report.failures
-    ]
+    )
     rows.extend(
         RunRow(
             image=path.name,
@@ -254,6 +268,7 @@ __all__ = [
     "CONDENSED",
     "COULD_NOT_READ",
     "DID_NOT_FIT",
+    "LANGUAGE_NOT_READ",
     "NOT_AN_IMAGE",
     "NOT_TRANSLATED",
     "NO_REGIONS",

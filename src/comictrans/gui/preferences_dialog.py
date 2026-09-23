@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..config import DEFAULT_SOURCE_LANGUAGE
 from . import erase_choices, translations
 from .extract_dialog import ENGINE_CHOICES
 from .font_box import FontBox
@@ -207,7 +208,17 @@ class PreferencesDialog(QDialog):
         self._source_language.set_value(preferences.source_language)
         self._target_language = LanguageBox()
         self._target_language.set_value(preferences.target_language)
-        self._ocr_languages = OcrLanguagesField(preferences.ocr_languages, preferences.ocr_engine)
+        self._ocr_languages = OcrLanguagesField(
+            preferences.ocr_languages,
+            preferences.ocr_engine,
+            self._source_language.value() or DEFAULT_SOURCE_LANGUAGE,
+        )
+        # Left empty, the OCR languages are the source language, and say so.
+        self._source_language.currentTextChanged.connect(
+            lambda _text: self._ocr_languages.set_source(
+                self._source_language.value() or DEFAULT_SOURCE_LANGUAGE
+            )
+        )
         _wide_enough_for_its_placeholder(self._ocr_languages.line_edit())
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:
@@ -496,6 +507,7 @@ class PreferencesDialog(QDialog):
             self._ocr_languages.set_text(preferences.ocr_languages)
             self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
             self._ocr_languages.set_engine(preferences.ocr_engine)
+            self._ocr_languages.set_source(preferences.source_language or DEFAULT_SOURCE_LANGUAGE)
             self._font.set_value(preferences.font or None)
             self._unrar_tool.setText(preferences.unrar_tool)
             self._rar_tool.setText(preferences.rar_tool)

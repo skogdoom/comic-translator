@@ -633,3 +633,16 @@ def test_a_page_that_may_not_be_a_scan_is_named_in_the_summary(
     assert "  pages:             2" in printed
     assert "LOOK AT:           page 2:" in printed
     assert "may not be a scan of the page they came from" in printed
+
+
+def test_the_summary_says_which_languages_vision_read_without(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from comictrans.cli import _report_summary
+    from comictrans.extract import ExtractReport
+
+    _report_summary(ExtractReport(pages_read=1, unread_languages=("sv", "xx")), Path("plan.yaml"))
+    out = capsys.readouterr().out
+
+    assert "NOT READ BY OCR:   sv, xx" in out
+    assert "Apple Vision cannot read sv, xx" in out

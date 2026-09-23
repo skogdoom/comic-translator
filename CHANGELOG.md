@@ -29,9 +29,21 @@ plan that says nothing new is byte for byte the file it was.
   has installed — Tesseract's data files, or the languages this Mac's Vision
   reads — and adds the pick to the end. The list is read back underneath in
   order, *Italian, then English*, and a language the recogniser lacks is said
-  to be missing rather than dropped. Change the recogniser and both follow.
-  Vision's half is written from Apple's documentation and has not been run:
-  nothing this was built on is a Mac.
+  to be missing rather than dropped. Left empty, the field reads back the
+  source language it stands for — *Swedish, the source language, which Apple
+  Vision does not have* — so the empty case is checked too. Change the
+  recogniser or the source language and it follows.
+- **Apple Vision is handed its own spelling of each language, and a language
+  it cannot read is said.** Vision does not refuse a language it lacks: it
+  reads the page with its own defaults and says nothing — seen on a Mac, where
+  a Swedish source language ran without a word. Nothing is left to it now.
+  Each code is matched against the list Vision gives and handed over in its
+  spelling, so `it` goes as `it-IT` and is certain to mean Italian — the
+  default source language went as a bare `it` until now, and whether Vision
+  took that for Italian or ignored it could not be seen from the results. A
+  language it does not list is held back, named in the log, and named in the
+  run's report: first in the window's panel, and after the counts on the
+  command line. The run still goes ahead, as it did.
 - **Tesseract understands the codes Vision does.** It was handed language
   codes through a table of seven, so `sv` — the source language of a Swedish
   chapter, and so the default OCR language for one — reached it as `sv`, and

@@ -75,9 +75,13 @@ plan already names is shown as it is and never corrected. **OCR languages**
 stays a typed list, since it is plural and ordered, but a **+** beside it
 offers what the chosen recogniser actually has installed, by name, and the
 list is read back underneath in order — with any language the recogniser
-lacks said to be missing rather than dropped. Tesseract now understands the
-same codes Vision does: a Swedish chapter's `sv` reaches it as `swe`, where
-before it was refused.
+lacks said to be missing rather than dropped; left empty, it reads back the
+source language it stands for, checked the same way. Tesseract now
+understands the same codes Vision does: a Swedish chapter's `sv` reaches it
+as `swe`, where before it was refused. **Apple Vision ignores a language it
+cannot read** rather than refusing it, and reads with its own defaults, so
+each code is now handed to it in its own spelling (`it` as `it-IT`) and one
+it lacks is named in the run's report instead of passing unnoticed.
 
 **A region can be locked** once it is finished: its fields go dead, its
 outline cannot be reshaped or nudged, and Delete and Merge are not offered

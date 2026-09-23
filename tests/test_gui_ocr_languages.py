@@ -222,3 +222,47 @@ def test_preferences_write_the_list_through_and_follow_the_recogniser(
 
     dialog.repopulate(Preferences(ocr_languages="sv", ocr_engine="tesseract"))
     assert _names(field) == "Swedish, which Tesseract does not have"
+
+
+# -- an empty field -------------------------------------------------------
+
+
+def test_an_empty_field_reads_back_the_source_language(qapp: object, asked: list[str]) -> None:
+    field = OcrLanguagesField("", "tesseract", "it")
+
+    assert _names(field) == "Italian, the source language"
+
+    field.set_source("sv")
+    assert _names(field) == "Swedish, the source language, which Tesseract does not have"
+
+    field.set_engine("vision")
+    assert _names(field) == "Swedish, the source language, which Apple Vision does not have"
+
+
+def test_a_list_typed_in_is_read_back_instead_of_the_source(qapp: object, asked: list[str]) -> None:
+    field = OcrLanguagesField("en", "tesseract", "sv")
+
+    assert _names(field) == "English"
+
+
+def test_extract_reads_back_its_own_source_language(qapp: object, asked: list[str]) -> None:
+    dialog = ExtractDialog(preferences=Preferences(source_language="it", ocr_engine="vision"))
+    assert _names(dialog._languages) == "Italian, the source language"
+
+    dialog._source_language.setCurrentIndex(dialog._source_language.findData("sv"))
+
+    assert _names(dialog._languages) == (
+        "Swedish, the source language, which Apple Vision does not have"
+    )
+
+
+def test_preferences_read_back_their_own_source_language(qapp: object, asked: list[str]) -> None:
+    dialog = PreferencesDialog(Preferences(source_language="it", ocr_engine="tesseract"), None)
+    field = dialog._ocr_languages
+    assert _names(field) == "Italian, the source language"
+
+    dialog._source_language.setCurrentIndex(dialog._source_language.findData("en"))
+    assert _names(field) == "English, the source language"
+
+    dialog.repopulate(Preferences(source_language="sv", ocr_engine="tesseract"))
+    assert _names(field) == "Swedish, the source language, which Tesseract does not have"

@@ -221,98 +221,98 @@
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="219"/>
+        <location filename="../../extract_dialog.py" line="229"/>
         <source>overwrite it, discarding everything in it</source>
         <translation>skriv över den och kasta allt som finns i den</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="230"/>
+        <location filename="../../extract_dialog.py" line="240"/>
         <source>read pages from</source>
         <translation>läs sidor från</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="235"/>
+        <location filename="../../extract_dialog.py" line="245"/>
         <source>write the plan to</source>
         <translation>skriv planen till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="237"/>
+        <location filename="../../extract_dialog.py" line="247"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="238"/>
+        <location filename="../../extract_dialog.py" line="248"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="239"/>
+        <location filename="../../extract_dialog.py" line="249"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="240"/>
+        <location filename="../../extract_dialog.py" line="250"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="267"/>
+        <location filename="../../extract_dialog.py" line="277"/>
         <source>Pages to Read</source>
         <translation>Sidor att läsa</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="281"/>
+        <location filename="../../extract_dialog.py" line="291"/>
         <source>Page or Chapter to Read</source>
         <translation>Sida eller kapitel att läsa</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="283"/>
+        <location filename="../../extract_dialog.py" line="293"/>
         <source>Pages and chapters ({0});;All files (*)</source>
         <translation>Sidor och kapitel ({0});;Alla filer (*)</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="292"/>
+        <location filename="../../extract_dialog.py" line="302"/>
         <source>Write the Plan To</source>
         <translation>Skriv planen till</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="294"/>
+        <location filename="../../extract_dialog.py" line="304"/>
         <source>Plan files (*.yaml *.yml)</source>
         <translation>Planfiler (*.yaml *.yml)</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="365"/>
+        <location filename="../../extract_dialog.py" line="375"/>
         <source>Choose a folder of pages, a chapter file, or one image.</source>
         <translation>Välj en mapp med sidor, en kapitelfil eller en enstaka bild.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="382"/>
-        <location filename="../../extract_dialog.py" line="393"/>
+        <location filename="../../extract_dialog.py" line="392"/>
+        <location filename="../../extract_dialog.py" line="403"/>
         <source>{0} cannot be read: {1}</source>
         <translation>{0} kan inte läsas: {1}</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="397"/>
+        <location filename="../../extract_dialog.py" line="407"/>
         <source>Choose where to write the plan file.</source>
         <translation>Välj var planfilen ska skrivas.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="400"/>
+        <location filename="../../extract_dialog.py" line="410"/>
         <source>{0} is a directory, not a plan file.</source>
         <translation>{0} är en katalog, inte en planfil.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="402"/>
+        <location filename="../../extract_dialog.py" line="412"/>
         <source>{0} already exists.</source>
         <translation>{0} finns redan.</translation>
     </message>
     <message>
-        <location filename="../../extract_dialog.py" line="412"/>
+        <location filename="../../extract_dialog.py" line="422"/>
         <source>counted when unpacked</source>
         <translation>räknas vid uppackning</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="414"/>
+        <location filename="../../extract_dialog.py" line="424"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n sida</numerusform>
@@ -1108,32 +1108,37 @@
         <translation>samma som källspråket</translation>
     </message>
     <message>
-        <location filename="../../ocr_languages.py" line="70"/>
+        <location filename="../../ocr_languages.py" line="77"/>
         <source>Languages to hand the recogniser, in order, separated by commas. Left empty this is the source language. + adds one the recogniser has installed; a code it does not offer, such as pt-BR, can still be typed.</source>
         <translation>Språk att ge textigenkänningen, i ordning och kommaseparerade. Lämnas fältet tomt används källspråket. + lägger till ett som textigenkänningen har installerat; en kod den inte erbjuder, till exempel pt-BR, går ändå att skriva.</translation>
     </message>
     <message>
-        <location filename="../../ocr_languages.py" line="81"/>
+        <location filename="../../ocr_languages.py" line="88"/>
         <source>Add a language the recogniser can read</source>
         <translation>Lägg till ett språk som textigenkänningen kan läsa</translation>
     </message>
     <message>
-        <location filename="../../ocr_languages.py" line="154"/>
+        <location filename="../../ocr_languages.py" line="166"/>
         <source>no recogniser here to ask</source>
         <translation>ingen textigenkänning här att fråga</translation>
     </message>
     <message>
-        <location filename="../../ocr_languages.py" line="158"/>
+        <location filename="../../ocr_languages.py" line="170"/>
         <source>nothing installed for {0}</source>
         <translation>inget installerat för {0}</translation>
     </message>
     <message>
-        <location filename="../../ocr_languages.py" line="194"/>
+        <location filename="../../ocr_languages.py" line="213"/>
+        <source>{0}, the source language</source>
+        <translation>{0}, källspråket</translation>
+    </message>
+    <message>
+        <location filename="../../ocr_languages.py" line="215"/>
         <source>{0}, which {1} does not have</source>
         <translation>{0}, som {1} saknar</translation>
     </message>
     <message>
-        <location filename="../../ocr_languages.py" line="198"/>
+        <location filename="../../ocr_languages.py" line="219"/>
         <source>, then </source>
         <translation>, sedan </translation>
     </message>
@@ -1195,149 +1200,149 @@
 <context>
     <name>PreferencesDialog</name>
     <message>
-        <location filename="../../preferences_dialog.py" line="54"/>
+        <location filename="../../preferences_dialog.py" line="55"/>
         <source>These fill in the Extract and Render dialogs when they open. They never change a plan you already have.</source>
         <translation>De här fyller i dialogrutorna Extrahera och Rendera när de öppnas. De ändrar aldrig en plan du redan har.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="60"/>
+        <location filename="../../preferences_dialog.py" line="61"/>
         <source>the same as this Mac</source>
         <translation>samma som datorn</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="69"/>
+        <location filename="../../preferences_dialog.py" line="70"/>
         <source>takes effect the next time this application starts</source>
         <translation>börjar gälla nästa gång programmet startar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="80"/>
+        <location filename="../../preferences_dialog.py" line="81"/>
         <source>(let extract choose)</source>
         <translation>(låt extract välja)</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="143"/>
+        <location filename="../../preferences_dialog.py" line="144"/>
         <source>Only for opening a .cbr, and only when unrar is somewhere this application cannot see. unar, bsdtar and 7z do as well. CBZ and PDF need nothing.</source>
         <translation>Bara för att öppna en .cbr, och bara när unrar finns någonstans som det här programmet inte ser. unar, bsdtar och 7z duger också. CBZ och PDF kräver ingenting.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="157"/>
+        <location filename="../../preferences_dialog.py" line="158"/>
         <source>Only for saving a .cbr. That needs rar itself, which comes with WinRAR and needs a licence; unrar cannot write. CBZ needs nothing.</source>
         <translation>Bara för att spara en .cbr. Det kräver rar självt, som följer med WinRAR och kräver en licens; unrar kan inte skriva. CBZ kräver ingenting.</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="168"/>
+        <location filename="../../preferences_dialog.py" line="169"/>
         <source>Done</source>
         <translation>Klar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="203"/>
+        <location filename="../../preferences_dialog.py" line="204"/>
         <source>Preferences</source>
         <translation>Inställningar</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="227"/>
+        <location filename="../../preferences_dialog.py" line="238"/>
         <source>beside the pages</source>
         <translation>bredvid sidorna</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="229"/>
-        <location filename="../../preferences_dialog.py" line="427"/>
+        <location filename="../../preferences_dialog.py" line="240"/>
+        <location filename="../../preferences_dialog.py" line="438"/>
         <source>Choose…</source>
         <translation>Välj…</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="253"/>
-        <location filename="../../preferences_dialog.py" line="259"/>
+        <location filename="../../preferences_dialog.py" line="264"/>
+        <location filename="../../preferences_dialog.py" line="270"/>
         <source>found on PATH</source>
         <translation>hittas via PATH</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="270"/>
+        <location filename="../../preferences_dialog.py" line="281"/>
         <source>experimental features</source>
         <translation>experimentella funktioner</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="290"/>
+        <location filename="../../preferences_dialog.py" line="301"/>
         <source>a new plan starts as</source>
         <translation>en ny plan börjar som</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="291"/>
+        <location filename="../../preferences_dialog.py" line="302"/>
         <source>pages are lettered in</source>
         <translation>sidorna är textade på</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="292"/>
+        <location filename="../../preferences_dialog.py" line="303"/>
         <source>translating into</source>
         <translation>översätts till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="293"/>
+        <location filename="../../preferences_dialog.py" line="304"/>
         <source>OCR languages</source>
         <translation>OCR-språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="294"/>
+        <location filename="../../preferences_dialog.py" line="305"/>
         <source>recogniser</source>
         <translation>textigenkänning</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="295"/>
+        <location filename="../../preferences_dialog.py" line="306"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="297"/>
+        <location filename="../../preferences_dialog.py" line="308"/>
         <source>chapter files</source>
         <translation>kapitelfiler</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="298"/>
+        <location filename="../../preferences_dialog.py" line="309"/>
         <source>unrar is at</source>
         <translation>unrar finns i</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="300"/>
+        <location filename="../../preferences_dialog.py" line="311"/>
         <source>rar is at</source>
         <translation>rar finns i</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="303"/>
+        <location filename="../../preferences_dialog.py" line="314"/>
         <source>rendering pages</source>
         <translation>rendera sidor</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="304"/>
+        <location filename="../../preferences_dialog.py" line="315"/>
         <source>write pages to</source>
         <translation>skriv sidor till</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="306"/>
+        <location filename="../../preferences_dialog.py" line="317"/>
         <source>format</source>
         <translation>format</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="308"/>
+        <location filename="../../preferences_dialog.py" line="319"/>
         <source>this window</source>
         <translation>det här fönstret</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="309"/>
+        <location filename="../../preferences_dialog.py" line="320"/>
         <source>language</source>
         <translation>språk</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="439"/>
+        <location filename="../../preferences_dialog.py" line="450"/>
         <source>Where unrar Is</source>
         <translation>Var unrar Finns</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="442"/>
+        <location filename="../../preferences_dialog.py" line="453"/>
         <source>Where rar Is</source>
         <translation>Var rar Finns</translation>
     </message>
     <message>
-        <location filename="../../preferences_dialog.py" line="471"/>
+        <location filename="../../preferences_dialog.py" line="482"/>
         <source>Render Into</source>
         <translation>Rendera till</translation>
     </message>
@@ -1735,12 +1740,17 @@
         <translation>lästes inte som en sida</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="155"/>
+        <location filename="../../run_report.py" line="73"/>
+        <source>language not read</source>
+        <translation>språket lästes inte</translation>
+    </message>
+    <message>
+        <location filename="../../run_report.py" line="156"/>
         <source>{0} of normal width</source>
         <translation>{0} av normal bredd</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="181"/>
+        <location filename="../../run_report.py" line="182"/>
         <source>%n page(s) packed into {0}</source>
         <translation>
             <numerusform>%n sida packad i {0}</numerusform>
@@ -1748,17 +1758,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="184"/>
+        <location filename="../../run_report.py" line="185"/>
         <source>cancelled — nothing written: {0} is one file, so it is packed only once every page is rendered</source>
         <translation>avbruten — ingenting skrevs: {0} är en enda fil, så den packas först när alla sidor är renderade</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="188"/>
+        <location filename="../../run_report.py" line="189"/>
         <source>nothing written: no page was rendered, so there was nothing to pack into {0}</source>
         <translation>ingenting skrevs: ingen sida renderades, så det fanns ingenting att packa i {0}</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="191"/>
+        <location filename="../../run_report.py" line="192"/>
         <source>cancelled — %n page(s) written to {0}</source>
         <translation>
             <numerusform>avbruten — %n sida skriven till {0}</numerusform>
@@ -1766,7 +1776,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="192"/>
+        <location filename="../../run_report.py" line="193"/>
         <source>%n page(s) written to {0}</source>
         <translation>
             <numerusform>%n sida skriven till {0}</numerusform>
@@ -1774,17 +1784,22 @@
         </translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="198"/>
+        <location filename="../../run_report.py" line="199"/>
         <source>{0} rendered · {1} without a translation · {2} skipped · {3} did not fit</source>
         <translation>{0} renderade · {1} utan översättning · {2} överhoppade · {3} fick inte plats</translation>
     </message>
     <message>
         <location filename="../../run_report.py" line="223"/>
+        <source>Apple Vision cannot read {0}, and read every page with its own defaults instead</source>
+        <translation>Apple Vision kan inte läsa {0} och läste i stället varje sida med sina egna standardval</translation>
+    </message>
+    <message>
+        <location filename="../../run_report.py" line="237"/>
         <source>nothing detected on this page</source>
         <translation>ingenting hittades på den här sidan</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="238"/>
+        <location filename="../../run_report.py" line="252"/>
         <source>cancelled after %n page(s) — {0} was not written</source>
         <translation>
             <numerusform>avbruten efter %n sida — {0} skrevs inte</numerusform>
@@ -1792,7 +1807,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="240"/>
+        <location filename="../../run_report.py" line="254"/>
         <source>%n page(s) read into {0}</source>
         <translation>
             <numerusform>%n sida inläst till {0}</numerusform>
@@ -1800,7 +1815,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="246"/>
+        <location filename="../../run_report.py" line="260"/>
         <source>%n region(s) · {0} low confidence · {1} approximate · {2} left unseeded</source>
         <translation>
             <numerusform>%n region · {0} med låg säkerhet · {1} ungefärliga · {2} utan förifylld text</numerusform>

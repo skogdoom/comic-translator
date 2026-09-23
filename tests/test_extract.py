@@ -672,3 +672,37 @@ def test_the_neighbour_the_margin_lets_in_is_not_read_as_this_region() -> None:
 
 def test_a_region_with_nothing_in_it_reads_as_nothing() -> None:
     assert read_region(_blank_page(), BALLOON, CropReader(), ExtractConfig()) == ""
+
+
+class _VisionLike(FakeRecognizer):
+    """Replays canned lines, under the name the Vision adapter reports."""
+
+    name = "apple-vision"
+
+
+def test_an_extract_says_which_languages_vision_read_without(
+    pages: tuple[Path, FakeRecognizer, list[Box]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Vision ignores a language it lacks rather than refusing it: said here."""
+    from comictrans.ocr import vision
+
+    directory, fake, _boxes = pages
+    monkeypatch.setattr(vision, "supported_languages", lambda: ("it-IT", "en-US"))
+    config = ExtractConfig(ocr=OcrConfig(languages=("it", "sv"), engine="vision"))
+
+    _plan, report = _run(directory, _VisionLike(fake.by_filename), config=config)
+
+    assert report.unread_languages == ("sv",)
+    assert report.pages_read == 3, "the run goes ahead, as it always did"
+
+
+def test_nothing_is_said_unread_for_a_recogniser_that_refuses_instead(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    """Tesseract stops at a language it lacks, loudly; there is nothing to add."""
+    directory, fake, _boxes = pages
+    config = ExtractConfig(ocr=OcrConfig(languages=("sv",)))
+
+    _plan, report = _run(directory, fake, config=config)
+
+    assert report.unread_languages == ()

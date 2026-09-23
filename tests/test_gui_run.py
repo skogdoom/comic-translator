@@ -29,6 +29,7 @@ from comictrans.gui.run_report import (  # noqa: E402
     CONDENSED,
     COULD_NOT_READ,
     DID_NOT_FIT,
+    LANGUAGE_NOT_READ,
     NO_REGIONS,
     NO_TRANSLATION,
     NOT_AN_IMAGE,
@@ -179,14 +180,33 @@ def test_an_extract_lists_what_the_plan_cannot_tell_you_worst_first() -> None:
         failures=[(Path("/tmp/pages/page-002.png"), "cannot read image: truncated")],
         empty_pages=[Path("/tmp/pages/page-004.png")],
         skipped_inputs=[(Path("/tmp/pages/notes.txt"), "unsupported extension .txt")],
+        unread_languages=("sv",),
         low_confidence=2,
         approximate=1,
     )
     rows = extract_rows(report)
 
-    assert [row.problem for row in rows] == [COULD_NOT_READ, NO_REGIONS, NOT_AN_IMAGE]
-    assert [row.image for row in rows] == ["page-002.png", "page-004.png", "notes.txt"]
+    assert [row.problem for row in rows] == [
+        LANGUAGE_NOT_READ,
+        COULD_NOT_READ,
+        NO_REGIONS,
+        NOT_AN_IMAGE,
+    ]
+    assert [row.image for row in rows] == ["", "page-002.png", "page-004.png", "notes.txt"]
     assert not any(row.region_id for row in rows), "an extract reports pages, not regions"
+
+
+def test_a_language_the_recogniser_read_without_is_said_and_goes_nowhere() -> None:
+    """True of every page, so first, and about no page, so not selectable.
+
+    Vision reads on with its own defaults when it lacks a language, and says
+    nothing; this row is the only place the run does.
+    """
+    (row,) = extract_rows(_extract_report(unread_languages=("sv",)))
+
+    assert row.problem == LANGUAGE_NOT_READ
+    assert "sv" in row.detail and "Apple Vision" in row.detail
+    assert not row.selectable
 
 
 def test_regions_that_merely_need_checking_are_left_to_the_plan() -> None:

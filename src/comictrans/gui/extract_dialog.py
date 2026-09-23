@@ -204,7 +204,17 @@ class ExtractDialog(QDialog):
         self._source_language.set_value(preferences.source_language)
         self._target_language = LanguageBox()
         self._target_language.set_value(preferences.target_language)
-        self._languages = OcrLanguagesField(preferences.ocr_languages, preferences.ocr_engine)
+        self._languages = OcrLanguagesField(
+            preferences.ocr_languages,
+            preferences.ocr_engine,
+            self._source_language.value() or DEFAULT_SOURCE_LANGUAGE,
+        )
+        # Left empty, the OCR languages are the source language, and say so.
+        self._source_language.currentTextChanged.connect(
+            lambda _text: self._languages.set_source(
+                self._source_language.value() or DEFAULT_SOURCE_LANGUAGE
+            )
+        )
 
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:

@@ -53,9 +53,16 @@ class OcrLanguagesField(QWidget):
     changed = Signal()
     """The list was edited, by typing or by the menu. Read :meth:`text`."""
 
-    def __init__(self, text: str = "", engine: str = "auto", parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        text: str = "",
+        engine: str = "auto",
+        source: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._engine = engine
+        self._source = source
         # Per recogniser, asked once: which one "auto" means here, and what
         # it has installed. Asking Tesseract runs it — 12ms warm, 650ms the
         # first time on a cold disk, measured — which is fine once and not
@@ -121,6 +128,11 @@ class OcrLanguagesField(QWidget):
         self._engine = engine
         self._read_back()
 
+    def set_source(self, source: str) -> None:
+        """The source language changed: what an empty field stands for."""
+        self._source = source
+        self._read_back()
+
     def _recogniser(self) -> str:
         if self._engine not in self._resolved:
             self._resolved[self._engine] = ocr.resolved_engine(self._engine)
@@ -182,14 +194,23 @@ class OcrLanguagesField(QWidget):
     def _read_back(self) -> None:
         """The codes as names, in order; what the recogniser lacks, said so.
 
+        An empty field reads back the source language it stands for, checked
+        the same way: Vision reads a language it lacks with its own defaults
+        and says nothing, so an empty field over a source language it lacks
+        is the one case nothing else would catch.
+
         Nothing is checked when there is no recogniser here to ask: saying
         every language is missing would be saying something about the
         languages that is only true of the machine.
         """
         recogniser = self._recogniser()
+        typed = self.languages()
+        tags = typed or ((self._source,) if self._source.strip() else ())
         names = []
-        for tag in self.languages():
+        for tag in tags:
             name = language_name(tag)
+            if not typed:
+                name = self.tr("{0}, the source language").format(name)
             if recogniser and not self._has(tag):
                 name = self.tr("{0}, which {1} does not have").format(
                     name, _ENGINE_NAMES[recogniser]

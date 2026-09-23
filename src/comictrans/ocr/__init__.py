@@ -23,6 +23,7 @@ __all__ = [
     "installed_languages",
     "reads",
     "resolved_engine",
+    "unread_languages",
 ]
 
 
@@ -102,17 +103,11 @@ def reads(engine: str, tag: str, installed: tuple[str, ...]) -> bool:
     """Whether ``tag`` is one of ``installed``, as ``engine`` would take it.
 
     For Tesseract, whether it comes to the same data file: ``it``, ``it-IT``
-    and ``ita`` all do. For Vision, the tag itself, or — for a bare language
-    with no region or script — any tag of that language, so ``it`` counts as
-    read by a Vision listing ``it-IT`` while ``pt-PT`` does not by one
-    listing ``pt-BR``.
-
-    That second rule is an assumption, not a measurement. Vision is handed a
-    bare ``it`` by default, and has been since 1.0, but whether it matches
-    that to ``it-IT`` or quietly reads with its own defaults instead is
-    something only a Mac can show, and none was to hand.
+    and ``ita`` all do. For Vision, whether it has a tag Vision would be
+    handed for it — see :func:`vision.vision_tag` — so ``it`` is read by a
+    Vision listing ``it-IT``, and ``pt-PT`` is not by one listing ``pt-BR``.
     """
-    from . import tesseract
+    from . import tesseract, vision
 
     wanted = tag.strip()
     if not wanted:
@@ -120,11 +115,18 @@ def reads(engine: str, tag: str, installed: tuple[str, ...]) -> bool:
     if resolved_engine(engine) == "tesseract":
         name = tesseract.tesseract_name(wanted)
         return any(tesseract.tesseract_name(have) == name for have in installed)
-    # A bare language matches the language part of any tag; a tag with a
-    # region or a script can only match itself, since no language part has
-    # a hyphen in it.
-    folded = wanted.casefold().replace("_", "-")
-    return any(
-        folded in (have_folded, have_folded.split("-")[0])
-        for have_folded in (have.casefold().replace("_", "-") for have in installed)
-    )
+    return vision.vision_tag(wanted, installed) is not None
+
+
+def unread_languages(recognizer_name: str, languages: tuple[str, ...]) -> tuple[str, ...]:
+    """Which of ``languages`` the recogniser that ran could not read.
+
+    Vision's only: Tesseract refuses a language it has no file for, loudly,
+    and the run stops there, while Vision reads on with its own defaults and
+    says nothing — see :func:`vision.vision_languages`.
+    """
+    from . import vision
+
+    if recognizer_name != vision.VisionRecognizer.name:
+        return ()
+    return vision.vision_languages(languages, vision.supported_languages())[1]

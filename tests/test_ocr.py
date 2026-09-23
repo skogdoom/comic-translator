@@ -278,3 +278,69 @@ def test_artefacts_do_not_read_as_text(text: str) -> None:
     from comictrans.ocr.grouping import looks_like_text
 
     assert not looks_like_text(text)
+
+
+VISION = ("en-US", "it-IT", "pt-BR", "zh-Hans", "zh-Hant")
+
+
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [
+        ("it", "it-IT"),  # a bare language: the tag Vision lists for it
+        ("it-IT", "it-IT"),
+        ("IT_it", "it-IT"),  # any case, either separator, in Vision's spelling
+        ("zh", "zh-Hans"),  # the first Vision lists
+        ("zh-Hant", "zh-Hant"),
+        ("pt-PT", None),  # a region is itself, not another region
+        ("sv", None),
+        ("", None),
+    ],
+)
+def test_a_tag_is_handed_to_vision_in_its_own_spelling(tag: str, expected: str | None) -> None:
+    from comictrans.ocr.vision import vision_tag
+
+    assert vision_tag(tag, VISION) == expected
+
+
+def test_what_vision_cannot_read_is_held_back_and_said() -> None:
+    from comictrans.ocr.vision import vision_languages
+
+    assert vision_languages(("it", "sv", "it-IT", "en", "xx"), VISION) == (
+        ("it-IT", "en-US"),
+        ("sv", "xx"),
+    )
+
+
+def test_with_nothing_to_check_against_the_tags_go_through_as_they_came() -> None:
+    """Vision's list could not be had: better its old behaviour than none."""
+    from comictrans.ocr.vision import vision_languages
+
+    assert vision_languages(("it", "sv"), ()) == (("it", "sv"), ())
+
+
+def test_the_vision_adapter_asks_once_and_says_each_language_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from comictrans.ocr import vision
+
+    asked: list[int] = []
+    monkeypatch.setattr(vision, "supported_languages", lambda: (asked.append(1), VISION)[1])
+    recognizer = VisionRecognizer()
+
+    with caplog.at_level("WARNING", logger="comictrans.ocr.vision"):
+        for _page in range(3):
+            handed = recognizer.languages_for(("it", "sv"))
+
+    assert handed == ("it-IT",)
+    assert asked == [1], "one run, one question"
+    said = [r.getMessage() for r in caplog.records if "cannot read" in r.getMessage()]
+    assert said == ["Apple Vision cannot read sv; it reads with its own defaults instead"]
+
+
+def test_only_vision_is_said_to_read_without_a_language(monkeypatch: pytest.MonkeyPatch) -> None:
+    from comictrans.ocr import unread_languages, vision
+
+    monkeypatch.setattr(vision, "supported_languages", lambda: VISION)
+
+    assert unread_languages("apple-vision", ("it", "sv")) == ("sv",)
+    assert unread_languages("tesseract", ("it", "sv")) == ()
