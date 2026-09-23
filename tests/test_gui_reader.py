@@ -125,6 +125,26 @@ def test_two_pages_opens_with_the_cover_and_shows_a_spread_alone(
         assert seen == [(0,), (1, 2), (3,), (4, 5), (4, 5)]
 
 
+def test_a_spread_found_while_reading_two_up_moves_the_pairs_but_not_the_page(
+    qapp: object, tmp_path: Path
+) -> None:
+    """Two pages chosen before anything is measured, then the sizes arrive.
+
+    Chosen before the event loop has run at all, so no size has reached the
+    window yet — they come through it — and the pairing is a guess that the
+    spread on page 3 has to correct.
+    """
+    with _reader(_chapter(tmp_path, [PAGE, PAGE, WIDE, PAGE, PAGE, PAGE])) as window:
+        window._two_pages_action.trigger()
+        _press(window, Qt.Key.Key_Right)
+        assert window.spread == (1, 2), "every page taken for one page, so far"
+
+        _until(lambda: _all_measured(window))
+
+        assert window._groups == ((0,), (1,), (2,), (3, 4), (5,))
+        assert window.spread == (1,), "still reading page 2"
+
+
 def test_switching_layout_keeps_the_page_being_read(qapp: object, tmp_path: Path) -> None:
     with _reader(_chapter(tmp_path, [PAGE] * 6)) as window:
         for _ in range(3):
@@ -158,6 +178,24 @@ def test_right_to_left_turns_the_arrows_and_the_pages_round(qapp: object, tmp_pa
 
         _press(window, Qt.Key.Key_Right)
         assert window.spread == (0,)
+
+
+def test_a_page_wider_than_the_window_is_begun_on_the_side_reading_starts(
+    qapp: object, tmp_path: Path
+) -> None:
+    with _reader(_chapter(tmp_path, [(900, 1200)] * 3)) as window:
+        across = window._view.horizontalScrollBar()
+        window._actual_size_action.trigger()
+
+        _press(window, Qt.Key.Key_Right)
+        QApplication.processEvents()
+        assert across.maximum() > 0, "the page has to be wider than the window"
+        assert across.value() == across.minimum()
+
+        window._right_to_left_action.setChecked(True)
+        _press(window, Qt.Key.Key_Left)
+        QApplication.processEvents()
+        assert across.value() == across.maximum(), "right to left starts on the right"
 
 
 def test_the_count_says_which_pages_are_on_screen(qapp: object, tmp_path: Path) -> None:
@@ -275,7 +313,9 @@ def test_the_page_fits_the_window_until_a_zoom_is_chosen(qapp: object, tmp_path:
         assert window._zoom_button.text() == "Fit Page"
 
         window._fit_width_action.trigger()
+        QApplication.processEvents()  # the scroll bar is laid out on the way
         assert round(view.sceneRect().width() * view.scale_factor) == view.viewport().width()
+        assert view.horizontalScrollBar().maximum() == 0, "as wide as the window, not wider"
         assert view.mapFromScene(0, 0).x() == 0, "flush with the edge, not off by a bar"
 
         window._actual_size_action.trigger()
