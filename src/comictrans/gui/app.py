@@ -253,7 +253,7 @@ def read(target: Path) -> int:
     from .reader_window import ReaderWindow
 
     with open_pages(target, preferences.unrar_tool) as pages:
-        window = ReaderWindow(pages, target.name, language=language)
+        window = ReaderWindow(pages, target.name)
         window.show()
         log.debug("reader open in %s on %s", language, target)
         try:

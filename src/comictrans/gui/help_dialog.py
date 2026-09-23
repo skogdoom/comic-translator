@@ -118,10 +118,6 @@ class HelpDialog(QDialog):
         layout.addWidget(buttons)
         self.resize(*SIZE)
 
-    def show_section(self, anchor: str) -> None:
-        """Scroll to a section, for a window whose help is one part of the guide."""
-        self._browser.scrollToAnchor(anchor)
-
     def _on_anchor(self, url: QUrl) -> None:
         """Follow a link into this document, and nothing else.
 

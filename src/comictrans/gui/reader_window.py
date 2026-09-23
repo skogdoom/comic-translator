@@ -51,6 +51,7 @@ from PySide6.QtGui import (
     QPainter,
     QPixmap,
     QResizeEvent,
+    QShortcut,
     QTransform,
     QWheelEvent,
 )
@@ -73,14 +74,10 @@ from PySide6.QtWidgets import (
 
 from ..errors import ComictransError, InputError
 from ..reading import Pages, Size, group_of, pages_to_keep, spreads
-from . import about, help_dialog
+from . import about
 from .canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_STEP
-from .help_dialog import LANGUAGE_DEFAULT, HelpDialog
 
 log = logging.getLogger(__name__)
-
-GUIDE_SECTION = "reading"
-"""The guide's anchor for this window, which Help opens it at."""
 
 PLACEHOLDER_SIZE: Size = (650, 1000)
 """The shape of a page not yet read, when no page has been: a printed one's."""
@@ -452,20 +449,17 @@ class PageBar(QWidget):
 
 
 class ReaderWindow(QMainWindow):
-    """One chapter, a spread at a time."""
+    """One chapter, a spread at a time.
 
-    def __init__(
-        self,
-        pages: Pages,
-        title: str,
-        parent: QWidget | None = None,
-        *,
-        language: str = LANGUAGE_DEFAULT,
-    ) -> None:
+    No menu bar and no Help: there is nothing here a menu would add. Every
+    command is on the toolbar or a key, and the keys work without a menu to
+    hold them — the zoom commands live in the zoom button's own menu, which
+    is enough for Qt to answer their shortcuts.
+    """
+
+    def __init__(self, pages: Pages, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pages = pages
-        self._language = language
-        self._help: HelpDialog | None = None
         self._sizes: list[Size | None] = [None] * len(pages)
         self._images: dict[int, QImage] = {}
         self._errors: dict[int, str] = {}
@@ -488,7 +482,6 @@ class ReaderWindow(QMainWindow):
         self._view.viewport().installEventFilter(self)
 
         self._build_actions()
-        self._build_menus()
         self._build_toolbar()
 
         self._loader = PageLoader(pages, self)
@@ -543,36 +536,7 @@ class ReaderWindow(QMainWindow):
         self._right_to_left_action.setCheckable(True)
         self._right_to_left_action.toggled.connect(self._set_right_to_left)
 
-        self._close_action = QAction(self.tr("&Close"), self)
-        self._close_action.setShortcut(QKeySequence.StandardKey.Close)
-        self._close_action.triggered.connect(self.close)
-
-        self._help_action = QAction(help_dialog.TITLE, self)
-        self._help_action.setShortcut(QKeySequence.StandardKey.HelpContents)
-        self._help_action.triggered.connect(self._on_help)
-
-    def _build_menus(self) -> None:
-        bar = self.menuBar()
-        file_menu = bar.addMenu(self.tr("&File"))
-        file_menu.addAction(self._close_action)
-
-        view_menu = bar.addMenu(self.tr("&View"))
-        for action in (
-            self._fit_page_action,
-            self._fit_width_action,
-            self._actual_size_action,
-            self._zoom_in_action,
-            self._zoom_out_action,
-        ):
-            view_menu.addAction(action)
-        view_menu.addSeparator()
-        view_menu.addAction(self._one_page_action)
-        view_menu.addAction(self._two_pages_action)
-        view_menu.addSeparator()
-        view_menu.addAction(self._right_to_left_action)
-
-        help_menu = bar.addMenu(self.tr("&Help"))
-        help_menu.addAction(self._help_action)
+        QShortcut(QKeySequence.StandardKey.Close, self, self.close)
 
     def _build_toolbar(self) -> None:
         """Three controls, in words.
@@ -739,15 +703,7 @@ class ReaderWindow(QMainWindow):
         height = self._bar.sizeHint().height()
         self._bar.setGeometry(area.left(), area.bottom() + 1 - height, area.width(), height)
 
-    # -- help and closing ---------------------------------------------------
-
-    def _on_help(self) -> None:
-        if self._help is None:
-            self._help = HelpDialog(self, self._language)
-        self._help.show_section(GUIDE_SECTION)
-        self._help.show()
-        self._help.raise_()
-        self._help.activateWindow()
+    # -- closing ----------------------------------------------------------
 
     def shutdown(self) -> None:
         """Stop reading the chapter. Before it is closed, and safe twice."""
@@ -761,7 +717,6 @@ class ReaderWindow(QMainWindow):
 
 
 __all__ = [
-    "GUIDE_SECTION",
     "PageBar",
     "PageLoader",
     "ReaderView",

@@ -386,14 +386,35 @@ def test_read_refuses_what_extract_refuses(
     assert "input path does not exist" in capsys.readouterr().err
 
 
-def test_help_opens_the_guide_where_this_window_is_described(qapp: object, tmp_path: Path) -> None:
-    from comictrans.gui.help_dialog import document
-    from comictrans.gui.reader_window import GUIDE_SECTION
+def test_the_window_has_no_menu_bar_and_its_keys_work_without_one(
+    qapp: object, tmp_path: Path
+) -> None:
+    """Every command is on the toolbar or a key, and each key still works.
 
-    assert f'<a name="{GUIDE_SECTION}"></a>' in document()
+    Pressed as keys, not triggered: a shortcut with nowhere to live does
+    nothing, and ``trigger()`` would pass either way. The zoom commands live
+    only in the zoom button's menu, which is enough — measured, Qt answers a
+    shortcut in a menu attached to a visible button.
+    """
+    from PySide6.QtTest import QTest
 
-    with _reader(_chapter(tmp_path, [PAGE])) as window:
-        window._help_action.trigger()
+    with _reader(_chapter(tmp_path, [PAGE] * 3)) as window:
+        assert window.menuWidget() is None
+        QTest.qWaitForWindowExposed(window)
+        window.activateWindow()
+        view = window._view
+        control = Qt.KeyboardModifier.ControlModifier
 
-        assert window._help is not None and window._help.isVisible()
-        window._help.hide()
+        QTest.keyClick(view, Qt.Key.Key_2)
+        assert window._two_up
+        QTest.keyClick(view, Qt.Key.Key_1)
+        assert not window._two_up
+
+        QTest.keyClick(view, Qt.Key.Key_1, control)
+        QTest.keyClick(view, Qt.Key.Key_Plus, control)
+        assert view.scale_factor == pytest.approx(1.25)
+        QTest.keyClick(view, Qt.Key.Key_0, control)
+        assert view.zoom_mode is Zoom.FIT_PAGE
+
+        QTest.keyClick(view, Qt.Key.Key_W, control)
+        assert not window.isVisible()
