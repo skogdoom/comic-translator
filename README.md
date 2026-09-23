@@ -967,9 +967,10 @@ is written beside it. Needs PySide6, like `review`.
 - **Right to Left**, for a chapter that reads that way: facing pages swap
   sides, and the left arrow goes forward. A chapter file does not say which way
   it reads, so this is a choice rather than a guess.
-- The zoom control fits the page, or its width, or shows it at the size it was
+- The View menu fits the page, or its width, or shows it at the size it was
   scanned, and zooms in and out from there; Ctrl (Command on a Mac) and the
-  wheel zoom as they do in `review`.
+  wheel zoom as they do in `review`. There is no toolbar: the pages have the
+  window, and every command is in the View menu and on a key.
 - A slider and the page count appear along the foot of the window while the
   pointer is over it.
 

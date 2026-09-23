@@ -1350,89 +1350,84 @@
 <context>
     <name>ReaderWindow</name>
     <message>
-        <location filename="../../reader_window.py" line="465"/>
+        <location filename="../../reader_window.py" line="462"/>
         <source>{0} — {1}</source>
         <translation>{0} — {1}</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="493"/>
+        <location filename="../../reader_window.py" line="489"/>
         <source>Fit &amp;Page</source>
         <translation>Anpassa &amp;sidan</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="497"/>
+        <location filename="../../reader_window.py" line="493"/>
         <source>Fit &amp;Width</source>
         <translation>Anpassa &amp;bredden</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="500"/>
+        <location filename="../../reader_window.py" line="496"/>
         <source>&amp;Actual Size</source>
         <translation>&amp;Verklig storlek</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="504"/>
+        <location filename="../../reader_window.py" line="500"/>
         <source>Zoom &amp;In</source>
         <translation>Zooma &amp;in</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="508"/>
+        <location filename="../../reader_window.py" line="504"/>
         <source>Zoom &amp;Out</source>
         <translation>Zooma &amp;ut</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="514"/>
+        <location filename="../../reader_window.py" line="510"/>
         <source>&amp;One Page</source>
         <translation>&amp;En sida</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="520"/>
+        <location filename="../../reader_window.py" line="516"/>
         <source>&amp;Two Pages</source>
         <translation>&amp;Två sidor</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="529"/>
+        <location filename="../../reader_window.py" line="525"/>
         <source>&amp;Right to Left</source>
         <translation>&amp;Höger till vänster</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="542"/>
-        <source>Reading</source>
-        <translation>Läsning</translation>
+        <location filename="../../reader_window.py" line="529"/>
+        <source>&amp;Close</source>
+        <translation>&amp;Stäng</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="594"/>
+        <location filename="../../reader_window.py" line="537"/>
+        <source>&amp;File</source>
+        <translation>&amp;Arkiv</translation>
+    </message>
+    <message>
+        <location filename="../../reader_window.py" line="540"/>
+        <source>&amp;View</source>
+        <translation>&amp;Visa</translation>
+    </message>
+    <message>
+        <location filename="../../reader_window.py" line="581"/>
         <source>Page {0} could not be read: {1}</source>
         <translation>Sidan {0} kunde inte läsas: {1}</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="595"/>
+        <location filename="../../reader_window.py" line="582"/>
         <source>Reading page {0}…</source>
         <translation>Läser sidan {0}…</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="603"/>
+        <location filename="../../reader_window.py" line="590"/>
         <source>page {0} of {1}</source>
         <translation>sida {0} av {1}</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="606"/>
+        <location filename="../../reader_window.py" line="593"/>
         <source>pages {0}–{1} of {2}</source>
         <translation>sidorna {0}–{1} av {2}</translation>
-    </message>
-    <message>
-        <location filename="../../reader_window.py" line="614"/>
-        <source>Fit Page</source>
-        <translation>Anpassa sidan</translation>
-    </message>
-    <message>
-        <location filename="../../reader_window.py" line="616"/>
-        <source>Fit Width</source>
-        <translation>Anpassa bredden</translation>
-    </message>
-    <message>
-        <location filename="../../reader_window.py" line="618"/>
-        <source>{0}%</source>
-        <translation>{0} %</translation>
     </message>
 </context>
 <context>

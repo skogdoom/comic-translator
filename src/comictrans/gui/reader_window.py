@@ -51,7 +51,6 @@ from PySide6.QtGui import (
     QPainter,
     QPixmap,
     QResizeEvent,
-    QShortcut,
     QTransform,
     QWheelEvent,
 )
@@ -65,10 +64,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMenu,
     QSlider,
-    QToolBar,
-    QToolButton,
     QWidget,
 )
 
@@ -251,8 +247,6 @@ class ReaderView(QGraphicsView):
     ended = Signal(bool)
     """``True`` for the last spread, ``False`` for the first."""
 
-    zoom_changed = Signal()
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setScene(QGraphicsScene(self))
@@ -329,7 +323,6 @@ class ReaderView(QGraphicsView):
         self._zoom = Zoom.CHOSEN
         clamped = max(ZOOM_MIN, min(ZOOM_MAX, factor))
         self.setTransform(QTransform.fromScale(clamped, clamped))
-        self.zoom_changed.emit()
 
     def zoom_in(self) -> None:
         self.set_scale(self.scale_factor * ZOOM_STEP)
@@ -362,7 +355,6 @@ class ReaderView(QGraphicsView):
             # beside a bar that is always there.
             scale = self.maximumViewportSize().width() / rect.width()
             self.setTransform(QTransform.fromScale(scale, scale))
-        self.zoom_changed.emit()
 
     def _to_start(self) -> None:
         """Where a spread is begun: the top, on the side reading starts from."""
@@ -451,10 +443,9 @@ class PageBar(QWidget):
 class ReaderWindow(QMainWindow):
     """One chapter, a spread at a time.
 
-    No menu bar and no Help: there is nothing here a menu would add. Every
-    command is on the toolbar or a key, and the keys work without a menu to
-    hold them — the zoom commands live in the zoom button's own menu, which
-    is enough for Qt to answer their shortcuts.
+    No toolbar: the pages have the whole window, and every command is in the
+    View menu and on a key. No Help menu either — there is nothing here the
+    menus and the keys do not already say.
     """
 
     def __init__(self, pages: Pages, title: str, parent: QWidget | None = None) -> None:
@@ -472,7 +463,6 @@ class ReaderWindow(QMainWindow):
         self._view = ReaderView()
         self._view.turned.connect(self._turn)
         self._view.ended.connect(self._to_end)
-        self._view.zoom_changed.connect(self._show_zoom)
         self.setCentralWidget(self._view)
 
         self._bar = PageBar(self._view)
@@ -482,7 +472,7 @@ class ReaderWindow(QMainWindow):
         self._view.viewport().installEventFilter(self)
 
         self._build_actions()
-        self._build_toolbar()
+        self._build_menus()
 
         self._loader = PageLoader(pages, self)
         self._loader.decoded.connect(self._on_decoded)
@@ -536,25 +526,18 @@ class ReaderWindow(QMainWindow):
         self._right_to_left_action.setCheckable(True)
         self._right_to_left_action.toggled.connect(self._set_right_to_left)
 
-        QShortcut(QKeySequence.StandardKey.Close, self, self.close)
+        self._close_action = QAction(self.tr("&Close"), self)
+        # Every binding the platform has, not the first: on Linux the first
+        # is Ctrl+F4 and Ctrl+W is the second, measured. A Mac has only one.
+        self._close_action.setShortcuts(QKeySequence.StandardKey.Close)
+        self._close_action.triggered.connect(self.close)
 
-    def _build_toolbar(self) -> None:
-        """Three controls, in words.
+    def _build_menus(self) -> None:
+        bar = self.menuBar()
+        file_menu = bar.addMenu(self.tr("&File"))
+        file_menu.addAction(self._close_action)
 
-        Words rather than the review window's icons: there are three of
-        them, which is room enough, and none of them has a picture in that
-        set to borrow.
-        """
-        toolbar = QToolBar(self.tr("Reading"), self)
-        toolbar.setObjectName("reader_toolbar")
-        toolbar.setMovable(False)
-        toolbar.setFloatable(False)
-        self.setUnifiedTitleAndToolBarOnMac(True)
-        self.addToolBar(toolbar)
-
-        self._zoom_button = QToolButton()
-        self._zoom_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        zoom_menu = QMenu(self._zoom_button)
+        view_menu = bar.addMenu(self.tr("&View"))
         for action in (
             self._fit_page_action,
             self._fit_width_action,
@@ -562,14 +545,12 @@ class ReaderWindow(QMainWindow):
             self._zoom_in_action,
             self._zoom_out_action,
         ):
-            zoom_menu.addAction(action)
-        self._zoom_button.setMenu(zoom_menu)
-        toolbar.addWidget(self._zoom_button)
-        toolbar.addSeparator()
-        toolbar.addAction(self._one_page_action)
-        toolbar.addAction(self._two_pages_action)
-        toolbar.addSeparator()
-        toolbar.addAction(self._right_to_left_action)
+            view_menu.addAction(action)
+        view_menu.addSeparator()
+        view_menu.addAction(self._one_page_action)
+        view_menu.addAction(self._two_pages_action)
+        view_menu.addSeparator()
+        view_menu.addAction(self._right_to_left_action)
 
     # -- what is on screen --------------------------------------------------
 
@@ -613,15 +594,6 @@ class ReaderWindow(QMainWindow):
                 first + 1, last + 1, total
             )
         self._bar.count.setText(text)
-
-    def _show_zoom(self) -> None:
-        mode = self._view.zoom_mode
-        if mode is Zoom.FIT_PAGE:
-            self._zoom_button.setText(self.tr("Fit Page"))
-        elif mode is Zoom.FIT_WIDTH:
-            self._zoom_button.setText(self.tr("Fit Width"))
-        else:
-            self._zoom_button.setText(self.tr("{0}%").format(round(self._view.scale_factor * 100)))
 
     def _regroup(self) -> None:
         """Group the pages again, keeping the page being read on screen."""

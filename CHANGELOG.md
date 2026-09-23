@@ -23,18 +23,18 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
-- **A chapter can be read without translating it.** `comictrans read` opens
-  a folder of pages, one image, or a CBZ, CBR or PDF in a window of its own:
-  the arrow keys page through it, one page at a time or two, left to right or
-  right to left, with a zoom control, and a slider and page count along the
-  foot of the window while the pointer is there. Two at a time opens like a
-  printed comic, the cover alone and then facing pairs, and a page wider than
-  tall — a spread scanned as one — is shown alone. A chapter file is read
-  where it is and never unpacked, so opening one leaves nothing beside it; it
-  goes through the same checks `extract` makes, because it is handed the
-  entries `unpack` writes rather than opening the archive another way. Pages
-  are decoded ahead on a thread, and six at most are held however long the
-  chapter is.
+- **A chapter can be read without translating it.** `comictrans read` opens a
+  folder of pages, one image, or a CBZ, CBR or PDF in a window of its own: the
+  arrow keys page through it, one page at a time or two, left to right or
+  right to left, with zoom in the View menu and no toolbar, and a slider and
+  page count along the foot of the window while the pointer is there. Two at a
+  time opens like a printed comic, the cover alone and then facing pairs, and
+  a page wider than tall — a spread scanned as one — is shown alone. A chapter
+  file is read where it is and never unpacked, so opening one leaves nothing
+  beside it; it goes through the same checks `extract` makes, because it is
+  handed the entries `unpack` writes rather than opening the archive another
+  way. Pages are decoded ahead on a thread, and six at most are held however
+  long the chapter is.
 - **OCR languages offer what the recogniser has.** The field stays a typed
   list of codes, since it can hold several and their order matters, but a
   **+** beside it now lists, by name, what the recogniser chosen beside it

@@ -310,7 +310,6 @@ def test_the_page_fits_the_window_until_a_zoom_is_chosen(qapp: object, tmp_path:
         view = window._view
         _until(lambda: _on_screen(window))
         assert view.zoom_mode is Zoom.FIT_PAGE
-        assert window._zoom_button.text() == "Fit Page"
 
         window._fit_width_action.trigger()
         QApplication.processEvents()  # the scroll bar is laid out on the way
@@ -321,7 +320,6 @@ def test_the_page_fits_the_window_until_a_zoom_is_chosen(qapp: object, tmp_path:
         window._actual_size_action.trigger()
         window._zoom_in_action.trigger()
         assert view.zoom_mode is Zoom.CHOSEN
-        assert window._zoom_button.text() == "125%"
 
         window.resize(700, 600)
         QApplication.processEvents()
@@ -386,20 +384,32 @@ def test_read_refuses_what_extract_refuses(
     assert "input path does not exist" in capsys.readouterr().err
 
 
-def test_the_window_has_no_menu_bar_and_its_keys_work_without_one(
+def test_the_pages_have_the_window_to_themselves_and_the_view_menu_has_the_rest(
     qapp: object, tmp_path: Path
 ) -> None:
-    """Every command is on the toolbar or a key, and each key still works.
+    """No toolbar and no Help: the View menu and the keys hold everything.
 
-    Pressed as keys, not triggered: a shortcut with nowhere to live does
-    nothing, and ``trigger()`` would pass either way. The zoom commands live
-    only in the zoom button's menu, which is enough — measured, Qt answers a
-    shortcut in a menu attached to a visible button.
+    The keys are pressed rather than the actions triggered, since
+    ``trigger()`` would pass whether a shortcut could be reached or not.
     """
     from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QToolBar
 
     with _reader(_chapter(tmp_path, [PAGE] * 3)) as window:
-        assert window.menuWidget() is None
+        assert window.findChildren(QToolBar) == []
+        menus = {action.text(): action.menu() for action in window.menuBar().actions()}
+        assert list(menus) == ["&File", "&View"]
+        assert [action.text() for action in menus["&View"].actions() if action.text()] == [
+            "Fit &Page",
+            "Fit &Width",
+            "&Actual Size",
+            "Zoom &In",
+            "Zoom &Out",
+            "&One Page",
+            "&Two Pages",
+            "&Right to Left",
+        ]
+
         QTest.qWaitForWindowExposed(window)
         window.activateWindow()
         view = window._view
