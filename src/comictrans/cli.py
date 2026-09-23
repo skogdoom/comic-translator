@@ -430,6 +430,8 @@ def _report_summary(
         print(f"  NO REGIONS:        {path.name}")
     for path, reason in report.failures:
         print(f"  FAILED:            {path.name}: {reason}")
+    if report.unread_languages:
+        print(f"  NOT READ BY OCR:   {', '.join(report.unread_languages)}")
     if merged is not None:
         print(f"  carried over:      {len(merged.carried)}")
         print(f"  newly detected:    {len(merged.added)}")
@@ -440,6 +442,12 @@ def _report_summary(
             f"\n{len(merged.dropped)} region(s) from the previous plan had "
             "translations or notes with nowhere to go. Recover them from your "
             "backup or version control before re-running."
+        )
+    if report.unread_languages:
+        print(
+            f"\nApple Vision cannot read {', '.join(report.unread_languages)}. It "
+            "does not refuse a language it lacks; it reads with its own defaults "
+            "instead, so the text above was recognised without it."
         )
     if report.artefacts:
         print(

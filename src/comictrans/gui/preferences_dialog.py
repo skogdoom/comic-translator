@@ -42,11 +42,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..config import DEFAULT_SOURCE_LANGUAGE
 from . import erase_choices, translations
 from .extract_dialog import ENGINE_CHOICES
 from .font_box import FontBox
 from .language_box import LanguageBox
 from .note import Note
+from .ocr_languages import OcrLanguagesField
 from .preferences import ON, Preferences
 from .render_dialog import FORMAT_CHOICES
 
@@ -206,13 +208,25 @@ class PreferencesDialog(QDialog):
         self._source_language.set_value(preferences.source_language)
         self._target_language = LanguageBox()
         self._target_language.set_value(preferences.target_language)
-        self._ocr_languages = QLineEdit(preferences.ocr_languages)
-        self._ocr_languages.setPlaceholderText(self.tr("same as the source language"))
-        _wide_enough_for_its_placeholder(self._ocr_languages)
+        self._ocr_languages = OcrLanguagesField(
+            preferences.ocr_languages,
+            preferences.ocr_engine,
+            self._source_language.value() or DEFAULT_SOURCE_LANGUAGE,
+        )
+        # Left empty, the OCR languages are the source language, and say so.
+        self._source_language.currentTextChanged.connect(
+            lambda _text: self._ocr_languages.set_source(
+                self._source_language.value() or DEFAULT_SOURCE_LANGUAGE
+            )
+        )
+        _wide_enough_for_its_placeholder(self._ocr_languages.line_edit())
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:
             self._engine.addItem(label, value)
         self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
+        self._engine.currentIndexChanged.connect(
+            lambda _index: self._ocr_languages.set_engine(str(self._engine.currentData()))
+        )
 
         # allow_default, because "no font recorded here" is a real answer and
         # the one this shipped with. An unresolvable name is marked rather
@@ -356,7 +370,7 @@ class PreferencesDialog(QDialog):
 
         self._source_language.currentTextChanged.connect(self._commit)
         self._target_language.currentTextChanged.connect(self._commit)
-        self._ocr_languages.textChanged.connect(self._commit)
+        self._ocr_languages.changed.connect(self._commit)
         self._engine.currentIndexChanged.connect(self._commit)
         self._font.chosen.connect(self._commit)
         self._output.textChanged.connect(self._commit)
@@ -490,8 +504,10 @@ class PreferencesDialog(QDialog):
                 blockers.enter_context(QSignalBlocker(widget))
             self._source_language.set_value(preferences.source_language)
             self._target_language.set_value(preferences.target_language)
-            self._ocr_languages.setText(preferences.ocr_languages)
+            self._ocr_languages.set_text(preferences.ocr_languages)
             self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
+            self._ocr_languages.set_engine(preferences.ocr_engine)
+            self._ocr_languages.set_source(preferences.source_language or DEFAULT_SOURCE_LANGUAGE)
             self._font.set_value(preferences.font or None)
             self._unrar_tool.setText(preferences.unrar_tool)
             self._rar_tool.setText(preferences.rar_tool)

@@ -34,7 +34,7 @@ from .model import (
     TextCase,
     polygon_bounds,
 )
-from .ocr import TextRecognizer
+from .ocr import TextRecognizer, unread_languages
 from .ocr.grouping import (
     lettering_matches_page,
     looks_like_text,
@@ -66,6 +66,12 @@ class ExtractReport:
     failures: list[tuple[Path, str]] = field(default_factory=list)
     cancelled: bool = False
     """Whether the run was stopped part-way rather than reaching the last page."""
+    unread_languages: tuple[str, ...] = ()
+    """Languages asked for that the recogniser could not read, and read without.
+
+    Vision's, in practice: it ignores a language it lacks rather than
+    refusing it, so the run goes ahead and this is the only place that says
+    the pages were read with its defaults instead."""
 
     @property
     def ok(self) -> bool:
@@ -278,7 +284,10 @@ def extract(
     is still true.
     """
     images, skipped = collect_inputs(target)
-    report = ExtractReport(skipped_inputs=list(skipped))
+    report = ExtractReport(
+        skipped_inputs=list(skipped),
+        unread_languages=unread_languages(recognizer.name, config.ocr.languages),
+    )
     for path, reason in skipped:
         log.warning("skipping %s: %s", path.name, reason)
 

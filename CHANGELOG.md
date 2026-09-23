@@ -23,6 +23,36 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **OCR languages offer what the recogniser has.** The field stays a typed
+  list of codes, since it can hold several and their order matters, but a
+  **+** beside it now lists, by name, what the recogniser chosen beside it
+  has installed — Tesseract's data files, or the languages this Mac's Vision
+  reads — and adds the pick to the end. The list is read back underneath in
+  order, *Italian, then English*, and a language the recogniser lacks is said
+  to be missing rather than dropped. Left empty, the field reads back the
+  source language it stands for — *Swedish, the source language, which Apple
+  Vision does not have* — so the empty case is checked too. Change the
+  recogniser or the source language and it follows.
+- **Apple Vision is handed its own spelling of each language, and a language
+  it cannot read is said.** Vision does not refuse a language it lacks: it
+  reads the page with its own defaults and says nothing — seen on a Mac, where
+  a Swedish source language ran without a word. Nothing is left to it now.
+  Each code is matched against the list Vision gives and handed over in its
+  spelling, so `it` goes as `it-IT` and is certain to mean Italian — the
+  default source language went as a bare `it` until now, and whether Vision
+  took that for Italian or ignored it could not be seen from the results. A
+  language it does not list is held back, named in the log, and named in the
+  run's report: first in the window's panel, and after the counts on the
+  command line. The run still goes ahead, as it did.
+- **Tesseract understands the codes Vision does.** It was handed language
+  codes through a table of seven, so `sv` — the source language of a Swedish
+  chapter, and so the default OCR language for one — reached it as `sv`, and
+  Tesseract refused it: the file is `swe`. The table now covers all 101
+  languages Tesseract ships that have a two-letter code, generated from Qt's
+  own codes and checked against them rather than written from memory, plus
+  the files named otherwise: `zh-Hant` is `chi_tra`, `sr-Latn` is `srp_latn`,
+  `nb` is `nor`. Tesseract's own names — `jpn_vert` for vertical Japanese —
+  still go through as given, in the window and after `--lang` alike.
 - **A font field records a font, not what is being typed.** Reported: a plan
   could be saved naming "Sans". The font fields wrote through as they were
   typed in, like every other field, and with Qt's inline completion that was

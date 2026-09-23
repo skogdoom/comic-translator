@@ -58,6 +58,31 @@ def unavailable_reason() -> str:
     return _IMPORT_ERROR or ("available" if available() else "pyobjc Vision bindings missing")
 
 
+def supported_languages() -> tuple[str, ...]:
+    """The language tags this Mac's Vision reads, at the level extract asks for.
+
+    Empty off a Mac. On one, **never run here**: this was written from
+    Apple's documentation of ``supportedRecognitionLanguagesAndReturnError:``
+    and PyObjC's convention of handing an error out-parameter back as a
+    second result, and no machine this was built on could call it. The tags
+    come back region-qualified, ``it-IT`` rather than ``it``, and are kept
+    exactly as Vision gives them.
+    """
+    if not available():
+        return ()
+    try:  # pragma: no cover - platform dependent
+        with objc.autorelease_pool():
+            request = Vision.VNRecognizeTextRequest.alloc().init()
+            request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+            languages, error = request.supportedRecognitionLanguagesAndReturnError_(None)
+    except Exception:  # pragma: no cover - platform dependent
+        log.warning("Vision would not list its languages", exc_info=True)
+        return ()
+    if error is not None:  # pragma: no cover - platform dependent
+        log.warning("Vision would not list its languages: %s", error)
+    return tuple(str(language) for language in languages or ())  # pragma: no cover
+
+
 def _cg_image(page: PageImage) -> Any:
     """Wrap the decoded page as a CGImage.
 
@@ -95,10 +120,79 @@ def _to_pixel_box(bounding_box: Any, width: int, height: int) -> Box:
     )
 
 
+def _fold(tag: str) -> str:
+    return tag.strip().casefold().replace("_", "-")
+
+
+def vision_tag(tag: str, supported: tuple[str, ...]) -> str | None:
+    """Vision's own spelling of ``tag``, or ``None`` if it reads no such thing.
+
+    The tag itself, in any case and with either separator; or, for a bare
+    language with no region or script, the first tag Vision lists for that
+    language: ``it`` is ``it-IT``. A tag with a region or a script matches
+    only itself — ``pt-PT`` is not ``pt-BR``.
+    """
+    wanted = _fold(tag)
+    if not wanted:
+        return None
+    for have in supported:
+        if _fold(have) == wanted:
+            return have
+    # Only a bare language can match here: no language part has a hyphen in it.
+    return next((have for have in supported if _fold(have).split("-")[0] == wanted), None)
+
+
+def vision_languages(
+    languages: tuple[str, ...], supported: tuple[str, ...]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``(what to hand Vision, what it does not read)``, in order.
+
+    **Vision does not refuse a language it does not read; it ignores it** —
+    reported from a Mac, where a source language Vision lacks ran with no
+    error and read the page with Vision's own defaults. So nothing is left to
+    it: each tag is handed over in Vision's own spelling, which is what makes
+    a bare ``it`` certain to mean Italian whether or not Vision would have
+    matched it, and one it lacks is not handed over at all but said.
+
+    With nothing to check against — the list could not be had — the tags go
+    through as they came, and nothing is said to be unread.
+    """
+    if not supported:
+        return tuple(languages), ()
+    handed: list[str] = []
+    unread: list[str] = []
+    for tag in languages:
+        found = vision_tag(tag, supported)
+        if found is None:
+            unread.append(tag)
+        elif found not in handed:
+            handed.append(found)
+    return tuple(handed), tuple(unread)
+
+
 class VisionRecognizer:
     """``VNRecognizeTextRequest`` at accurate level, in the source language."""
 
     name = "apple-vision"
+
+    def __init__(self) -> None:
+        # Asked once per run, not once per page; see languages_for.
+        self._supported: tuple[str, ...] | None = None
+        self._said: set[str] = set()
+
+    def languages_for(self, languages: tuple[str, ...]) -> tuple[str, ...]:
+        """What to hand Vision for ``languages``, saying once what it cannot read."""
+        if self._supported is None:
+            self._supported = supported_languages()
+        handed, unread = vision_languages(languages, self._supported)
+        fresh = [tag for tag in unread if tag not in self._said]
+        if fresh:
+            self._said.update(fresh)
+            log.warning(
+                "Apple Vision cannot read %s; it reads with its own defaults instead",
+                ", ".join(fresh),
+            )
+        return handed
 
     def recognize(self, page: PageImage, config: OcrConfig) -> list[OcrLine]:
         if not available():
@@ -110,7 +204,7 @@ class VisionRecognizer:
     def _recognize(self, page: PageImage, config: OcrConfig) -> list[OcrLine]:
         request = Vision.VNRecognizeTextRequest.alloc().init()
         request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-        request.setRecognitionLanguages_(list(config.languages))
+        request.setRecognitionLanguages_(list(self.languages_for(config.languages)))
         request.setUsesLanguageCorrection_(True)
         request.setMinimumTextHeight_(config.minimum_text_height_ratio)
 

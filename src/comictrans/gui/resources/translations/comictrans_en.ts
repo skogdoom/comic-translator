@@ -4,7 +4,7 @@
 <context>
     <name>ExtractDialog</name>
     <message numerus="yes">
-        <location filename="../../extract_dialog.py" line="416"/>
+        <location filename="../../extract_dialog.py" line="424"/>
         <source>%n page(s)</source>
         <translation>
             <numerusform>%n page</numerusform>
@@ -15,7 +15,7 @@
 <context>
     <name>HeaderDialog</name>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="126"/>
+        <location filename="../../header_dialog.py" line="127"/>
         <source>used by all %n region(s)</source>
         <translation>
             <numerusform>used by the only region</numerusform>
@@ -23,7 +23,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="127"/>
+        <location filename="../../header_dialog.py" line="128"/>
         <source>used by {0} of %n region(s); the rest override it</source>
         <translation>
             <numerusform>used by {0} of the one region; the rest override it</numerusform>
@@ -207,7 +207,7 @@
 <context>
     <name>RunText</name>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="181"/>
+        <location filename="../../run_report.py" line="182"/>
         <source>%n page(s) packed into {0}</source>
         <translation>
             <numerusform>%n page packed into {0}</numerusform>
@@ -215,7 +215,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="191"/>
+        <location filename="../../run_report.py" line="192"/>
         <source>cancelled — %n page(s) written to {0}</source>
         <translation>
             <numerusform>cancelled — %n page written to {0}</numerusform>
@@ -223,7 +223,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="192"/>
+        <location filename="../../run_report.py" line="193"/>
         <source>%n page(s) written to {0}</source>
         <translation>
             <numerusform>%n page written to {0}</numerusform>
@@ -231,7 +231,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="238"/>
+        <location filename="../../run_report.py" line="252"/>
         <source>cancelled after %n page(s) — {0} was not written</source>
         <translation>
             <numerusform>cancelled after %n page — {0} was not written</numerusform>
@@ -239,7 +239,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="240"/>
+        <location filename="../../run_report.py" line="254"/>
         <source>%n page(s) read into {0}</source>
         <translation>
             <numerusform>%n page read into {0}</numerusform>
@@ -247,7 +247,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="246"/>
+        <location filename="../../run_report.py" line="260"/>
         <source>%n region(s) · {0} low confidence · {1} approximate · {2} left unseeded</source>
         <translation>
             <numerusform>%n region · {0} low confidence · {1} approximate · {2} left unseeded</numerusform>
