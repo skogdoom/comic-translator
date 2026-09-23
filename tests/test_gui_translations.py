@@ -167,42 +167,50 @@ def test_a_translated_window_says_a_translated_thing(qapp: Any) -> None:
 
 
 def test_the_translator_goes_in_before_the_widgets_are_imported() -> None:
-    """The ordering in ``gui.app.run`` that makes constants translatable.
+    """The ordering in ``gui.app`` that makes constants translatable.
 
     Nothing about the import would look wrong if it moved, and moving it
     costs every module-level string in the window — ``inspector``'s flag
     names, ``main_window``'s two preview labels, the guide's title — without
     costing anything that would fail.
+
+    Both windows start through ``_application``, which installs the
+    translator and imports no window; each entry point imports its window
+    only once that has returned.
     """
     source = Path(translations.__file__).with_name("app.py").read_text(encoding="utf-8")
-    run = next(
-        node
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.FunctionDef) and node.name == "run"
-    )
+    functions = {
+        node.name: node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.FunctionDef)
+    }
+    windows = {"main_window", "reader_window"}
 
-    installed_at = None
-    imported_at = None
-    for node in ast.walk(run):
-        if (
-            installed_at is None
-            and isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "install"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "translations"
-        ):
-            installed_at = node.lineno
-        if (
-            imported_at is None
-            and isinstance(node, ast.ImportFrom)
-            and node.module == "main_window"
-        ):
-            imported_at = node.lineno
+    start = functions["_application"]
+    assert any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "install"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "translations"
+        for node in ast.walk(start)
+    ), "gui.app._application no longer installs a translator"
+    assert not any(
+        isinstance(node, ast.ImportFrom) and node.module in windows for node in ast.walk(start)
+    ), "a window is imported before the translator can be installed"
 
-    assert installed_at is not None, "gui.app.run no longer installs a translator"
-    assert imported_at is not None, "gui.app.run no longer imports the window"
-    assert installed_at < imported_at
+    for entry, window in (("run", "main_window"), ("read", "reader_window")):
+        started_at = next(
+            node.lineno
+            for node in ast.walk(functions[entry])
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_application"
+        )
+        imported_at = next(
+            node.lineno
+            for node in ast.walk(functions[entry])
+            if isinstance(node, ast.ImportFrom) and node.module == window
+        )
+        assert started_at < imported_at, entry
 
 
 def test_the_language_asked_for_is_the_environment_then_the_system(
