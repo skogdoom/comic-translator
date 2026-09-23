@@ -214,8 +214,16 @@ lettered in or is being translated into &mdash; <b>Plan Header</b>,
 and typing any part of a name finds it. The plan records the code in the
 brackets. A language the list does not have can still be typed as its code,
 such as <code>pt-BR</code>, and one a plan already names is shown as it is,
-never changed for you. <b>OCR languages</b> is still typed as codes, one or
-more, separated by commas.</p>
+never changed for you.</p>
+
+<p><b>OCR languages</b> is the one still typed as codes, because it can be
+several and their order matters: the recogniser is handed them in that
+order. Leave it empty and the source language is used. The <b>+</b> beside it
+lists what the recogniser chosen next to it has installed on this Mac, by
+name, and adds the one you pick to the end. Underneath, the list is read back
+as names in order, and a language that recogniser does not have is said to be
+missing &mdash; kept, not removed, so a list made on another machine still
+says what it said. Change the recogniser and both follow it.</p>
 
 <h2><a name="plugins"></a>Plugins</h2>
 

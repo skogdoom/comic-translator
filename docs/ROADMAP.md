@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 34 | OCR languages from what is installed | M |
 | 31 | A reader window | M |
 | 17 | A shape palette for drawing a region | M |
 | 26 | Rotate a region | M |
@@ -83,10 +82,8 @@ shipped the region context menu without the lock/unlock command its own
 section asked for, because 4.27 had not landed and it was built without it
 rather than wait; 4.27 has now landed and put that third command in the menu
 where it belongs. What is left below is no longer sorted by how often it is
-met. 16 has shipped as well, and 34 leads because it is what 16 left: the
-language pair is named now and the OCR languages are not, which makes that
-field the one place the window still asks for a code. Nothing depends on
-it.
+met. 16 and 34 have shipped as well, which leaves no field in the window
+that asks for a code without offering names beside it.
 
 **The schema change has shipped, and four milestones are cheaper for it.**
 Milestone 29 took the plan format to version 4 and added every field this file
@@ -148,7 +145,7 @@ what a
 plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 34 and 17 land would mean checking it twice. Each of
+checking it before 17 lands would mean checking it twice. Each of
 those milestones still updates the guide for its own change, as every
 milestone here does; 24 is the sweep for what that misses.
 
@@ -241,49 +238,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 34 OCR languages from what is installed
-
-The source and target languages are picked by name now — milestone 16. The
-OCR languages field beside them is still typed, as codes, and was split off
-rather than built with them, because it is a different widget answering a
-different question: not which language the comic is in, but which ones the
-recogniser on this machine can read.
-
-What is true of the field today, measured rather than assumed:
-
-- **It holds the same kind of tag as the source language**, not a
-  recogniser's own codes — the source language is its default when it is
-  left empty, in the window and on the command line alike. Vision is handed
-  the tags as they are. Tesseract is handed them through
-  `tesseract_languages`, a seven-entry table from `it` to `ita`; anything
-  else goes through as its first subtag. `sv` reaches Tesseract as `sv`, and
-  Tesseract refuses it: `Failed loading language 'sv'` — its data file is
-  `swe`. A Tesseract name typed directly works for Tesseract and means
-  nothing to Vision.
-- **What can be read depends on the machine.** Tesseract says what it has:
-  `tesseract --list-langs`, or `pytesseract.get_languages()`, which here
-  answers `eng`, `ita`, `osd` — and `osd` is orientation detection, not a
-  language, so the answer needs filtering before it can be a list. Vision has
-  `supportedRecognitionLanguagesAndReturnError_`, which cannot be run off a
-  Mac and so has not been.
-- **The list depends on the field beside it.** `recogniser` is `auto`,
-  `vision` or `tesseract`, and each has a different list; `auto` means
-  whichever of the two is available here.
-- **It is plural and ordered.** It takes several, in order, and a checklist
-  keeps which but not the order.
-
-Two things 16 settled that this should keep: the field shows a name and
-stores a code (`language_box` names any tag Qt can, with the code beside it),
-and a code the list does not have stays usable and is never corrected — a
-plan or a preference naming a language this machine has not installed is
-marked, the way a font it does not have is, rather than dropped.
-
-Open: whether the Tesseract table should grow into a real mapping (Qt knows
-the three-letter codes — `QLocale.languageToCode(..., ISO639Part2T)` gives
-`deu` for German — but Tesseract's own names are not uniformly those:
-`chi_sim`, `chi_tra`), or whether a list of what is installed makes the table
-unnecessary by offering Tesseract's names directly for Tesseract.
 
 ## 31 A reader window
 

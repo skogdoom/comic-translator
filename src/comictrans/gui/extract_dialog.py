@@ -64,6 +64,7 @@ from ..sources import (
 )
 from .language_box import LanguageBox
 from .note import quieten
+from .ocr_languages import OcrLanguagesField
 from .preferences import DEFAULTS, Preferences
 from .run_job import ExtractRequest
 
@@ -203,20 +204,17 @@ class ExtractDialog(QDialog):
         self._source_language.set_value(preferences.source_language)
         self._target_language = LanguageBox()
         self._target_language.set_value(preferences.target_language)
-        self._languages = QLineEdit(preferences.ocr_languages)
-        self._languages.setPlaceholderText(self.tr("same as the source language"))
-        self._languages.setToolTip(
-            self.tr(
-                "Languages to hand the recogniser, comma-separated. Left empty "
-                "this is the source language; give a region-qualified tag here "
-                "if the recogniser needs one, such as pt-BR."
-            )
-        )
+        self._languages = OcrLanguagesField(preferences.ocr_languages, preferences.ocr_engine)
 
         self._engine = QComboBox()
         for label, value in ENGINE_CHOICES:
             self._engine.addItem(label, value)
         self._engine.setCurrentIndex(self._engine.findData(preferences.ocr_engine))
+        # What the languages field offers, and says is missing, depends on
+        # which recogniser will read the pages.
+        self._engine.currentIndexChanged.connect(
+            lambda _index: self._languages.set_engine(str(self._engine.currentData()))
+        )
 
         self._force = QCheckBox(self.tr("overwrite it, discarding everything in it"))
         self._force.hide()  # shown only when there is something to overwrite
@@ -434,8 +432,7 @@ class ExtractDialog(QDialog):
         one written by ``comictrans extract <dir>`` come out the same.
         """
         source_language = self._source_language.value() or DEFAULT_SOURCE_LANGUAGE
-        typed = [part.strip() for part in self._languages.text().split(",")]
-        languages = tuple(part for part in typed if part) or (source_language,)
+        languages = self._languages.languages() or (source_language,)
         return ExtractRequest(
             source=self.source(),
             plan_path=self.plan_path(),

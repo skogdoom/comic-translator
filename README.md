@@ -71,9 +71,13 @@ language a chapter is in or is going into — the plan header, Extract Pages,
 Preferences — it shows *Italian (it)* rather than `it`, from a list that
 finds a language by any part of its name. The plan still records the code.
 One the list does not have, such as `pt-BR`, can still be typed, and one a
-plan already names is shown as it is and never corrected. The OCR languages
-field is still typed as codes; a list of what the recogniser actually has
-installed is milestone 34.
+plan already names is shown as it is and never corrected. **OCR languages**
+stays a typed list, since it is plural and ordered, but a **+** beside it
+offers what the chosen recogniser actually has installed, by name, and the
+list is read back underneath in order — with any language the recogniser
+lacks said to be missing rather than dropped. Tesseract now understands the
+same codes Vision does: a Swedish chapter's `sv` reaches it as `swe`, where
+before it was refused.
 
 **A region can be locked** once it is finished: its fields go dead, its
 outline cannot be reshaped or nudged, and Delete and Merge are not offered
@@ -336,7 +340,7 @@ Useful when detection misbehaves:
 | `--no-color-segmentation` | stop falling back to colour; use it when OCR reports text that is not there |
 | `--color-tolerance` | how far a pixel's colour may sit from a region's fill and still belong to it |
 | `--source-lang` / `--target-lang` | the language pair, recorded in the plan file (default `it` / `en`) |
-| `--lang` | OCR language if the recogniser needs a region-qualified tag; defaults to `--source-lang` |
+| `--lang` | OCR language if the recogniser needs a region-qualified tag, or Tesseract's own data name such as `jpn_vert`, which goes through as given; defaults to `--source-lang` |
 | `--ocr tesseract` | force the fallback backend |
 
 ## apply

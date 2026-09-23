@@ -5,7 +5,7 @@ import pytest
 from comictrans.config import OcrConfig
 from comictrans.errors import OcrUnavailableError
 from comictrans.model import Box
-from comictrans.ocr import get_recognizer
+from comictrans.ocr import get_recognizer, installed_languages, reads, resolved_engine
 from comictrans.ocr.base import OcrLine, TextRecognizer
 from comictrans.ocr.grouping import (
     median_line_height,
@@ -13,7 +13,12 @@ from comictrans.ocr.grouping import (
     utterance_confidence,
     utterance_text,
 )
-from comictrans.ocr.tesseract import TesseractRecognizer, tesseract_languages
+from comictrans.ocr.tesseract import (
+    TESSERACT_NAMES,
+    TesseractRecognizer,
+    tesseract_languages,
+    tesseract_name,
+)
 from comictrans.ocr.vision import VisionRecognizer, _to_pixel_box
 
 
@@ -42,6 +47,139 @@ def test_adapters_satisfy_the_recognizer_protocol() -> None:
 def test_tesseract_language_codes_map_from_bcp47() -> None:
     assert tesseract_languages(("it-IT",)) == "ita"
     assert tesseract_languages(("it-IT", "en-GB")) == "ita+eng"
+
+
+@pytest.mark.parametrize(
+    ("tag", "name"),
+    [
+        ("sv", "swe"),  # refused as "sv" before this table: the file is swe
+        ("ja", "jpn"),
+        ("pt_BR", "por"),  # pyphen's spelling of a tag
+        ("zh", "chi_sim"),
+        ("zh-Hans", "chi_sim"),
+        ("zh-Hant", "chi_tra"),
+        ("zh-TW", "chi_tra"),
+        ("sr", "srp"),
+        ("sr-Latn", "srp_latn"),
+        ("sr_Latn", "srp_latn"),
+        ("az-Cyrl", "aze_cyrl"),
+        ("uz-Cyrl", "uzb_cyrl"),
+        ("nb", "nor"),
+        ("nn", "nor"),
+        ("no", "nor"),
+    ],
+)
+def test_a_tag_reaches_tesseract_as_the_file_it_has(tag: str, name: str) -> None:
+    assert tesseract_name(tag) == name
+
+
+@pytest.mark.parametrize("given", ["chi_sim", "Chi_Sim", "ita_old", "jpn_vert", "ceb", "xx"])
+def test_a_name_that_is_not_a_two_letter_tag_goes_through_as_given(given: str) -> None:
+    """Tesseract's own names, typed as themselves, and a code nobody knows.
+
+    The last for Tesseract to refuse by name, rather than for this to guess.
+    """
+    assert tesseract_name(given) == given.lower()
+
+
+def test_each_file_is_asked_for_once_in_the_order_given() -> None:
+    assert tesseract_languages(("it", "ita", "it-IT", "en", "en-GB")) == "ita+eng"
+    assert tesseract_languages(()) == "eng"
+
+
+def test_the_table_is_qts_own_three_letter_codes() -> None:
+    """Generated from Qt once; checked against it wherever Qt is installed.
+
+    Tesseract names its plain language files by ISO 639-2/T — all 106 that
+    Qt can name, measured against Debian's list — so a table disagreeing
+    with Qt's ISO 639-2/T is a table that was edited by hand.
+    """
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QLocale
+
+    part2t = QLocale.LanguageCodeType.ISO639Part2T
+    disagree = {
+        code: (name, QLocale.languageToCode(QLocale.codeToLanguage(code), part2t))
+        for code, name in TESSERACT_NAMES.items()
+        if QLocale.languageToCode(QLocale.codeToLanguage(code), part2t) != name
+    }
+    assert disagree == {}
+    assert len(TESSERACT_NAMES) == 101
+
+
+def test_what_tesseract_has_comes_back_as_tags_that_find_it_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Whatever is installed, the tag it is listed as is the tag that reaches it.
+
+    Everything in the table, the files named otherwise, and the ones with no
+    tag of their own. Not a language — orientation detection, equations,
+    script models — is left out.
+    """
+    from comictrans.ocr import tesseract
+
+    files = [
+        *TESSERACT_NAMES.values(),
+        *("nor", "chi_sim", "chi_tra", "srp_latn", "aze_cyrl", "uzb_cyrl"),
+        *("ita_old", "jpn_vert", "ceb"),
+    ]
+    monkeypatch.setattr(tesseract, "available", lambda: True)
+    monkeypatch.setattr(
+        tesseract.pytesseract,
+        "get_languages",
+        lambda config="": [*files, "osd", "equ", "script/Latin"],
+    )
+
+    tags = tesseract.installed_languages()
+
+    assert [tesseract_name(tag) for tag in tags] == files
+    assert tags[:2] == ("af", "am"), "tags, not the files' own names"
+    assert "zh-Hant" in tags and "sr-Latn" in tags and "no" in tags
+
+
+def test_nothing_is_installed_where_tesseract_is_not(monkeypatch: pytest.MonkeyPatch) -> None:
+    from comictrans.ocr import tesseract
+
+    monkeypatch.setattr(tesseract, "available", lambda: False)
+
+    assert tesseract.installed_languages() == ()
+
+
+def test_automatic_asks_whichever_recogniser_it_would_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from comictrans.ocr import tesseract, vision
+
+    monkeypatch.setattr(vision, "supported_languages", lambda: ("it-IT",))
+    monkeypatch.setattr(tesseract, "installed_languages", lambda: ("it", "en"))
+    monkeypatch.setattr(tesseract, "available", lambda: True)
+
+    monkeypatch.setattr(vision, "available", lambda: True)
+    assert (resolved_engine("auto"), installed_languages("auto")) == ("vision", ("it-IT",))
+    monkeypatch.setattr(vision, "available", lambda: False)
+    assert (resolved_engine("auto"), installed_languages("auto")) == ("tesseract", ("it", "en"))
+    monkeypatch.setattr(tesseract, "available", lambda: False)
+    assert (resolved_engine("auto"), installed_languages("auto")) == ("", ())
+
+
+@pytest.mark.parametrize(
+    ("engine", "tag", "installed", "expected"),
+    [
+        ("tesseract", "it-IT", ("it",), True),  # the same file
+        ("tesseract", "ita", ("it",), True),
+        ("tesseract", "sv", ("it",), False),
+        ("tesseract", "zh-Hant", ("zh-Hans",), False),  # a different file
+        ("vision", "it", ("it-IT",), True),  # a bare language, any region of it
+        ("vision", "pt-PT", ("pt-BR",), False),  # but not another region
+        ("vision", "PT_br", ("pt-BR",), True),
+        ("vision", "sv", ("it-IT",), False),
+        ("vision", "", (), True),
+    ],
+)
+def test_whether_a_recogniser_reads_a_language(
+    engine: str, tag: str, installed: tuple[str, ...], expected: bool
+) -> None:
+    assert reads(engine, tag, installed) is expected
 
 
 def test_unknown_engine_is_an_error() -> None:

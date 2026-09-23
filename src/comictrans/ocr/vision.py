@@ -58,6 +58,31 @@ def unavailable_reason() -> str:
     return _IMPORT_ERROR or ("available" if available() else "pyobjc Vision bindings missing")
 
 
+def supported_languages() -> tuple[str, ...]:
+    """The language tags this Mac's Vision reads, at the level extract asks for.
+
+    Empty off a Mac. On one, **never run here**: this was written from
+    Apple's documentation of ``supportedRecognitionLanguagesAndReturnError:``
+    and PyObjC's convention of handing an error out-parameter back as a
+    second result, and no machine this was built on could call it. The tags
+    come back region-qualified, ``it-IT`` rather than ``it``, and are kept
+    exactly as Vision gives them.
+    """
+    if not available():
+        return ()
+    try:  # pragma: no cover - platform dependent
+        with objc.autorelease_pool():
+            request = Vision.VNRecognizeTextRequest.alloc().init()
+            request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+            languages, error = request.supportedRecognitionLanguagesAndReturnError_(None)
+    except Exception:  # pragma: no cover - platform dependent
+        log.warning("Vision would not list its languages", exc_info=True)
+        return ()
+    if error is not None:  # pragma: no cover - platform dependent
+        log.warning("Vision would not list its languages: %s", error)
+    return tuple(str(language) for language in languages or ())  # pragma: no cover
+
+
 def _cg_image(page: PageImage) -> Any:
     """Wrap the decoded page as a CGImage.
 

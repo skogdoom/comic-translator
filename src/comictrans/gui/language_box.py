@@ -25,7 +25,8 @@ language in English or in that language itself, and in nothing else —
 measured — so a Swedish window cannot say *italienska* without a catalogue of
 its own. The window-language field in preferences uses each language's own
 name instead, and for a different reason; see ``preferences_dialog``'s
-``language_name``, which is not this module's ``_name_of``.
+``language_name``, which is not this module's — that one names a language in
+itself, this one in English.
 """
 
 from __future__ import annotations
@@ -75,6 +76,15 @@ def _name_of(code: str) -> str:
         return ""
     qualifiers = [named for named in (_qualifier(subtag) for subtag in rest) if named]
     return ", ".join([QLocale.languageToString(language), *qualifiers])
+
+
+def language_name(code: str) -> str:
+    """``it`` -> "Italian": the name alone, or the code where Qt has none.
+
+    For somewhere the code is already on show, such as under the field it
+    was typed into.
+    """
+    return _name_of(code) or code.strip()
 
 
 def language_label(code: str) -> str:
@@ -195,4 +205,4 @@ class LanguageBox(QComboBox):
             self.set_value(self.value())
 
 
-__all__ = ["LanguageBox", "code_for", "language_choices", "language_label"]
+__all__ = ["LanguageBox", "code_for", "language_choices", "language_label", "language_name"]

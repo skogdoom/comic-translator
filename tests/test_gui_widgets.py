@@ -4889,7 +4889,7 @@ def test_a_field_is_at_least_as_wide_as_the_hint_written_in_it(
     QApplication.processEvents()
 
     for name, field in (
-        ("OCR languages", dialog._ocr_languages),
+        ("OCR languages", dialog._ocr_languages.line_edit()),
         ("output", dialog._output),
         ("unrar", dialog._unrar_tool),
         ("rar", dialog._rar_tool),
@@ -5277,7 +5277,7 @@ def test_the_dialog_asks_for_the_four_things_it_is_scoped_to(
     dialog._source.setText(str(loose_pages))
     dialog._source_language.setCurrentText("fr")
     dialog._target_language.setCurrentText("sv")
-    dialog._languages.setText("fr, pt-BR")
+    dialog._languages.line_edit().setText("fr, pt-BR")
     dialog._engine.setCurrentIndex(dialog._engine.findData("tesseract"))
 
     request = dialog.request()
