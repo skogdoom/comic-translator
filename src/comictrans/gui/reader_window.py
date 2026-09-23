@@ -48,6 +48,7 @@ from PySide6.QtGui import (
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
+    QNativeGestureEvent,
     QPainter,
     QPixmap,
     QResizeEvent,
@@ -406,6 +407,24 @@ class ReaderView(QGraphicsView):
             event.accept()
             return
         super().wheelEvent(event)
+
+    def event(self, event: QEvent) -> bool:
+        """A trackpad pinch zooms, about the pointer, like the wheel.
+
+        It arrives as a native gesture, and at the viewport — the widget
+        under the fingers — not here. Qt passes it up to the view when the
+        viewport does not take it, measured, which is why it can be handled
+        in the view like any of its own events. Each event carries how much
+        the pinch grew since the last, so the scale is multiplied by it.
+        """
+        if (
+            event.type() == QEvent.Type.NativeGesture
+            and isinstance(event, QNativeGestureEvent)
+            and event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture
+        ):
+            self.set_scale(self.scale_factor * (1.0 + event.value()))
+            return True
+        return bool(super().event(event))
 
 
 class PageBar(QWidget):

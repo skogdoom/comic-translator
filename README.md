@@ -969,8 +969,9 @@ is written beside it. Needs PySide6, like `review`.
   it reads, so this is a choice rather than a guess.
 - The View menu fits the page, or its width, or shows it at the size it was
   scanned, and zooms in and out from there; Ctrl (Command on a Mac) and the
-  wheel zoom as they do in `review`. There is no toolbar: the pages have the
-  window, and every command is in the View menu and on a key.
+  wheel zoom as they do in `review`, and so does a pinch on a trackpad. There
+  is no toolbar: the pages have the window, and every command is in the View
+  menu and on a key.
 - A slider and the page count appear along the foot of the window while the
   pointer is over it.
 

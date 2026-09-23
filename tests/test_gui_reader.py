@@ -329,6 +329,43 @@ def test_the_page_fits_the_window_until_a_zoom_is_chosen(qapp: object, tmp_path:
         assert view.scale_factor == pytest.approx(1.25), "and a turned page"
 
 
+def _pinch(window: ReaderWindow, value: float, kind: Qt.NativeGestureType) -> None:
+    """A trackpad gesture, sent where macOS sends one: the widget under it."""
+    from PySide6.QtGui import QNativeGestureEvent, QPointingDevice
+
+    viewport = window._view.viewport()
+    point = QPointF(100, 100)
+    QApplication.sendEvent(
+        viewport,
+        QNativeGestureEvent(
+            kind,
+            QPointingDevice.primaryPointingDevice(),
+            2,
+            point,
+            point,
+            viewport.mapToGlobal(point),
+            value,
+            QPointF(0, 0),
+        ),
+    )
+
+
+def test_a_pinch_zooms_in_and_out_and_nothing_else_does(qapp: object, tmp_path: Path) -> None:
+    with _reader(_chapter(tmp_path, [PAGE] * 2)) as window:
+        view = window._view
+        fitted = view.scale_factor
+
+        _pinch(window, 0.5, Qt.NativeGestureType.ZoomNativeGesture)
+        assert view.zoom_mode is Zoom.CHOSEN
+        assert view.scale_factor == pytest.approx(fitted * 1.5)
+
+        _pinch(window, -0.2, Qt.NativeGestureType.ZoomNativeGesture)
+        assert view.scale_factor == pytest.approx(fitted * 1.5 * 0.8)
+
+        _pinch(window, 0.5, Qt.NativeGestureType.RotateNativeGesture)
+        assert view.scale_factor == pytest.approx(fitted * 1.5 * 0.8), "a turn is not a zoom"
+
+
 # -- decoding -----------------------------------------------------------------
 
 
