@@ -12,7 +12,7 @@ from comictrans.detect import (
     reading_order,
 )
 from comictrans.detect.color import glyph_mask, polygon_mask
-from comictrans.detect.contour import build_candidates, enclosing_candidate
+from comictrans.detect.contour import build_candidates, enclosing_candidate, simplified_rings
 from comictrans.detect.fallback import approximate_polygon, cluster_lines
 from comictrans.imaging import PageImage, PageMeta
 from comictrans.model import Box, Geometry, polygon_area, polygon_bounds, polygon_is_simple
@@ -608,3 +608,39 @@ def test_nothing_inside_is_nothing_rather_than_everything() -> None:
 
     assert lines_inside(_SQUARE, [away]) == []
     assert lines_inside(_SQUARE, []) == []
+
+
+HAIRPIN = (
+    (11, 11),
+    (15, 8),
+    (20, 9),
+    (24, 11),
+    (31, 10),
+    (56, 11),
+    (22, 12),
+    (18, 10),
+    (16, 12),
+    (14, 10),
+)
+"""An outline out along one side and back along the other, two pixels apart.
+
+Found by searching: at a two-pixel tolerance, the coarsest step and the one
+after it both flatten it onto one line doubled back over itself, and only the
+finest keeps its two sides apart."""
+
+
+def test_an_outline_a_coarse_step_folds_is_simplified_at_a_finer_one() -> None:
+    contour = np.array([[point] for point in HAIRPIN], dtype=np.int32)
+
+    rings = list(simplified_rings(contour, 2.0))
+
+    assert rings == [HAIRPIN], "only the ring a plan can hold, from the step that gives one"
+    assert all(polygon_is_simple(ring) for ring in rings)
+
+
+def test_simplified_rings_are_moved_back_onto_the_page() -> None:
+    contour = np.array([[point] for point in HAIRPIN], dtype=np.int32)
+
+    (ring,) = simplified_rings(contour, 2.0, (100, 200))
+
+    assert ring == tuple((x + 100, y + 200) for x, y in HAIRPIN)

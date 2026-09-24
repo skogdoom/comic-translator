@@ -11,7 +11,7 @@ the same way a black-on-white balloon is.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import cast
 
@@ -103,6 +103,38 @@ def binarise(gray: GrayArray, cfg: DetectConfig, *, inverted: bool) -> GrayArray
 
 def _points_to_polygon(points: NDArray[np.int32]) -> Polygon:
     return tuple((int(point[0][0]), int(point[0][1])) for point in points)
+
+
+SIMPLIFY_STEPS = (1.0, 0.5, 0.25)
+"""The tolerances :func:`simplified_rings` tries, as shares of the one it is given.
+
+Coarsest first, because fewer corners is a shape easier to edit by hand; each
+finer step is a second chance for an outline the coarser one folded over
+itself."""
+
+
+def simplified_rings(
+    contour: NDArray[np.int32], tolerance: float, offset: tuple[int, int] = (0, 0)
+) -> Iterator[Polygon]:
+    """A traced outline simplified at each of :data:`SIMPLIFY_STEPS` in turn.
+
+    ``tolerance`` is in pixels: how far the ring may stray from the outline
+    at the first step. Only rings a plan can hold come out — simple, and three
+    corners or more. One that folds over itself or collapses is skipped rather
+    than repaired, and the next, finer, step is tried. ``offset`` moves the
+    corners from the mask the contour was traced in back onto the page.
+
+    Growing a polygon to cover its lines takes the first of these that does,
+    at a tolerance that grows with the outline; a region painted with the
+    brush takes the first one outright, at a pixel — see ``gui.brush`` for
+    why that one cannot grow.
+    """
+    dx, dy = offset
+    for step in SIMPLIFY_STEPS:
+        approx = cv2.approxPolyDP(contour, tolerance * step, True)
+        ring = tuple((int(point[0][0]) + dx, int(point[0][1]) + dy) for point in approx)
+        if len(ring) >= 3 and polygon_is_simple(ring):
+            yield ring
 
 
 def _simplify(contour: NDArray[np.int32], cfg: DetectConfig) -> Polygon | None:

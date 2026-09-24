@@ -549,16 +549,17 @@ def convex_hull(points: Sequence[Point]) -> Polygon:
     return tuple(lower[:-1] + upper[:-1])
 
 
-ELLIPSE_TOLERANCE = 1.0
-"""How far, in page pixels, the polygon standing for an ellipse may stray from it.
+SHAPE_TOLERANCE = 1.0
+"""How far, in page pixels, the polygon standing for a drawn shape may stray from it.
 
-A drawn ellipse is stored as a polygon — a plan's region is one ring of
-points and nothing records that it was ever an ellipse — so this is how close
-that ring keeps to the curve. One pixel is below what anything done with a
-region can show: an erase and an outline are both whole pixels. It costs
-corners, which reshaping shows as handles: 24 where the longer radius is 100px
-and 48 at 400px, measured, and 52 for an ellipse the size of the fixture
-balloon detection outlines, 1029 by 697, in 21.
+A drawn ellipse, or the outline of what the brush painted, is stored as a
+polygon — a plan's region is one ring of points and nothing records what it
+was drawn as — so this is how close that ring keeps to the shape. One pixel
+is below what anything done with a region can show: an erase and an outline
+are both whole pixels. It costs corners, which reshaping shows as handles: for
+an ellipse, 24 where the longer radius is 100px and 48 at 400px, measured, and
+52 for an ellipse the size of the fixture balloon detection outlines, 1029 by
+697, in 21.
 """
 
 
@@ -569,9 +570,7 @@ def rectangle_polygon(corner: Point, opposite: Point) -> Polygon:
     return ((left, top), (right, top), (right, bottom), (left, bottom))
 
 
-def ellipse_polygon(
-    corner: Point, opposite: Point, tolerance: float = ELLIPSE_TOLERANCE
-) -> Polygon:
+def ellipse_polygon(corner: Point, opposite: Point, tolerance: float = SHAPE_TOLERANCE) -> Polygon:
     """The ellipse two opposite corners of its box span, as a polygon.
 
     As many corners as keep every edge within ``tolerance`` of the curve,

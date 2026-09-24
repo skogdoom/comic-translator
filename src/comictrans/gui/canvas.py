@@ -23,6 +23,7 @@ from PySide6.QtGui import (
     QNativeGestureEvent,
     QPainter,
     QPainterPath,
+    QPainterPathStroker,
     QPen,
     QPixmap,
     QPolygonF,
@@ -54,6 +55,7 @@ from ..model import (
     rotate_polygon,
 )
 from ..planfile.schema import MIN_POLYGON_POINTS
+from .brush import BRUSH_SIZES, brush_diameter, stroke_outline
 
 COLOR_EXACT = QColor(40, 170, 70)
 COLOR_APPROXIMATE = QColor(230, 140, 30)
@@ -198,6 +200,9 @@ class CanvasMode(StrEnum):
     ELLIPSE = "ellipse"
     """A drag across the box an ellipse fills draws a new region."""
 
+    BRUSH = "brush"
+    """A drag paints, and letting go makes what was painted a new region."""
+
     PICK = "pick"
     """The next click reports the page pixel under it, then this ends."""
 
@@ -205,8 +210,8 @@ class CanvasMode(StrEnum):
     """The next click reports the region under it, then this ends."""
 
 
-DRAWING_MODES = (CanvasMode.DRAW, CanvasMode.RECTANGLE, CanvasMode.ELLIPSE)
-"""Every mode that draws a new region: the shapes the palette offers."""
+DRAWING_MODES = (CanvasMode.DRAW, CanvasMode.RECTANGLE, CanvasMode.ELLIPSE, CanvasMode.BRUSH)
+"""Every mode that draws a new region: what the palette offers."""
 
 _BOX_MODES = frozenset({CanvasMode.RECTANGLE, CanvasMode.ELLIPSE})
 """The shapes drawn by dragging across a box rather than clicking corners."""
@@ -235,6 +240,10 @@ MODE_HINTS: dict[CanvasMode, str] = {
     CanvasMode.ELLIPSE: QCoreApplication.translate(
         "Canvas",
         "drag from one corner of its box to the other · Shift keeps it round · Esc cancels",
+    ),
+    CanvasMode.BRUSH: QCoreApplication.translate(
+        "Canvas",
+        "drag to paint a region · letting go makes it one, with any hole filled in · Esc cancels",
     ),
     CanvasMode.MERGE: QCoreApplication.translate(
         "Canvas", "click the region to merge the selected one with · Esc cancels"
@@ -468,6 +477,12 @@ class PageCanvas(QGraphicsView):
         self._draft_handles: list[VertexHandle] = []
         self._box_start: tuple[Point, QPointF] | None = None
         """Where a rectangle or ellipse drag began: on the page, and on screen."""
+        self._brush = BRUSH_SIZES[0]
+        self._stroke: list[Point] = []
+        """Where the brush's middle has been, while its button is down."""
+        self._stroke_item: QGraphicsPathItem | None = None
+        self._brush_tip: QGraphicsEllipseItem | None = None
+        """The brush's outline, under the pointer while the brush is in hand."""
 
     def show_page(self, pixmap: QPixmap, regions: Sequence[RegionAppearance] = ()) -> None:
         """Replace the page and its overlay, fitted to the window.
@@ -489,6 +504,8 @@ class PageCanvas(QGraphicsView):
         # installs the new page rather than this one.
         self._pixmap_item = None
         self._draft_item = None
+        self._stroke_item = None
+        self._brush_tip = None
         self._items.clear()
         self._handles.clear()
         self._turn_handle = None
@@ -498,6 +515,7 @@ class PageCanvas(QGraphicsView):
         self._appearances.clear()
         self._draft.clear()
         self._box_start = None
+        self._stroke.clear()
         self._drag = None
         self._selected_id = None
 
@@ -612,6 +630,7 @@ class PageCanvas(QGraphicsView):
             return
         self._cancel_drag()
         self._clear_draft()
+        self._show_brush_tip(None)
         self._mode = mode
         self._refresh_handles()
         self.setDragMode(
@@ -703,7 +722,9 @@ class PageCanvas(QGraphicsView):
         """Take the half-drawn outline off the page. Nothing is reported."""
         self._draft.clear()
         self._box_start = None
+        self._stroke.clear()
         self._refresh_draft()
+        self._show_stroke()
 
     # -- dragging out a rectangle or an ellipse ----------------------------
 
@@ -763,6 +784,109 @@ class PageCanvas(QGraphicsView):
             or len(polygon) < MIN_POLYGON_POINTS
             or not polygon_is_simple(polygon)
         ):
+            return
+        self.set_mode(CanvasMode.SELECT)
+        self.region_drawn.emit(polygon)
+
+    # -- painting with the brush ------------------------------------------
+
+    @property
+    def brush(self) -> float:
+        """The brush in hand, as a share of the page's height: see ``gui.brush``."""
+        return self._brush
+
+    def set_brush(self, share: float) -> None:
+        """Pick up another brush. Takes effect from the next stroke."""
+        self._brush = share
+        if self._brush_tip is not None:
+            self._show_brush_tip(self._brush_tip.pos())
+
+    @property
+    def brush_diameter(self) -> int:
+        """How wide the brush in hand paints on this page, in page pixels."""
+        return brush_diameter(self._brush, round(self._page_rect().height()))
+
+    @property
+    def stroke(self) -> Polygon:
+        """Where the brush has been in the stroke being painted. Empty between strokes."""
+        return tuple(self._stroke)
+
+    def _show_brush_tip(self, scene_point: QPointF | None) -> None:
+        """The brush's outline centred on a page point, or taken away.
+
+        Drawn in the page's own units rather than ignoring the zoom as the
+        handles do: it is the size of what a press would paint, and that is
+        a size on the page.
+        """
+        if self._brush_tip is not None:
+            self._scene.removeItem(self._brush_tip)
+            self._brush_tip = None
+        if scene_point is None:
+            return
+        radius = self.brush_diameter / 2.0
+        tip = QGraphicsEllipseItem(QRectF(-radius, -radius, 2 * radius, 2 * radius))
+        pen = QPen(COLOR_MANUAL)
+        pen.setCosmetic(True)
+        tip.setPen(pen)
+        tip.setPos(scene_point)
+        tip.setZValue(4.0)
+        self._scene.addItem(tip)
+        self._brush_tip = tip
+
+    def _paint_to(self, view_pos: QPointF) -> None:
+        """Take the stroke on to where the pointer is, and show it painted."""
+        self._stroke.append(self._clamped(*self._scene_xy(view_pos)))
+        self._show_stroke()
+
+    def _show_stroke(self) -> None:
+        """The stroke so far, painted as wide as the brush with round ends.
+
+        Filled as a shape rather than drawn with a pen that wide, because a
+        stroke starts as a single point and Qt strokes a path with no length
+        as nothing at all — measured, with a round cap as with any other — so
+        a pen would show nothing under a press until the pointer moved. The
+        disc the first point paints is added to the outline for that reason;
+        anywhere later it is already inside it.
+        """
+        if self._stroke_item is not None:
+            self._scene.removeItem(self._stroke_item)
+            self._stroke_item = None
+        if not self._stroke:
+            return
+        path = QPainterPath(QPointF(*self._stroke[0]))
+        for point in self._stroke[1:]:
+            path.lineTo(QPointF(*point))
+        stroker = QPainterPathStroker()
+        stroker.setWidth(self.brush_diameter)
+        stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
+        stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painted = stroker.createStroke(path)
+        radius = self.brush_diameter / 2.0
+        painted.addEllipse(QPointF(*self._stroke[0]), radius, radius)
+        paint = QColor(COLOR_MANUAL)
+        paint.setAlpha(110)
+        item = QGraphicsPathItem(painted)
+        item.setPen(Qt.PenStyle.NoPen)
+        item.setBrush(paint)
+        item.setZValue(3.0)
+        self._scene.addItem(item)
+        self._stroke_item = item
+
+    def _finish_stroke(self) -> None:
+        """Report the outline of what the stroke painted.
+
+        The brush is put down after one, as every other shape is after
+        drawing one region: the region is selected and its text is what comes
+        next. A stroke whose outline no step could make a ring of reports
+        nothing and leaves the brush in hand — measured never to happen; see
+        ``gui.brush``.
+        """
+        rect = self._page_rect()
+        polygon = stroke_outline(
+            self._stroke, self.brush_diameter, (round(rect.width()), round(rect.height()))
+        )
+        self._clear_draft()
+        if polygon is None:
             return
         self.set_mode(CanvasMode.SELECT)
         self.region_drawn.emit(polygon)
@@ -1131,6 +1255,11 @@ class PageCanvas(QGraphicsView):
             return True
         return bool(super().event(event))
 
+    def leaveEvent(self, event: QEvent) -> None:  # noqa: N802 - Qt override
+        """The brush's outline goes with the pointer, off the page as well."""
+        self._show_brush_tip(None)
+        super().leaveEvent(event)
+
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802 - Qt override
         """A region's own commands, or nothing when there is no region here.
 
@@ -1171,6 +1300,10 @@ class PageCanvas(QGraphicsView):
                 return
             if self._mode is CanvasMode.DRAW:
                 self._place_point(event.position())
+                event.accept()
+                return
+            if self._mode is CanvasMode.BRUSH:
+                self._paint_to(event.position())
                 event.accept()
                 return
             if self._mode in _BOX_MODES:
@@ -1235,6 +1368,12 @@ class PageCanvas(QGraphicsView):
             self._show_box(self._box_shape(event.position(), event.modifiers()))
             event.accept()
             return
+        if self._mode is CanvasMode.BRUSH:
+            self._show_brush_tip(QPointF(*self._clamped(*self._scene_xy(event.position()))))
+            if self._stroke:
+                self._paint_to(event.position())
+            event.accept()
+            return
         if self._mode in (CanvasMode.SELECT, CanvasMode.RESHAPE):
             # Held over the selected region, the modifier turns the pan into a
             # move; the cursor is where that is discoverable without reading.
@@ -1250,6 +1389,10 @@ class PageCanvas(QGraphicsView):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
         if self._box_start is not None and event.button() == Qt.MouseButton.LeftButton:
             self._finish_box(event.position(), event.modifiers())
+            event.accept()
+            return
+        if self._stroke and event.button() == Qt.MouseButton.LeftButton:
+            self._finish_stroke()
             event.accept()
             return
         drag = self._drag
@@ -1313,14 +1456,15 @@ class PageCanvas(QGraphicsView):
         """Escape abandons what is half-done; drawing and reshaping also take Enter.
 
         Escape leaves a dragged shape as it was and throws away a half-drawn
-        outline, or a rectangle or ellipse still being dragged out — in each
-        case the plan is untouched, because none of them has reached it yet.
-        With nothing half-drawn, Escape puts the drawing tool down, the same
-        for all three shapes. Enter closes a half-drawn outline the same way
-        clicking its first corner does, and, in reshape mode, is the
-        keyboard's way of turning Edit Region Shape back off — every edit it
-        made is already on the region, the same as it would be leaving the
-        mode any other way, so there is nothing left for Enter to commit.
+        outline, a rectangle or ellipse still being dragged out, or a stroke
+        still being painted — in each case the plan is untouched, because none
+        of them has reached it yet. With nothing half-drawn, Escape puts the
+        drawing tool down, the same for every shape and the brush. Enter
+        closes a half-drawn outline the same way clicking its first corner
+        does, and, in reshape mode, is the keyboard's way of turning Edit
+        Region Shape back off — every edit it made is already on the region,
+        the same as it would be leaving the mode any other way, so there is
+        nothing left for Enter to commit.
         """
         key = event.key()
         base = NUDGE_STRIDE if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else NUDGE_STEP
@@ -1362,7 +1506,7 @@ class PageCanvas(QGraphicsView):
         if key == Qt.Key.Key_Escape and self._mode in DRAWING_MODES:
             # What is half-drawn goes first, and the tool stays in hand for
             # another try; with nothing half-drawn, the tool is put down.
-            if self._draft or self._box_start is not None:
+            if self._draft or self._box_start is not None or self._stroke:
                 self._clear_draft()
             else:
                 self.set_mode(CanvasMode.SELECT)

@@ -37,37 +37,42 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../canvas.py" line="215"/>
+        <location filename="../../canvas.py" line="220"/>
         <source>click a region to select it · {move}-drag or the arrow keys move it · drag to pan · {move} and the wheel zooms</source>
         <translation>klicka på en region för att välja den · {move}-dra eller piltangenterna flyttar den · dra för att panorera · {move} och hjulet zoomar</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="220"/>
+        <location filename="../../canvas.py" line="225"/>
         <source>drag a corner to reshape · drag the round handle to turn it, Shift in 15° steps · drag inside or use the arrow keys to move · double-click an edge to add a corner or a corner to remove it · Esc cancels · Enter finishes</source>
         <translation>dra i ett hörn för att ändra form · dra i det runda handtaget för att vrida den, med Skift i steg om 15° · dra inuti eller använd piltangenterna för att flytta · dubbelklicka på en kant för att lägga till ett hörn, eller på ett hörn för att ta bort det · Esc avbryter · Enter avslutar</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="227"/>
+        <location filename="../../canvas.py" line="232"/>
         <source>click to place each corner · click the first again, double-click or Enter to close it · Backspace takes one back · Esc cancels</source>
         <translation>klicka för att placera varje hörn · klicka på det första igen, dubbelklicka eller tryck Enter för att sluta den · Backsteg tar tillbaka ett · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="232"/>
+        <location filename="../../canvas.py" line="237"/>
         <source>drag from one corner to the other · Shift keeps it square · Esc cancels</source>
         <translation>dra från ett hörn till det motsatta · Skift håller den kvadratisk · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="235"/>
+        <location filename="../../canvas.py" line="240"/>
         <source>drag from one corner of its box to the other · Shift keeps it round · Esc cancels</source>
         <translation>dra från ett hörn av dess ruta till det motsatta · Skift håller den rund · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="239"/>
+        <location filename="../../canvas.py" line="244"/>
+        <source>drag to paint a region · letting go makes it one, with any hole filled in · Esc cancels</source>
+        <translation>dra för att måla en region · när du släpper blir den en, med hål ifyllda · Esc avbryter</translation>
+    </message>
+    <message>
+        <location filename="../../canvas.py" line="248"/>
         <source>click the region to merge the selected one with · Esc cancels</source>
         <translation>klicka på regionen som den valda ska sammanfogas med · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../canvas.py" line="242"/>
+        <location filename="../../canvas.py" line="251"/>
         <source>click a colour on the page · Esc cancels</source>
         <translation>klicka på en färg på sidan · Esc avbryter</translation>
     </message>
@@ -438,345 +443,365 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../main_window.py" line="114"/>
+        <location filename="../../main_window.py" line="115"/>
         <source>rendering preview…</source>
         <translation>renderar förhandsvisning…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="120"/>
+        <location filename="../../main_window.py" line="121"/>
         <source>&amp;Render Preview</source>
         <translation>&amp;Rendera förhandsvisning</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="121"/>
+        <location filename="../../main_window.py" line="122"/>
         <source>Back to &amp;Overlay</source>
         <translation>Tillbaka till &amp;överlägg</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="153"/>
+        <location filename="../../main_window.py" line="154"/>
         <source>Open &amp;Recent</source>
         <translation>Öppna s&amp;enaste</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="154"/>
+        <location filename="../../main_window.py" line="155"/>
         <source>Clear Menu</source>
         <translation>Töm menyn</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="313"/>
+        <location filename="../../main_window.py" line="314"/>
         <source>Pages</source>
         <translation>Sidor</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="317"/>
+        <location filename="../../main_window.py" line="318"/>
         <source>Region</source>
         <translation>Region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="329"/>
+        <location filename="../../main_window.py" line="330"/>
         <source>Run</source>
         <translation>Körning</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="375"/>
+        <location filename="../../main_window.py" line="376"/>
         <source>Open a plan file to review (File &gt; Open Plan…), or read one off a folder of pages (File &gt; Extract Pages…)</source>
         <translation>Öppna en planfil att granska (Arkiv &gt; Öppna plan…), eller läs in en från en mapp med sidor (Arkiv &gt; Extrahera sidor…)</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="389"/>
+        <location filename="../../main_window.py" line="390"/>
         <source>&amp;File</source>
         <translation>&amp;Arkiv</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="391"/>
+        <location filename="../../main_window.py" line="392"/>
         <source>&amp;Open Plan…</source>
         <translation>&amp;Öppna plan…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="405"/>
+        <location filename="../../main_window.py" line="406"/>
         <source>Re&amp;vert to Saved</source>
         <translation>Åter&amp;gå till sparad</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="411"/>
+        <location filename="../../main_window.py" line="412"/>
         <source>&amp;Save</source>
         <translation>&amp;Spara</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="416"/>
+        <location filename="../../main_window.py" line="417"/>
         <source>Save &amp;As…</source>
         <translation>Spara so&amp;m…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="426"/>
+        <location filename="../../main_window.py" line="427"/>
         <source>&amp;Extract Pages…</source>
         <translation>&amp;Extrahera sidor…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="431"/>
+        <location filename="../../main_window.py" line="432"/>
         <source>&amp;Render Pages…</source>
         <translation>&amp;Rendera sidor…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="437"/>
+        <location filename="../../main_window.py" line="438"/>
         <source>&amp;Quit</source>
         <translation>&amp;Avsluta</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="452"/>
+        <location filename="../../main_window.py" line="453"/>
         <source>&amp;Edit</source>
         <translation>&amp;Redigera</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="453"/>
+        <location filename="../../main_window.py" line="454"/>
         <source>&amp;Undo</source>
         <translation>Å&amp;ngra</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="458"/>
+        <location filename="../../main_window.py" line="459"/>
         <source>&amp;Redo</source>
         <translation>&amp;Gör om</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="467"/>
+        <location filename="../../main_window.py" line="468"/>
         <source>Edit Region &amp;Shape</source>
         <translation>Redigera regionens &amp;form</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="480"/>
-        <location filename="../../main_window.py" line="489"/>
+        <location filename="../../main_window.py" line="481"/>
+        <location filename="../../main_window.py" line="502"/>
         <source>&amp;Add Region</source>
         <translation>&amp;Lägg till region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="497"/>
+        <location filename="../../main_window.py" line="510"/>
         <source>&amp;Merge Region</source>
         <translation>Sa&amp;mmanfoga region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="117"/>
+        <location filename="../../main_window.py" line="118"/>
         <source>extracting the text of {0}…</source>
         <translation>hämtar texten i {0}…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="476"/>
+        <location filename="../../main_window.py" line="477"/>
         <source>&amp;Polygon</source>
         <translation>&amp;Polygon</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="478"/>
+        <location filename="../../main_window.py" line="479"/>
         <source>&amp;Rectangle</source>
         <translation>&amp;Rektangel</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="479"/>
+        <location filename="../../main_window.py" line="480"/>
         <source>&amp;Ellipse</source>
         <translation>&amp;Ellips</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="509"/>
+        <location filename="../../main_window.py" line="489"/>
+        <source>&amp;Fine Brush</source>
+        <translation>&amp;Fin pensel</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="490"/>
+        <source>&amp;Small Brush</source>
+        <translation>&amp;Liten pensel</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="491"/>
+        <source>&amp;Medium Brush</source>
+        <translation>&amp;Mellanstor pensel</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="492"/>
+        <source>&amp;Large Brush</source>
+        <translation>&amp;Stor pensel</translation>
+    </message>
+    <message>
+        <location filename="../../main_window.py" line="522"/>
         <source>&amp;Extract Text from Region…</source>
         <translation>&amp;Hämta text från regionen…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="519"/>
+        <location filename="../../main_window.py" line="532"/>
         <source>&amp;Delete Region</source>
         <translation>&amp;Ta bort region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="527"/>
+        <location filename="../../main_window.py" line="540"/>
         <source>&amp;Lock Region</source>
         <translation>&amp;Lås region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="534"/>
+        <location filename="../../main_window.py" line="547"/>
         <source>Plan &amp;Header…</source>
         <translation>Plan&amp;huvud…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="541"/>
+        <location filename="../../main_window.py" line="554"/>
         <source>Rescan &amp;Fonts</source>
         <translation>Läs om t&amp;ypsnitt</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="564"/>
+        <location filename="../../main_window.py" line="577"/>
         <source>&amp;Preferences…</source>
         <translation>&amp;Inställningar…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="570"/>
+        <location filename="../../main_window.py" line="583"/>
         <source>&amp;View</source>
         <translation>&amp;Visa</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="582"/>
+        <location filename="../../main_window.py" line="595"/>
         <source>Zoom &amp;In</source>
         <translation>Zooma &amp;in</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="587"/>
+        <location filename="../../main_window.py" line="600"/>
         <source>Zoom &amp;Out</source>
         <translation>Zooma &amp;ut</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="592"/>
+        <location filename="../../main_window.py" line="605"/>
         <source>&amp;Fit to Window</source>
         <translation>&amp;Anpassa till fönstret</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="597"/>
+        <location filename="../../main_window.py" line="610"/>
         <source>&amp;Actual Size</source>
         <translation>&amp;Verklig storlek</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="608"/>
+        <location filename="../../main_window.py" line="621"/>
         <source>&amp;Previous Region</source>
         <translation>&amp;Föregående region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="613"/>
+        <location filename="../../main_window.py" line="626"/>
         <source>&amp;Next Region</source>
         <translation>&amp;Nästa region</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="618"/>
+        <location filename="../../main_window.py" line="631"/>
         <source>Next &amp;Flagged Region</source>
         <translation>Nästa flaggade re&amp;gion</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="623"/>
+        <location filename="../../main_window.py" line="636"/>
         <source>&amp;Window</source>
         <translation>&amp;Fönster</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="630"/>
+        <location filename="../../main_window.py" line="643"/>
         <source>&amp;Minimise</source>
         <translation>&amp;Minimera</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="635"/>
+        <location filename="../../main_window.py" line="648"/>
         <source>&amp;Zoom</source>
         <translation>&amp;Zooma</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="644"/>
+        <location filename="../../main_window.py" line="657"/>
         <source>&amp;Reset Layout</source>
         <translation>Åter&amp;ställ layout</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="653"/>
+        <location filename="../../main_window.py" line="666"/>
         <source>Pl&amp;ugins</source>
         <translation>&amp;Tillägg</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="663"/>
+        <location filename="../../main_window.py" line="676"/>
         <source>&amp;Configure Plugins…</source>
         <translation>&amp;Konfigurera tillägg…</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="668"/>
+        <location filename="../../main_window.py" line="681"/>
         <source>&amp;Open Plugin Folder</source>
         <translation>&amp;Öppna tilläggsmapp</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="675"/>
+        <location filename="../../main_window.py" line="688"/>
         <source>&amp;Rescan Plugins</source>
         <translation>Läs om t&amp;illägg</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="684"/>
+        <location filename="../../main_window.py" line="697"/>
         <source>&amp;Help</source>
         <translation>&amp;Hjälp</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="694"/>
+        <location filename="../../main_window.py" line="707"/>
         <source>Open &amp;Log Folder</source>
         <translation>Öppna &amp;loggmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="699"/>
+        <location filename="../../main_window.py" line="712"/>
         <source>&amp;About {0}</source>
         <translation>&amp;Om {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="742"/>
+        <location filename="../../main_window.py" line="759"/>
         <source>Main</source>
         <translation>Huvudverktygsfält</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1007"/>
+        <location filename="../../main_window.py" line="1027"/>
         <source>{0}[*] — {1}</source>
         <translation>{0}[*] — {1}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1026"/>
+        <location filename="../../main_window.py" line="1046"/>
         <source>Save the changes to {0}?</source>
         <translation>Vill du spara ändringarna i {0}?</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1027"/>
+        <location filename="../../main_window.py" line="1047"/>
         <source>Your changes will be lost if you do not save them.</source>
         <translation>Dina ändringar går förlorade om du inte sparar dem.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1043"/>
+        <location filename="../../main_window.py" line="1063"/>
         <source>The plan could not be opened.</source>
         <translation>Planen kunde inte öppnas.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1069"/>
+        <location filename="../../main_window.py" line="1089"/>
         <source>{0}: no regions in this plan</source>
         <translation>{0}: inga regioner i den här planen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1075"/>
+        <location filename="../../main_window.py" line="1095"/>
         <source>Open Plan</source>
         <translation>Öppna plan</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1077"/>
+        <location filename="../../main_window.py" line="1097"/>
         <source>Plan files (*.yaml *.yml);;All files (*)</source>
         <translation>Planfiler (*.yaml *.yml);;Alla filer (*)</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1100"/>
-        <location filename="../../main_window.py" line="1133"/>
+        <location filename="../../main_window.py" line="1120"/>
+        <location filename="../../main_window.py" line="1153"/>
         <source>The plan could not be saved.</source>
         <translation>Planen kunde inte sparas.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1103"/>
-        <location filename="../../main_window.py" line="1139"/>
+        <location filename="../../main_window.py" line="1123"/>
+        <location filename="../../main_window.py" line="1159"/>
         <source>saved {0}</source>
         <translation>sparade {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1111"/>
+        <location filename="../../main_window.py" line="1131"/>
         <source>Save Plan As</source>
         <translation>Spara plan som</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1113"/>
+        <location filename="../../main_window.py" line="1133"/>
         <source>Plan files (*.yaml *.yml)</source>
         <translation>Planfiler (*.yaml *.yml)</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1123"/>
+        <location filename="../../main_window.py" line="1143"/>
         <source>Replace {0}?</source>
         <translation>Vill du ersätta {0}?</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1124"/>
+        <location filename="../../main_window.py" line="1144"/>
         <source>The plan already there will be overwritten.</source>
         <translation>Planen som redan finns där skrivs över.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1159"/>
+        <location filename="../../main_window.py" line="1179"/>
         <source>The page image could not be read.</source>
         <translation>Sidbilden kunde inte läsas.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="1171"/>
+        <location filename="../../main_window.py" line="1191"/>
         <source>{0}: %n region(s), {1} flagged</source>
         <translation>
             <numerusform>{0}: %n region, {1} flaggad</numerusform>
@@ -784,137 +809,137 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1262"/>
+        <location filename="../../main_window.py" line="1282"/>
         <source>no more regions in that direction</source>
         <translation>inga fler regioner åt det hållet</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1366"/>
+        <location filename="../../main_window.py" line="1422"/>
         <source>region not added: {0}</source>
         <translation>regionen lades inte till: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1372"/>
+        <location filename="../../main_window.py" line="1428"/>
         <source>added {0} — type the text on the page, then its translation</source>
         <translation>lade till {0} — skriv texten på sidan, sedan översättningen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1400"/>
+        <location filename="../../main_window.py" line="1456"/>
         <source>still reshaping {0} — turn Edit Region Shape off to select {1}</source>
         <translation>formar fortfarande om {0} — stäng av Redigera regionens form för att välja {1}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1418"/>
+        <location filename="../../main_window.py" line="1474"/>
         <source>not merged: {0}</source>
         <translation>sammanfogades inte: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1425"/>
+        <location filename="../../main_window.py" line="1481"/>
         <source>merged {0} and {1} into {2}</source>
         <translation>sammanfogade {0} och {1} till {2}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1452"/>
+        <location filename="../../main_window.py" line="1508"/>
         <source>deleting {0}</source>
         <translation>tar bort {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1462"/>
+        <location filename="../../main_window.py" line="1518"/>
         <source>deleted {0} — Ctrl+Z puts it back</source>
         <translation>tog bort {0} — Ctrl+Z ångrar</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1478"/>
+        <location filename="../../main_window.py" line="1534"/>
         <source>locking {0}</source>
         <translation>låser {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1484"/>
+        <location filename="../../main_window.py" line="1540"/>
         <source>{0} is locked — edits are refused until it is unlocked</source>
         <translation>{0} är låst — ändringar avvisas tills den låses upp</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1486"/>
+        <location filename="../../main_window.py" line="1542"/>
         <source>{0} is unlocked</source>
         <translation>{0} är upplåst</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1551"/>
+        <location filename="../../main_window.py" line="1607"/>
         <source>The region could not be read.</source>
         <translation>Regionen kunde inte läsas.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1574"/>
+        <location filename="../../main_window.py" line="1630"/>
         <source>No text was found in {0}.</source>
         <translation>Ingen text hittades i {0}.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1584"/>
+        <location filename="../../main_window.py" line="1640"/>
         <source>{0} reads the same as the text already there — nothing changed</source>
         <translation>{0} lyder likadant som texten som redan finns — ingenting ändrades</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1612"/>
+        <location filename="../../main_window.py" line="1668"/>
         <source>extracted {0} into the source text and the translation — Ctrl+Z undoes it</source>
         <translation>hämtade {0} till källtexten och översättningen — Ctrl+Z ångrar</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1614"/>
+        <location filename="../../main_window.py" line="1670"/>
         <source>extracted {0} — Ctrl+Z puts the old text back</source>
         <translation>hämtade {0} — Ctrl+Z återställer den gamla texten</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1636"/>
+        <location filename="../../main_window.py" line="1692"/>
         <source>What is there now is replaced by what the recogniser reads. Ctrl+Z puts it back.</source>
         <translation>Det som står där nu ersätts av det igenkänningen läser. Ctrl+Z återställer det.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1576"/>
+        <location filename="../../main_window.py" line="1632"/>
         <source>The recogniser found no text inside this outline. Check that the outline covers the lettering, and that the plan&apos;s source language is the language on the page.</source>
         <translation>Igenkänningen hittade ingen text innanför den här konturen. Kontrollera att konturen täcker textningen och att planens källspråk är språket på sidan.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1634"/>
+        <location filename="../../main_window.py" line="1690"/>
         <source>Replace the source text of {0}?</source>
         <translation>Ersätt källtexten i {0}?</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1670"/>
+        <location filename="../../main_window.py" line="1726"/>
         <source>colours come from the page, not the preview — Back to Overlay first</source>
         <translation>färger tas från sidan, inte från förhandsvisningen — gå tillbaka till överlägget först</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1682"/>
+        <location filename="../../main_window.py" line="1738"/>
         <source>click the page to take the fill colour · Esc cancels</source>
         <translation>klicka på sidan för att ta fyllnadsfärgen · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1684"/>
+        <location filename="../../main_window.py" line="1740"/>
         <source>click the page to take the text colour · Esc cancels</source>
         <translation>klicka på sidan för att ta textfärgen · Esc avbryter</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1703"/>
+        <location filename="../../main_window.py" line="1759"/>
         <source>fill colour taken from the page: {0}</source>
         <translation>fyllnadsfärg tagen från sidan: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1705"/>
+        <location filename="../../main_window.py" line="1761"/>
         <source>text colour taken from the page: {0}</source>
         <translation>textfärg tagen från sidan: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1743"/>
+        <location filename="../../main_window.py" line="1799"/>
         <source>shape unchanged: {0}</source>
         <translation>formen oförändrad: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="1962"/>
+        <location filename="../../main_window.py" line="2018"/>
         <source>The preview could not be rendered.</source>
         <translation>Förhandsvisningen kunde inte renderas.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2008"/>
+        <location filename="../../main_window.py" line="2064"/>
         <source>preview: %n problem(s) — {0}</source>
         <translation>
             <numerusform>förhandsvisning: %n problem — {0}</numerusform>
@@ -922,12 +947,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2011"/>
+        <location filename="../../main_window.py" line="2067"/>
         <source>preview: everything fits</source>
         <translation>förhandsvisning: allt får plats</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2040"/>
+        <location filename="../../main_window.py" line="2096"/>
         <source>rendering %n page(s) — {0}</source>
         <translation>
             <numerusform>renderar %n sida — {0}</numerusform>
@@ -935,13 +960,13 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2066"/>
+        <location filename="../../main_window.py" line="2122"/>
         <source>unpacking {0}</source>
         <translation>packar upp {0}</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2069"/>
-        <location filename="../../main_window.py" line="2081"/>
+        <location filename="../../main_window.py" line="2125"/>
+        <location filename="../../main_window.py" line="2137"/>
         <source>reading %n page(s) — {0}</source>
         <translation>
             <numerusform>läser %n sida — {0}</numerusform>
@@ -949,12 +974,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2104"/>
+        <location filename="../../main_window.py" line="2160"/>
         <source>stopping after the page being worked on…</source>
         <translation>stoppar efter sidan som bearbetas…</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2130"/>
+        <location filename="../../main_window.py" line="2186"/>
         <source>cancelled after %n page(s) to {0}</source>
         <translation>
             <numerusform>avbruten efter %n sida till {0}</numerusform>
@@ -962,7 +987,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2132"/>
+        <location filename="../../main_window.py" line="2188"/>
         <source>rendered %n page(s) to {0}</source>
         <translation>
             <numerusform>renderade %n sida till {0}</numerusform>
@@ -970,7 +995,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2135"/>
+        <location filename="../../main_window.py" line="2191"/>
         <source>packed %n page(s) into {0}</source>
         <translation>
             <numerusform>packade %n sida i {0}</numerusform>
@@ -978,12 +1003,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2141"/>
+        <location filename="../../main_window.py" line="2197"/>
         <source>cancelled — nothing written to {0}</source>
         <translation>avbruten — ingenting skrevs till {0}</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2145"/>
+        <location filename="../../main_window.py" line="2201"/>
         <source>{0} — %n to check</source>
         <translation>
             <numerusform>{0} — %n att kontrollera</numerusform>
@@ -991,7 +1016,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2165"/>
+        <location filename="../../main_window.py" line="2221"/>
         <source>cancelled after %n page(s)</source>
         <translation>
             <numerusform>avbruten efter %n sida</numerusform>
@@ -999,27 +1024,27 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2180"/>
+        <location filename="../../main_window.py" line="2236"/>
         <source>failed: {0}</source>
         <translation>misslyckades: {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2194"/>
+        <location filename="../../main_window.py" line="2250"/>
         <source>{0} ({1}) is no longer in this plan</source>
         <translation>{0} ({1}) finns inte längre i den här planen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2201"/>
+        <location filename="../../main_window.py" line="2257"/>
         <source>{0} is not in this plan</source>
         <translation>{0} finns inte i den här planen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2216"/>
+        <location filename="../../main_window.py" line="2272"/>
         <source>rescanning fonts</source>
         <translation>läser om typsnitt</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2224"/>
+        <location filename="../../main_window.py" line="2280"/>
         <source>%n font family/families available</source>
         <translation>
             <numerusform>%n typsnittsfamilj tillgänglig</numerusform>
@@ -1027,7 +1052,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2279"/>
+        <location filename="../../main_window.py" line="2335"/>
         <source>%n plugin(s) available</source>
         <translation>
             <numerusform>%n plugin tillgänglig</numerusform>
@@ -1035,22 +1060,22 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2304"/>
+        <location filename="../../main_window.py" line="2360"/>
         <source>opening the plugin folder</source>
         <translation>öppnar tilläggsmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2307"/>
+        <location filename="../../main_window.py" line="2363"/>
         <source>plugins are in {0}</source>
         <translation>tilläggen finns i {0}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2364"/>
+        <location filename="../../main_window.py" line="2420"/>
         <source>running {0}</source>
         <translation>kör {0}</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2376"/>
+        <location filename="../../main_window.py" line="2432"/>
         <source>{0} ran — %n locked region(s) left as they are</source>
         <translation>
             <numerusform>{0} kördes — %n låst region lämnades som den var</numerusform>
@@ -1058,12 +1083,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2380"/>
+        <location filename="../../main_window.py" line="2436"/>
         <source>{0} ran</source>
         <translation>{0} kördes</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../main_window.py" line="2383"/>
+        <location filename="../../main_window.py" line="2439"/>
         <source>{0} changed nothing but %n locked region(s), which were left as they are</source>
         <translation>
             <numerusform>{0} ändrade ingenting utom %n låst region, som lämnades som den var</numerusform>
@@ -1071,57 +1096,57 @@
         </translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2388"/>
+        <location filename="../../main_window.py" line="2444"/>
         <source>{0} made no change</source>
         <translation>{0} ändrade ingenting</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2405"/>
+        <location filename="../../main_window.py" line="2461"/>
         <source>opening the plan header</source>
         <translation>öppnar planhuvudet</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2429"/>
+        <location filename="../../main_window.py" line="2485"/>
         <source>opening preferences</source>
         <translation>öppnar inställningar</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2466"/>
+        <location filename="../../main_window.py" line="2522"/>
         <source>{0} will be in {1} the next time it starts.</source>
         <translation>{0} kommer att vara på {1} nästa gång programmet startar.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2469"/>
+        <location filename="../../main_window.py" line="2525"/>
         <source>Quit and open it again to change the language of this window.</source>
         <translation>Avsluta och öppna igen för att byta språk i det här fönstret.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2552"/>
+        <location filename="../../main_window.py" line="2608"/>
         <source>{0} is not there any more.</source>
         <translation>{0} finns inte längre.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2553"/>
+        <location filename="../../main_window.py" line="2609"/>
         <source>It has been taken off the recent list. It was at {0}.</source>
         <translation>Den har tagits bort från listan över senaste. Den låg i {0}.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2598"/>
+        <location filename="../../main_window.py" line="2654"/>
         <source>{0}: {1}</source>
         <translation>{0}: {1}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2602"/>
+        <location filename="../../main_window.py" line="2658"/>
         <source>{0} failed: {1} — see the log</source>
         <translation>{0} misslyckades: {1} — se loggen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2619"/>
+        <location filename="../../main_window.py" line="2675"/>
         <source>opening the log folder</source>
         <translation>öppnar loggmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2622"/>
+        <location filename="../../main_window.py" line="2678"/>
         <source>logs are in {0}</source>
         <translation>loggarna finns i {0}</translation>
     </message>

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from comictrans.model import (
-    ELLIPSE_TOLERANCE,
+    SHAPE_TOLERANCE,
     Box,
     Color,
     Geometry,
@@ -327,7 +327,7 @@ def test_an_ellipse_keeps_within_its_tolerance_of_the_curve(radius: int) -> None
         middle = math.hypot((x1 + x2) / 2 - radius, (y1 + y2) / 2 - radius)
         worst = max(worst, radius - middle, abs(math.hypot(x1 - radius, y1 - radius) - radius))
 
-    assert worst <= ELLIPSE_TOLERANCE + 0.5
+    assert worst <= SHAPE_TOLERANCE + 0.5
 
 
 def test_an_ellipse_has_as_many_corners_as_its_size_needs() -> None:

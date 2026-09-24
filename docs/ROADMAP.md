@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 30 | Drawing a region with a brush | M |
 | 18 | Chapter metadata in the plan | M |
 | 27 | Rotated text | M |
 | 28 | Sound effects, lettered over the artwork | M |
@@ -119,11 +118,6 @@ cheapest of the lettering milestones and is not, because the outline it needs
 is a field: had it been implied by `erase: none` it would have needed no bump
 at all, and that was considered and refused.
 
-30 waited on the shapes, as 26 did: the brush is a tool in the shape palette,
-which 17 shipped with room in its grid for more. It came after 26 by judgement
-rather than dependency, and 26 has shipped, so nothing stands in front of it
-now.
-
 **33 and 32 are last by judgement rather than by dependency**, which is worth
 saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
 and one call site in the window, and not one milestone above them goes near
@@ -135,9 +129,9 @@ what a
 plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 30 lands would mean checking it twice. Each of
-those milestones still updates the guide for its own change, as every
-milestone here does; 24 is the sweep for what that misses.
+checking it before the window milestones above it have landed would mean
+checking it twice. Each of those still updates the guide for its own change,
+as every milestone here does; 24 is the sweep for what that misses.
 
 **Asked for, and half of it was already there.** Rendering a chapter as JPEG
 works for a folder of pages and for a `.cbz`, from the command line and from
@@ -228,58 +222,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 30 Drawing a region with a brush
-
-Paint a region instead of clicking its corners, with a brush sized from the
-shape palette.
-
-**Decided: the region is the outline of whatever was painted.** A plan's region
-is *one simple ring* — `MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced
-by the reader and again by the window so it cannot write a file it could not
-reopen — and a stroke can paint a doughnut, so something has to say what
-becomes of the hole. It is filled. The ring is the outer boundary of the
-painted area and nothing else is recorded.
-
-**Nothing is discarded, which is the point of it.** Keeping the largest contour
-was considered first and refused: it is what `detect` does to a mask, and a
-tool that draws what you drew and then throws part of it away — silently, or
-with a line in the status bar — is a surprise from a tool whose whole promise
-is that the window cannot write a plan it could not reopen. Taking the outline
-has no such half: what you painted is what you get, minus a hole you could not
-have stored anyway.
-
-**It is the retrieval mode `detect` already uses.** `cv2.findContours` with
-`RETR_EXTERNAL` returns outermost contours and ignores holes, which is exactly
-this rule, and it is already the call in `detect/__init__.py` and
-`detect/colorseg.py`. So the conversion is not new work: a brush that paints
-into a scratch mask and converts on release reuses `detect`'s own path —
-`RETR_EXTERNAL`, then `approxPolyDP` at three epsilons in turn, rejecting
-anything non-simple or under three points — and produces a `Geometry.MANUAL`
-region exactly as the polygon tool does. **No schema change and no
-`PLAN_VERSION` bump**, which is why nothing was reserved for it when the
-format last moved.
-
-**What is left open is a second stroke, not a hole.** `RETR_EXTERNAL` gives one
-contour per painted blob, so two strokes apart still give two rings and one of
-them has to go — the same problem, moved. It does not arise at all if a stroke
-commits on release and one stroke is one region, which is the simplest thing to
-build and worth trying first. If strokes should instead accumulate until an
-explicit commit, the answer is already in the tree and need not be invented:
-`model.convex_hull` is what merging two regions produces, on the reasoning that
-"the hull of both outlines is the smallest convex shape that covers what either
-of them covered". That is the same question a brush would be asking.
-
-**Brush size, not stroke width.** The control is the brush's own size, and the
-label has to say so, because *stroke* is already spoken for twice: `config.py`
-uses stroke width for the morphological closing over the original lettering's
-pen strokes, and 28 adds `stroke_color` for the outline around drawn text. A
-third meaning, on a control a person sets, is one too many.
-
-**The rest is window work of a kind that already has a shape**: another mode
-and another cell in the shape palette, beside the polygon, the rectangle and
-the ellipse, its own line on the hint bar, and whole-plan undo swallowing a stroke the way it swallows a
-drag, through the same run-key coalescing the arrow keys use.
 
 ## 18 Chapter metadata in the plan
 

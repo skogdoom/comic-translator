@@ -23,6 +23,17 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A region can be painted with a brush.** The shape palette has four
+  brushes — fine, small, medium and large — and the Edit menu lists them under
+  Add Region below the shapes. Drag to paint; letting go makes the outline of
+  what was painted a region, one stroke to one region, and a loop painted round
+  the lettering is filled in, since a region is one ring and has no holes. A
+  click paints a round dab. The brushes are 1%, 2%, 4% and 8% of the page's
+  height, never under 3px, and the brush's outline follows the pointer. The
+  outline is traced and simplified the way detect grows a polygon over its
+  text, but held to within a pixel of what was painted rather than to
+  detect's share of the perimeter, which on a long thin stroke cut away up to
+  64% of it, measured. No change to the plan format.
 - **A region can be turned.** Edit Region Shape puts a round handle on a
   stem above the selected region, beside its corners; dragging it turns the
   whole shape about the middle of its box, in 15° steps with Shift. It goes

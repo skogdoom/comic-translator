@@ -37,6 +37,7 @@ from comictrans.model import (
     Region,
     TextCase,
     ellipse_polygon,
+    point_in_polygon,
     polygon_bounds,
     rectangle_polygon,
     rotate_polygon,
@@ -91,12 +92,15 @@ from comictrans.gui import (
     render_dialog,
     run_job,
 )
+from comictrans.gui import canvas as canvas_module
+from comictrans.gui.brush import BRUSH_SIZES, brush_diameter
 from comictrans.gui.canvas import (
     COLOR_MANUAL,
     NUDGE_ACCELERATES_AFTER,
     NUDGE_STEP,
     NUDGE_STRIDE,
     CanvasMode,
+    PageCanvas,
     mode_hint,
     move_modifier_name,
 )
@@ -4092,8 +4096,17 @@ def test_add_region_opens_the_palette_of_shapes(qapp: object, two_page_plan: Pat
         window._draw_polygon_action,
         window._draw_rectangle_action,
         window._draw_ellipse_action,
+        *BRUSHES(window),
     ]
-    assert [b.toolTip() for b in palette.buttons] == ["Polygon", "Rectangle", "Ellipse"]
+    assert [b.toolTip() for b in palette.buttons] == [
+        "Polygon",
+        "Rectangle",
+        "Ellipse",
+        "Fine Brush",
+        "Small Brush",
+        "Medium Brush",
+        "Large Brush",
+    ]
 
     palette.popup(button.mapToGlobal(button.rect().bottomLeft()))
     palette.buttons[1].click()
@@ -4119,8 +4132,267 @@ def test_the_edit_menu_offers_the_same_shapes(qapp: object, two_page_plan: Path)
         window._draw_polygon_action,
         window._draw_rectangle_action,
         window._draw_ellipse_action,
+        *BRUSHES(window),
     ]
+    assert add.actions()[3].isSeparator(), "the shapes, then the brushes"
     assert window._draw_polygon_action.shortcut().toString() == "Ctrl+Shift+A", "as before"
+
+
+def BRUSHES(window: MainWindow) -> list[QAction]:  # noqa: N802 - reads as the constant it lists
+    """The brush actions, finest first."""
+    return [
+        window._brush_fine_action,
+        window._brush_small_action,
+        window._brush_medium_action,
+        window._brush_large_action,
+    ]
+
+
+def _paint(canvas: PageCanvas, points: list[tuple[int, int]]) -> None:
+    """Press at the first page point, move through the rest, let go at the last."""
+    viewport = canvas.viewport()
+    screen = [canvas.mapFromScene(QPointF(*point)) for point in points]
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, screen[0])
+    for position in screen[1:]:
+        QTest.mouseMove(viewport, position)
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, screen[-1]
+    )
+
+
+def test_painting_with_the_brush_adds_the_outline_of_the_stroke(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._brush_medium_action.setChecked(True)
+    assert canvas.mode is CanvasMode.BRUSH
+    assert canvas.brush == BRUSH_SIZES[2]
+    assert window._add_region_action.isChecked(), "the palette's button says a tool is in hand"
+    diameter = brush_diameter(BRUSH_SIZES[2], 260)
+
+    _paint(canvas, [(330, 125), (400, 125), (470, 125)])
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    assert added.geometry is Geometry.MANUAL
+    left, top, right, bottom = _box_of(added.polygon)
+    half = diameter // 2
+    assert _near(
+        ((left, top), (right, bottom)), ((330 - half, 125 - half), (470 + half, 125 + half)), 3
+    )
+    assert window._current_region == added.id, "selected, for its text to be typed"
+    assert canvas.mode is CanvasMode.SELECT, "put down after one, as every shape is"
+    assert not window._brush_medium_action.isChecked()
+    assert not window._add_region_action.isChecked()
+
+
+def test_a_loop_painted_round_the_lettering_is_filled_in(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._brush_fine_action.setChecked(True)
+    loop = [
+        (
+            round(400 + 85 * math.cos(step / 24 * math.tau)),
+            round(125 + 40 * math.sin(step / 24 * math.tau)),
+        )
+        for step in range(25)
+    ]
+
+    _paint(window._canvas, loop)
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    assert point_in_polygon((400, 125), added.polygon), "the middle, which was never painted"
+
+
+def test_a_click_with_the_brush_is_a_dab(qapp: object, two_page_plan: Path) -> None:
+    """Unlike a rectangle's: a click is what the brush paints, a round dab."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._brush_large_action.setChecked(True)
+    diameter = brush_diameter(BRUSH_SIZES[3], 260)
+    press = canvas.mapFromScene(QPointF(400, 125))
+
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=press)
+    shown = canvas._stroke_item
+    assert shown is not None, "shown from the press, before anything moves"
+    dab = shown.path()
+    reach = 0.45 * diameter
+    assert dab.contains(QPointF(400 + reach, 125)) and dab.contains(QPointF(400, 125 - reach))
+    assert not dab.contains(QPointF(400 + reach, 125 + reach)), "round, not square"
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=press)
+
+    assert len(window.document.plan.regions) == before + 1  # type: ignore[union-attr]
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    left, top, right, bottom = _box_of(added.polygon)
+    assert abs((right - left + 1) - diameter) <= 2 and abs((bottom - top + 1) - diameter) <= 2
+    assert abs((left + right) / 2 - 400) <= 1 and abs((top + bottom) / 2 - 125) <= 1
+
+
+def test_the_stroke_is_shown_as_it_is_painted(qapp: object, two_page_plan: Path) -> None:
+    """As wide as the brush, and round at its ends and turns, as it will paint."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._brush_large_action.setChecked(True)
+    viewport = canvas.viewport()
+    half = canvas.brush_diameter / 2
+
+    QTest.mousePress(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(330, 170))
+    )
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(400, 80)))
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(470, 170)))
+
+    shown = canvas._stroke_item
+    assert shown is not None
+    painted = shown.path()
+    rect = painted.boundingRect()
+    assert _near(
+        ((round(rect.left()), round(rect.top())), (round(rect.right()), round(rect.bottom()))),
+        ((round(330 - half), round(80 - half)), (round(470 + half), round(170 + half))),
+    ), "as wide as it will paint"
+    turn = canvas.mapToScene(canvas.mapFromScene(QPointF(400, 80)))
+    assert painted.contains(turn + QPointF(0, -0.9 * half)), "the turn is painted round it"
+    assert not painted.contains(turn + QPointF(0, -1.3 * half)), "and not to a point"
+    end = canvas.mapToScene(canvas.mapFromScene(QPointF(470, 170)))
+    assert painted.contains(end + QPointF(0, 0.9 * half)), "the end is painted past"
+    assert not painted.contains(end + QPointF(0.9 * half, 0.9 * half)), "roundly, not square"
+
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(470, 170))
+    )
+    assert canvas._stroke_item is None, "and gone once it is a region"
+    assert canvas.stroke == ()
+
+
+def test_the_brush_shows_its_size_under_the_pointer(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    viewport = canvas.viewport()
+    window._brush_fine_action.setChecked(True)
+
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(200, 100)))
+
+    tip = canvas._brush_tip
+    assert tip is not None
+    assert _near(((round(tip.pos().x()), round(tip.pos().y())),), ((200, 100),))
+    assert tip.rect().width() == brush_diameter(BRUSH_SIZES[0], 260)
+    assert canvas.stroke == (), "hovering paints nothing"
+
+    below = canvas.mapFromScene(QPointF(200, 275))
+    assert viewport.rect().contains(below), "sanity: the view shows past the page's foot"
+    QTest.mouseMove(viewport, below)
+    tip = canvas._brush_tip
+    assert tip is not None
+    assert (round(tip.pos().x()), round(tip.pos().y())) == (
+        round(canvas.mapToScene(below).x()),
+        259,
+    ), "held on the page, where a press there would paint"
+
+    QApplication.sendEvent(canvas, QEvent(QEvent.Type.Leave))
+    assert canvas._brush_tip is None, "off the view, the outline goes with the pointer"
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(210, 100)))
+
+    window._brush_large_action.setChecked(True)
+    tip = canvas._brush_tip
+    assert tip is not None, "still there, at the size of the brush now in hand"
+    assert tip.rect().width() == brush_diameter(BRUSH_SIZES[3], 260)
+
+    window._brush_large_action.setChecked(False)
+    assert canvas._brush_tip is None, "put down with the brush"
+
+
+def test_a_page_turned_with_the_brush_in_hand_is_painted_on_afresh(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The scene is cleared under the brush's outline and its stroke alike."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    viewport = canvas.viewport()
+    window._brush_medium_action.setChecked(True)
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(200, 100)))
+    QTest.mousePress(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(200, 100))
+    )
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(250, 100)))
+
+    window._pages.select_image("page-002.png")
+
+    assert canvas.stroke == () and canvas._stroke_item is None and canvas._brush_tip is None
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(250, 100))
+    )
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(300, 120)))
+    assert canvas._brush_tip is not None and canvas._brush_tip.scene() is canvas.scene()
+
+
+def test_escape_drops_the_stroke_then_the_brush(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._brush_small_action.setChecked(True)
+    viewport = canvas.viewport()
+
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(330, 80)))
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(470, 170)))
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(470, 170))
+    )
+
+    assert len(window.document.plan.regions) == before, "the stroke went, not to the plan"  # type: ignore[union-attr]
+    assert canvas._stroke_item is None
+    assert canvas.mode is CanvasMode.BRUSH, "and the brush is still in hand"
+
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    assert canvas.mode is CanvasMode.SELECT
+    assert not window._brush_small_action.isChecked()
+
+
+def test_a_stroke_is_one_undo_step(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.plan  # type: ignore[union-attr]
+    window._brush_medium_action.setChecked(True)
+    _paint(window._canvas, [(330, 125), (360, 110), (400, 140), (440, 110), (470, 125)])
+
+    window._on_undo()
+
+    assert window.document.plan == before  # type: ignore[union-attr]
+
+
+def test_a_stroke_with_no_ring_to_make_leaves_the_brush_in_hand(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Measured never to happen; if it did, nothing half-made reaches the plan."""
+    monkeypatch.setattr(canvas_module, "stroke_outline", lambda *_args: None)
+    window = _shown_window(two_page_plan)
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._brush_medium_action.setChecked(True)
+
+    _paint(window._canvas, [(330, 125), (470, 125)])
+
+    assert len(window.document.plan.regions) == before  # type: ignore[union-attr]
+    assert window._canvas.mode is CanvasMode.BRUSH
+    assert window._canvas.stroke == () and window._canvas._stroke_item is None
+
+
+def test_picking_another_brush_swaps_the_one_in_hand(qapp: object, two_page_plan: Path) -> None:
+    """One brush mode, so the canvas reports no change; the ticks follow anyway."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._draw_rectangle_action.setChecked(True)
+
+    window._brush_fine_action.setChecked(True)
+    assert canvas.mode is CanvasMode.BRUSH
+    assert not window._draw_rectangle_action.isChecked(), "a shape is put down for a brush"
+
+    window._brush_large_action.setChecked(True)
+    assert canvas.mode is CanvasMode.BRUSH and canvas.brush == BRUSH_SIZES[3]
+    assert [action.isChecked() for action in BRUSHES(window)] == [False, False, False, True]
+    assert window._add_region_action.isChecked()
+
+    window._brush_large_action.setChecked(False)
+    assert canvas.mode is CanvasMode.SELECT, "the same brush again puts it down"
+    assert not window._add_region_action.isChecked()
 
 
 def _reshaping(window: MainWindow, region_id: str) -> None:

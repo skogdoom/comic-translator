@@ -109,8 +109,9 @@ opening every page to look.</p>
 <h2><a name="drawing"></a>Drawing a region</h2>
 
 <p>For a balloon extract missed, <b>Add Region</b> on the toolbar opens a
-palette of the shapes a region can be drawn as. Pick one and draw it; the
-<b>Edit</b> menu has the same shapes under <b>Add Region</b>.</p>
+palette of the shapes a region can be drawn as, and of four brushes it can be
+painted with. Pick one and draw it; the <b>Edit</b> menu has the same shapes
+and brushes under <b>Add Region</b>.</p>
 
 <p><b>Polygon</b> (Ctrl+Shift+A): click to place each corner, then click the
 first corner again, double-click, or press Enter to close the outline.
@@ -122,8 +123,15 @@ exactly what you get. An ellipse is kept as the ring of corners it is drawn
 with, so reshaping it later is reshaping those corners, like any other
 region's.</p>
 
-<p>Escape throws away what is half-drawn and leaves the shape in hand for
-another try; pressed again, it puts the shape down. A region drawn by hand
+<p><b>Fine</b>, <b>Small</b>, <b>Medium</b> and <b>Large Brush</b>: drag to
+paint over the lettering, and the region is the outline of what you painted
+when you let go. A loop drawn round the text is filled in, so you need not
+paint the inside. Each brush is a share of the page's height, twice the one
+before it, starting from about a line of lettering; its outline follows the
+pointer so you can see what it will cover. One stroke makes one region.</p>
+
+<p>Escape throws away what is half-drawn and leaves the shape or brush in
+hand for another try; pressed again, it puts it down. A region drawn by hand
 has no text yet: type it in, or use <b>Extract Text from Region</b> to have
 the recogniser read it.</p>
 
