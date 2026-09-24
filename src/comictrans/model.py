@@ -601,6 +601,30 @@ def ellipse_polygon(
     return tuple(points)
 
 
+def rotate_polygon(polygon: Polygon, degrees: float) -> Polygon:
+    """The polygon turned about the middle of its box, in whole pixels.
+
+    Positive is clockwise as the page is seen, since y grows downwards. The
+    middle of the box rather than the centroid: it is the point the eye takes
+    for the middle of a balloon, and what a handle drawn over the box turns
+    it about. Nothing records the angle: a region turned is simply the
+    corners it now has, so turning it back is turning it again, rounding and
+    all.
+    """
+    box = polygon_bounds(polygon)
+    centre_x = (box.left + box.right - 1) / 2
+    centre_y = (box.top + box.bottom - 1) / 2
+    turn = math.radians(degrees)
+    cos, sin = math.cos(turn), math.sin(turn)
+    return tuple(
+        (
+            round(centre_x + (x - centre_x) * cos - (y - centre_y) * sin),
+            round(centre_y + (x - centre_x) * sin + (y - centre_y) * cos),
+        )
+        for x, y in polygon
+    )
+
+
 def polygon_is_simple(polygon: Polygon) -> bool:
     """True when no two non-adjacent edges of the polygon touch or cross.
 

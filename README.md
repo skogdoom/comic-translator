@@ -68,7 +68,8 @@ otherwise, and Swedish is the translation that ships.
 
 **A region can be drawn as a rectangle or an ellipse** as well as clicked out
 corner by corner: Add Region on the toolbar opens a palette of the shapes.
-See **review** below.
+**And turned**, for a balloon that sits at an angle: Edit Region Shape puts a
+round handle above the region that turns it. See **review** below.
 
 **A chapter can be read without translating it.** `comictrans read` opens a
 folder of pages or a chapter file in a window of its own — the arrow keys
@@ -561,7 +562,13 @@ detection put it.
 selected region. Drag a corner to move it, drag anywhere inside the outline
 to move the whole shape, and double-click an edge to add a corner or a corner
 to remove it — four corners is what detection produces for a caption box and
-never enough to trace a balloon. `Esc` abandons a drag in progress. Each drag
+never enough to trace a balloon. A round handle on a stem above the region
+turns it: drag it round, and the whole shape turns about the middle of its
+box, in 15° steps with Shift held. Where there is no room above the region on
+screen, the handle is below it. A turn that would take a corner off the page
+stops where the shape last fitted, and nothing remembers the angle — a region
+turned is simply the corners it now has, which is what keeps the plan format
+where it is. `Esc` abandons a drag or a turn in progress. Each drag
 is one undo step, and a shape a plan file could not hold — fewer than three
 corners, off the top or left of the page, an outline that crosses itself — is
 refused with a message and the region left as it was, rather than saved and

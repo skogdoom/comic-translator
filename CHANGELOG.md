@@ -23,6 +23,15 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A region can be turned.** Edit Region Shape puts a round handle on a
+  stem above the selected region, beside its corners; dragging it turns the
+  whole shape about the middle of its box, in 15° steps with Shift. It goes
+  below the region when there is no room above it on screen. A turn that would
+  take a corner off the page stops where the shape last fitted, rather than
+  flattening it against the edge. The angle is not recorded — a region turned
+  is the corners it now has, a manual region in one undo step, and the plan
+  format does not change — and the lettering inside it stays level, which is
+  milestone 27's to change.
 - **A region can be drawn as a rectangle or an ellipse.** Add Region on the
   toolbar opens a palette of shapes, three to a row, with room for more; the
   Edit menu lists the same ones under Add Region. The polygon is clicked

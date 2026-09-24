@@ -11,6 +11,7 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+import math
 import re
 import subprocess
 import sys
@@ -37,6 +38,8 @@ from comictrans.model import (
     TextCase,
     ellipse_polygon,
     polygon_bounds,
+    rectangle_polygon,
+    rotate_polygon,
 )
 from comictrans.ocr.base import OcrLine
 from comictrans.planfile import load_plan, write_plan
@@ -57,7 +60,14 @@ from .conftest import (
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QAction, QContextMenuEvent, QDesktopServices, QKeyEvent, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QContextMenuEvent,
+    QDesktopServices,
+    QKeyEvent,
+    QKeySequence,
+    QMouseEvent,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -4111,6 +4121,184 @@ def test_the_edit_menu_offers_the_same_shapes(qapp: object, two_page_plan: Path)
         window._draw_ellipse_action,
     ]
     assert window._draw_polygon_action.shortcut().toString() == "Ctrl+Shift+A", "as before"
+
+
+def _reshaping(window: MainWindow, region_id: str) -> None:
+    window._go_to_region(region_id)
+    window._edit_shape_action.setChecked(True)
+
+
+def _turn(
+    window: MainWindow,
+    degrees: float,
+    modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+    *,
+    release: bool = True,
+) -> tuple[QPointF, QPointF]:
+    """Take the turning handle and carry it round the region's middle.
+
+    A degree a step, so a turn that stops at the edge of the page stops
+    where it should. The modifier is sent with every move, which is where a
+    turn is decided. Returns where the press and the last move were, on the
+    page.
+    """
+    canvas = window._canvas
+    handle = canvas._turn_handle
+    assert handle is not None, "no turning handle to take"
+    grip = canvas.mapFromScene(handle.pos()) + handle.grip_offset()
+    region = window.document.region(window._current_region)  # type: ignore[union-attr, arg-type]
+    box = polygon_bounds(region.polygon)
+    middle = canvas.mapFromScene(
+        QPointF((box.left + box.right - 1) / 2, (box.top + box.bottom - 1) / 2)
+    )
+    radius = math.hypot(grip.x() - middle.x(), grip.y() - middle.y())
+    start = math.atan2(grip.y() - middle.y(), grip.x() - middle.x())
+    viewport = canvas.viewport()
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, grip)
+    point = grip
+    count = max(1, round(abs(degrees)))
+    for step in range(1, count + 1):
+        angle = start + math.radians(degrees * step / count)
+        point = QPoint(
+            round(middle.x() + radius * math.cos(angle)),
+            round(middle.y() + radius * math.sin(angle)),
+        )
+        QApplication.sendEvent(
+            viewport,
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                QPointF(point),
+                QPointF(viewport.mapToGlobal(point)),
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                modifiers,
+            ),
+        )
+    if release:
+        QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, modifiers, point)
+    return canvas.mapToScene(grip), canvas.mapToScene(point)
+
+
+def _swept(region_polygon: object, press: QPointF, last: QPointF) -> float:
+    """The degrees a pointer swept about the middle of a polygon's box."""
+    box = polygon_bounds(tuple(region_polygon))  # type: ignore[call-overload]
+    x, y = (box.left + box.right - 1) / 2, (box.top + box.bottom - 1) / 2
+    return math.degrees(
+        math.atan2(last.y() - y, last.x() - x) - math.atan2(press.y() - y, press.x() - x)
+    )
+
+
+def test_editing_a_shape_offers_a_handle_that_turns_it(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    assert canvas._turn_handle is None, "only while a shape is being edited"
+    # At actual size, where 28 screen pixels are 28 of the page and the
+    # region's top edge is 60 down it: room above. Fitted into a test-sized
+    # window there is not, and the handle rightly goes below.
+    canvas.set_zoom(1.0)
+
+    _reshaping(window, "page-001-002")
+
+    handle = canvas._turn_handle
+    assert handle is not None
+    assert (handle.pos().x(), handle.pos().y()) == (399.5, 60.0), "the middle of its top edge"
+    assert handle.grip_offset().y() < 0, "drawn above it, where there is room"
+    assert "turn it" in window._hint.hint()
+
+    canvas.fit()  # fitted, there is no longer room above on screen
+    handle = canvas._turn_handle
+    assert handle is not None
+    assert handle.grip_offset().y() > 0, "the zoom decides which side it goes"
+
+
+def test_turning_a_region_turns_it_about_its_middle_as_one_edit(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-002")  # type: ignore[union-attr]
+    plan_before = window.document.plan  # type: ignore[union-attr]
+    _reshaping(window, "page-001-002")
+
+    press, last = _turn(window, 30)
+
+    turned = window.document.region("page-001-002")  # type: ignore[union-attr]
+    assert turned.polygon == rotate_polygon(before.polygon, _swept(before.polygon, press, last))
+    assert turned.polygon != before.polygon
+    assert turned.geometry is Geometry.MANUAL, "a shape you set is a shape you set"
+    handle = window._canvas._turn_handle
+    assert handle is not None and handle.stem.isVisible(), "back in its place once let go"
+    box = polygon_bounds(turned.polygon)
+    assert handle.pos().x() == (box.left + box.right - 1) / 2, "over the shape as it is now"
+
+    window._on_undo()
+    assert window.document.plan == plan_before, "one gesture, one undo step"  # type: ignore[union-attr]
+
+
+def test_shift_turns_in_steps_of_fifteen_degrees(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-002").polygon  # type: ignore[union-attr]
+    _reshaping(window, "page-001-002")
+
+    _turn(window, 20, Qt.KeyboardModifier.ShiftModifier)
+
+    assert window.document.region("page-001-002").polygon == rotate_polygon(before, 15)  # type: ignore[union-attr]
+
+
+def test_a_turn_stops_where_the_shape_last_fitted_on_the_page(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Not flattened against the edge: every corner where the turn put it."""
+    window = _shown_window(two_page_plan)
+    wide = rectangle_polygon((10, 60), (590, 200))
+    window.document.set_polygon("page-001-002", wide)  # type: ignore[union-attr]
+    window._refresh_page_visuals()
+    _reshaping(window, "page-001-002")
+
+    _turn(window, 45)
+
+    turned = window.document.region("page-001-002").polygon  # type: ignore[union-attr]
+    assert turned != wide, "it turned as far as it could"
+    assert all(0 <= x <= 599 and 0 <= y <= 259 for x, y in turned)
+    assert any(turned == rotate_polygon(wide, degrees / 10) for degrees in range(1, 200)), (
+        "a turn of the whole shape, not a shape squashed at the edge"
+    )
+
+
+def test_the_handle_goes_below_a_region_with_no_room_above_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window.document.set_polygon("page-001-002", rectangle_polygon((300, 0), (500, 140)))  # type: ignore[union-attr]
+    window._refresh_page_visuals()
+
+    _reshaping(window, "page-001-002")
+
+    handle = window._canvas._turn_handle
+    assert handle is not None
+    assert (handle.pos().x(), handle.pos().y()) == (400.0, 140.0), "its bottom edge's middle"
+    assert handle.grip_offset().y() > 0, "and drawn below it, where it can be reached"
+
+
+def test_escape_mid_turn_puts_the_shape_back(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.plan  # type: ignore[union-attr]
+    _reshaping(window, "page-001-002")
+
+    _turn(window, 30, release=False)
+    QTest.keyClick(window._canvas, Qt.Key.Key_Escape)
+    QTest.mouseRelease(window._canvas.viewport(), Qt.MouseButton.LeftButton)
+
+    assert window.document.plan == before  # type: ignore[union-attr]
+    assert window._canvas.polygon_of("page-001-002") == before.regions[1].polygon
+
+
+def test_a_locked_region_has_nothing_to_turn_it_with(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    window._lock_action.setChecked(True)
+    window._canvas.set_mode(CanvasMode.RESHAPE)
+
+    assert window._canvas._turn_handle is None
 
 
 def test_two_corners_are_not_a_region(qapp: object, two_page_plan: Path) -> None:

@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 26 | Rotate a region | M |
 | 30 | Drawing a region with a brush | M |
 | 18 | Chapter metadata in the plan | M |
 | 27 | Rotated text | M |
@@ -109,24 +108,21 @@ not a reason to start on it.
 **What 29 did not settle, and should not be read as settling.** Two open
 questions in this file were answered partly on the grounds that a field costs
 a version bump: whether an ellipse remembers it is an ellipse, which 17
-answered no when it shipped, and whether a rotated region remembers its angle
-(26). The bump is now paid for and the
+answered no when it shipped, and whether a rotated region remembers its angle,
+which 26 answered no when it did. The bump is now paid for and the
 mechanism is proven, so both rest on the half that is still true — nothing
 downstream reads either, and a field nothing reads is still a field to
 maintain. Neither is reopened; they are standing on one leg instead of two.
 
-26 and 28 are placed by what they need rather than by size. 26 waited on the
-shapes, because rotation is a handle on a shape, and 17 has shipped them. 28
-would have been the cheapest of the three and is not, because the outline it
-needs is a field: had it been implied by `erase: none` it would have needed no
-bump at all, and that was considered and refused.
+28 is placed by what it needs rather than by size. It would have been the
+cheapest of the lettering milestones and is not, because the outline it needs
+is a field: had it been implied by `erase: none` it would have needed no bump
+at all, and that was considered and refused.
 
-30 waited on the same thing: the brush is a tool in the shape palette, which
-17 shipped with room in its grid for more. Which of 26 and 30 goes first is a
-judgement and not a dependency — neither needs the other, and 26 was sequenced
-there before the brush had a number. The question that kept the brush out of
-17 has been answered, so nothing holds it where it is except that somebody has
-to be second.
+30 waited on the shapes, as 26 did: the brush is a tool in the shape palette,
+which 17 shipped with room in its grid for more. It came after 26 by judgement
+rather than dependency, and 26 has shipped, so nothing stands in front of it
+now.
 
 **33 and 32 are last by judgement rather than by dependency**, which is worth
 saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
@@ -139,7 +135,7 @@ what a
 plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 26 and 30 land would mean checking it twice. Each of
+checking it before 30 lands would mean checking it twice. Each of
 those milestones still updates the guide for its own change, as every
 milestone here does; 24 is the sweep for what that misses.
 
@@ -232,35 +228,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 26 Rotate a region
-
-Tilt a region so its outline follows a balloon that sits at an angle.
-
-**No schema change, and no memory of the angle.** A `Region` already holds an
-arbitrary polygon, so a tilted rectangle is four points and nothing more. The
-rotation is a gesture rather than a stored property: once applied, the region
-is the points it now has, exactly as if they had been dragged there. That is
-what keeps this clear of `PLAN_VERSION`, and it is a trade made deliberately —
-a region cannot afterwards be un-rotated or re-rotated cleanly, because
-nothing records the angle it was put at.
-
-That is the same trade 17 made for an ellipse, settled the same way: stored
-as the polygon it comes out as, losing the fact that it was ever an ellipse,
-because a shape field is a `PLAN_VERSION` bump for something nothing
-downstream reads. Consistency here is worth more than either answer.
-
-**Driven from the shape palette** that 17 built: rotation is a handle on a
-shape, and the palette is where the shapes are. It has room in its grid for a
-tool of this kind beside the polygon, the rectangle and the ellipse.
-
-**It does not letter rotated text**, and is worth having without it. The
-typesetter fits each line to the widest horizontal run inside the polygon on
-every row of its band, so text inside a tilted outline is still laid out
-level. Measured on a 320x180 box: the same sentence fits at 87px over three
-lines upright, 68px over four at 20 degrees, and 66px over six at 45. What
-this milestone buys on its own is an erase and an outline that follow the
-balloon instead of a bounding box. 27 is what makes the text follow too.
 
 ## 30 Drawing a region with a brush
 
@@ -366,7 +333,10 @@ angle tried: 87px over three lines at 0, 20, 30 and 45 degrees alike, against
 So the work is three things and none of them is in `typeset`:
 
 - **An angle on the region**, which the plan format already carries — so
-  nothing here touches it.
+  nothing here touches it. Nothing sets it yet, either: 26 shipped turning a
+  region's corners and recording no angle, deliberately, so this milestone
+  decides how a region comes to have one — a field in the Region panel, or
+  the turning handle writing down what it turned by.
 - **A coordinate transform** either side of the fit: rotate the polygon in,
   rotate the drawn result back.
 - **`draw_layout` drawing into a region-local layer** and rotating it once

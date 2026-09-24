@@ -22,6 +22,7 @@ from comictrans.model import (
     polygon_is_simple,
     polygons_overlap,
     rectangle_polygon,
+    rotate_polygon,
     source_path,
     with_image_order,
 )
@@ -335,3 +336,31 @@ def test_an_ellipse_has_as_many_corners_as_its_size_needs() -> None:
 
     assert counts == [24, 48]
     assert len(ellipse_polygon((10, 10), (1039, 707))) == 52
+
+
+# -- turning a region ----------------------------------------------------------
+
+
+def test_a_quarter_turn_is_clockwise_about_the_middle_of_the_box() -> None:
+    """y grows downwards, so a positive angle turns the way a clock does."""
+    wide = rectangle_polygon((10, 20), (50, 40))
+
+    assert rotate_polygon(wide, 90) == ((40, 10), (40, 50), (20, 50), (20, 10))
+    assert polygon_bounds(rotate_polygon(wide, 90)) == Box(20, 10, 41, 51), "same middle"
+
+
+def test_a_turn_there_and_back_and_a_full_turn_leave_it_as_it_was() -> None:
+    wide = rectangle_polygon((10, 20), (50, 40))
+
+    assert rotate_polygon(wide, 360) == wide
+    assert rotate_polygon(rotate_polygon(wide, 30), -30) == wide
+
+
+@pytest.mark.parametrize("degrees", [7, 15, 33, 45, 90, 150, 270])
+def test_a_turned_ellipse_is_still_a_region_a_plan_can_hold(degrees: int) -> None:
+    ellipse = ellipse_polygon((100, 100), (500, 300))
+
+    turned = rotate_polygon(ellipse, degrees)
+
+    assert len(turned) == len(ellipse), "every corner kept"
+    assert polygon_is_simple(turned)

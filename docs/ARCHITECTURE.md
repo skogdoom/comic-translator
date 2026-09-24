@@ -1526,6 +1526,19 @@ Add Region submenu holds, so a tick, a drawing or a shortcut cannot differ
 between the two. Escape does the same thing in all three modes: what is
 half-drawn goes first, and with nothing half-drawn the shape is put down.
 
+**A turn is a gesture, not a property.** Edit Region Shape adds a round
+`TurnHandle` above the selected region to the square corner handles, and
+dragging it turns the whole outline about the middle of its box through
+`model.rotate_polygon`. Nothing records the angle: the region is the corners
+it now has, a manual one like any shape set by hand, so the plan format does
+not move — the same trade the ellipse makes. The turn is computed afresh from
+the shape as it was at the press on every move, so a long drag gathers no
+rounding, and one that would put a corner off the page is held at the last
+angle that fitted, as a moved region is held at the edge, rather than having
+its corners clamped one by one and the shape squashed. The handle is drawn a
+fixed distance away on screen, so which side of the region there is room for
+it depends on the zoom, and a zoom change places it again.
+
 **The region context menu is select mode's own, not a fifth mode.**
 Right-click — and Control-click, which Qt maps to the same
 `contextMenuEvent` on macOS — asks `region_at` the identical hit test a left
