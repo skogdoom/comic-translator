@@ -8,6 +8,7 @@ nothing lost in translation between what you see and what apply would do.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -31,7 +32,9 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QGraphicsEllipseItem,
     QGraphicsItem,
+    QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsPolygonItem,
@@ -41,7 +44,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..model import Point, Polygon, ellipse_polygon, polygon_is_simple, rectangle_polygon
+from ..model import (
+    Point,
+    Polygon,
+    ellipse_polygon,
+    polygon_bounds,
+    polygon_is_simple,
+    rectangle_polygon,
+    rotate_polygon,
+)
 from ..planfile.schema import MIN_POLYGON_POINTS
 
 COLOR_EXACT = QColor(40, 170, 70)
@@ -76,6 +87,15 @@ HANDLE_GRAB = 10.0
 
 EDGE_GRAB = 8.0
 """How near an edge a double-click has to land to put a corner in it."""
+
+TURN_REACH = 28.0
+"""How far from the selected region its turning handle sits, in screen pixels.
+
+Far enough that it is not mistaken for a corner of a region whose top edge is
+a corner away from it, near enough to read as belonging to that region."""
+
+TURN_SNAP = 15.0
+"""Degrees a turn goes in with Shift held: the angles lettering is set at."""
 
 NUDGE_STEP = 1
 NUDGE_STRIDE = 20
@@ -199,7 +219,8 @@ MODE_HINTS: dict[CanvasMode, str] = {
     ),
     CanvasMode.RESHAPE: QCoreApplication.translate(
         "Canvas",
-        "drag a corner to reshape · drag inside or use the arrow keys to move · "
+        "drag a corner to reshape · drag the round handle to turn it, Shift in 15° steps · "
+        "drag inside or use the arrow keys to move · "
         "double-click an edge to add a corner or a corner to remove it · Esc cancels · "
         "Enter finishes",
     ),
@@ -279,6 +300,9 @@ class _ShapeDrag:
 
     polygon: Polygon
 
+    turning: bool = False
+    """The whole shape turns about the middle of its box, rather than moving."""
+
 
 class RegionItem(QGraphicsPolygonItem):
     """One region's outline. Knows its own id so a click can be reported."""
@@ -315,6 +339,38 @@ class VertexHandle(QGraphicsRectItem):
         self.setZValue(2.0)
         self.setBrush(COLOR_SELECTED)
         self.setPen(QPen(QColor(255, 255, 255)))
+
+
+class TurnHandle(QGraphicsEllipseItem):
+    """The grab point that turns the selected region about its middle.
+
+    Round where the corners are square, so the two are not taken for each
+    other, and on a stem back to the region it turns. Placed at the middle of
+    the region's top edge and drawn :data:`TURN_REACH` screen pixels above it
+    — or below its bottom edge, ``upward`` false, when there is no room above
+    on the page. Ignores the view transform like a corner handle, so the
+    reach is the same on screen at any zoom.
+    """
+
+    def __init__(self, anchor: QPointF, *, upward: bool = True) -> None:
+        radius = HANDLE_SIZE / 2.0 + 1.0
+        self.reach = -TURN_REACH if upward else TURN_REACH
+        super().__init__(QRectF(-radius, self.reach - radius, 2 * radius, 2 * radius))
+        self.setPos(anchor)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        self.setZValue(2.0)
+        self.setBrush(COLOR_SELECTED)
+        self.setPen(QPen(QColor(255, 255, 255)))
+        pen = QPen(COLOR_SELECTED)
+        pen.setCosmetic(True)
+        self.stem = QGraphicsLineItem(
+            0.0, 0.0, 0.0, self.reach - math.copysign(radius, self.reach), self
+        )
+        self.stem.setPen(pen)
+
+    def grip_offset(self) -> QPoint:
+        """Where the round grip is on screen, from where the handle is placed."""
+        return QPoint(0, round(self.reach))
 
 
 def _distance_to_segment(point: QPointF, start: QPointF, end: QPointF) -> float:
@@ -404,6 +460,7 @@ class PageCanvas(QGraphicsView):
         self._fit_to_window = True
         self._mode = CanvasMode.SELECT
         self._handles: list[VertexHandle] = []
+        self._turn_handle: TurnHandle | None = None
         self._drag: _ShapeDrag | None = None
         self._nudge_repeats = 0
         self._draft: list[Point] = []
@@ -434,6 +491,7 @@ class PageCanvas(QGraphicsView):
         self._draft_item = None
         self._items.clear()
         self._handles.clear()
+        self._turn_handle = None
         self._draft_handles.clear()
         self._scene.clear()
 
@@ -760,10 +818,18 @@ class PageCanvas(QGraphicsView):
         return None if best is None else best[1]
 
     def _refresh_handles(self) -> None:
-        """Put a handle on every corner of the selected region, or none at all."""
+        """Put a handle on every corner of the selected region, or none at all.
+
+        And the one that turns it, which goes above the region unless the
+        page stops short of where it would be drawn — then below, so that it
+        can always be reached.
+        """
         for handle in self._handles:
             self._scene.removeItem(handle)
         self._handles.clear()
+        if self._turn_handle is not None:
+            self._scene.removeItem(self._turn_handle)
+            self._turn_handle = None
         if self._mode is not CanvasMode.RESHAPE or self._selected_id is None:
             return
         if self._selected_id in self._locked_ids:
@@ -771,10 +837,54 @@ class PageCanvas(QGraphicsView):
         item = self._items.get(self._selected_id)
         if item is None:
             return
-        for index, (x, y) in enumerate(item.points()):
+        points = item.points()
+        for index, (x, y) in enumerate(points):
             handle = VertexHandle(index, QPointF(x, y))
             self._scene.addItem(handle)
             self._handles.append(handle)
+        box = polygon_bounds(points)
+        middle = (box.left + box.right - 1) / 2
+        reach = TURN_REACH / max(self.zoom, 1e-6)
+        upward = box.top - reach >= self._page_rect().top()
+        anchor = QPointF(middle, box.top if upward else box.bottom - 1)
+        self._turn_handle = TurnHandle(anchor, upward=upward)
+        self._scene.addItem(self._turn_handle)
+
+    def turn_handle_at(self, view_pos: QPointF) -> bool:
+        """Whether a view-coordinate point is on the turning handle."""
+        handle = self._turn_handle
+        if handle is None:
+            return False
+        grip = self.mapFromScene(handle.pos()) + handle.grip_offset()
+        offset = grip - view_pos.toPoint()
+        return float((offset.x() ** 2 + offset.y() ** 2) ** 0.5) <= HANDLE_GRAB
+
+    def _turned_polygon(
+        self, drag: _ShapeDrag, scene_point: QPointF, modifiers: Qt.KeyboardModifier
+    ) -> Polygon | None:
+        """The shape turned as far as the pointer has gone round its middle.
+
+        Measured as the angle the pointer has swept about the middle of the
+        box since the press, so the grip can be taken anywhere on it. Shift
+        rounds that to :data:`TURN_SNAP`. ``None`` when a corner would leave
+        the page: the turn stops where it last fitted, as a moved region
+        stops at the edge, rather than flattening the shape against it.
+        """
+        box = polygon_bounds(drag.polygon)
+        centre_x = (box.left + box.right - 1) / 2
+        centre_y = (box.top + box.bottom - 1) / 2
+        start = math.atan2(drag.origin.y() - centre_y, drag.origin.x() - centre_x)
+        now = math.atan2(scene_point.y() - centre_y, scene_point.x() - centre_x)
+        degrees = math.degrees(now - start)
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            degrees = round(degrees / TURN_SNAP) * TURN_SNAP
+        turned = rotate_polygon(drag.polygon, degrees)
+        rect = self._page_rect()
+        inside = all(
+            rect.left() <= x <= rect.right() - 1 and rect.top() <= y <= rect.bottom() - 1
+            for x, y in turned
+        )
+        return turned if inside else None
 
     def _page_rect(self) -> QRectF:
         return self._scene.sceneRect()
@@ -887,11 +997,16 @@ class PageCanvas(QGraphicsView):
         if region_id is None or item is None or region_id in self._locked_ids:
             return False
         scene_point = self.mapToScene(view_pos.toPoint())
-        vertex = self.handle_at(view_pos)
-        if vertex is None and not item.contains(item.mapFromScene(scene_point)):
+        turning = self._mode is CanvasMode.RESHAPE and self.turn_handle_at(view_pos)
+        vertex = None if turning else self.handle_at(view_pos)
+        if not turning and vertex is None and not item.contains(item.mapFromScene(scene_point)):
             return False
         self._drag = _ShapeDrag(
-            region_id=region_id, vertex=vertex, origin=scene_point, polygon=item.points()
+            region_id=region_id,
+            vertex=vertex,
+            origin=scene_point,
+            polygon=item.points(),
+            turning=turning,
         )
         # Otherwise the view pans the page under the shape being dragged.
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -939,6 +1054,7 @@ class PageCanvas(QGraphicsView):
         clamped = max(ZOOM_MIN, min(ZOOM_MAX, factor))
         self._fit_to_window = False
         self.setTransform(QTransform.fromScale(clamped, clamped))
+        self._refresh_handles()  # whether the turning handle fits above moves with the zoom
         self.zoom_changed.emit(clamped)
 
     def zoom_in(self) -> None:
@@ -955,6 +1071,7 @@ class PageCanvas(QGraphicsView):
         self._fit_to_window = True
         if self._pixmap_item is not None:
             self.fitInView(self._pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+        self._refresh_handles()
         self.zoom_changed.emit(self.zoom)
 
     def view_state(self) -> ViewState:
@@ -1090,6 +1207,19 @@ class PageCanvas(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if self._drag is not None and self._drag.turning:
+            scene_point = self.mapToScene(event.position().toPoint())
+            turned = self._turned_polygon(self._drag, scene_point, event.modifiers())
+            if turned is not None:
+                self._draw_polygon(self._drag.region_id, turned)
+            if self._turn_handle is not None:
+                # The grip goes with the pointer while it turns, rather than
+                # jumping about with the box of a shape that is turning.
+                handle = self._turn_handle
+                handle.stem.setVisible(False)
+                handle.setPos(self.mapToScene(event.position().toPoint() - handle.grip_offset()))
+            event.accept()
+            return
         if self._drag is not None:
             scene_point = self.mapToScene(event.position().toPoint())
             self._draw_polygon(self._drag.region_id, self._moved_polygon(self._drag, scene_point))
@@ -1111,6 +1241,8 @@ class PageCanvas(QGraphicsView):
             self.viewport().setCursor(
                 Qt.CursorShape.SizeAllCursor
                 if self.wants_move_cursor(event.position(), event.modifiers())
+                else Qt.CursorShape.PointingHandCursor
+                if self._mode is CanvasMode.RESHAPE and self.turn_handle_at(event.position())
                 else Qt.CursorShape.ArrowCursor
             )
         super().mouseMoveEvent(event)
@@ -1126,6 +1258,8 @@ class PageCanvas(QGraphicsView):
             return
         self._drag = None
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        if drag.turning:
+            self._refresh_handles()  # back above the shape it has turned
         polygon = self.polygon_of(drag.region_id)
         # A press that went nowhere is a click, not an edit. Reporting it
         # would put an undo step behind every stray click on a balloon.
