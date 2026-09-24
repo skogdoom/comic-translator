@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 17 | A shape palette for drawing a region | M |
 | 26 | Rotate a region | M |
 | 30 | Drawing a region with a brush | M |
 | 18 | Chapter metadata in the plan | M |
@@ -109,24 +108,25 @@ not a reason to start on it.
 
 **What 29 did not settle, and should not be read as settling.** Two open
 questions in this file were answered partly on the grounds that a field costs
-a version bump: whether an ellipse remembers it is an ellipse (17) and whether
-a rotated region remembers its angle (26). The bump is now paid for and the
+a version bump: whether an ellipse remembers it is an ellipse, which 17
+answered no when it shipped, and whether a rotated region remembers its angle
+(26). The bump is now paid for and the
 mechanism is proven, so both rest on the half that is still true — nothing
 downstream reads either, and a field nothing reads is still a field to
 maintain. Neither is reopened; they are standing on one leg instead of two.
 
-26 and 28 are placed by what they need rather than by size. 26 follows 17
-because rotation is a handle on a shape and 17 is what builds the shapes. 28
+26 and 28 are placed by what they need rather than by size. 26 waited on the
+shapes, because rotation is a handle on a shape, and 17 has shipped them. 28
 would have been the cheapest of the three and is not, because the outline it
 needs is a field: had it been implied by `erase: none` it would have needed no
 bump at all, and that was considered and refused.
 
-30 sits behind 17 for the same reason 26 does: the brush is a tool in 17's
-palette, and the palette is what 17 builds. Which of 26 and 30 goes first is a
-judgement and not a dependency — both need 17, neither needs the other, and 26
-was sequenced there before the brush had a number. The question that kept the
-brush out of 17 has been answered, so nothing holds it where it is except that
-somebody has to be second.
+30 waited on the same thing: the brush is a tool in the shape palette, which
+17 shipped with room in its grid for more. Which of 26 and 30 goes first is a
+judgement and not a dependency — neither needs the other, and 26 was sequenced
+there before the brush had a number. The question that kept the brush out of
+17 has been answered, so nothing holds it where it is except that somebody has
+to be second.
 
 **33 and 32 are last by judgement rather than by dependency**, which is worth
 saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
@@ -139,7 +139,7 @@ what a
 plugin *is* handed before 32 changes what it may bring with it.
 
 24 is late on purpose. The guide goes stale against window changes, and
-checking it before 17 lands would mean checking it twice. Each of
+checking it before 26 and 30 land would mean checking it twice. Each of
 those milestones still updates the guide for its own change, as every
 milestone here does; 24 is the sweep for what that misses.
 
@@ -233,34 +233,6 @@ It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
 
-## 17 A shape palette for drawing a region
-
-A rectangle and an ellipse beside the existing polygon tool, chosen from a
-palette rather than being the only way to draw.
-
-**The safe half of an idea that has an unsafe half.** A rectangle is four
-points and an ellipse is a polygon approximated to as many as it needs, so
-both produce exactly what the polygon tool produces: one simple ring, a
-`Geometry.MANUAL` region, no schema change and no `PLAN_VERSION` bump. The
-work is a fourth and fifth `CanvasMode`, their lines on the hint bar, and the
-palette itself. 26 joins this palette rather than building its own, which is
-why it is sequenced behind it.
-
-**The brush is milestone 30 and joins this palette.** It was an idea while the
-question it raises was open — a stroke can paint a doughnut or two separate
-blobs, and a plan's region is one simple ring, so something had to decide what
-that *means* before a cursor was drawn. That has been decided, and 30 is where
-it is written down. This milestone still goes first: the palette is what the
-brush joins, and it is worth having with two shapes in it before a third
-arrives.
-
-Worth settling while the palette is being designed: whether an ellipse is
-stored as the polygon it is approximated to, which is what the schema allows
-today and loses the fact that it was an ellipse, or whether a region grows a
-shape field, which is a `PLAN_VERSION` bump for something nothing downstream
-reads. The first, unless reshaping an ellipse as an ellipse turns out to be
-wanted.
-
 ## 26 Rotate a region
 
 Tilt a region so its outline follows a balloon that sits at an angle.
@@ -273,14 +245,14 @@ what keeps this clear of `PLAN_VERSION`, and it is a trade made deliberately —
 a region cannot afterwards be un-rotated or re-rotated cleanly, because
 nothing records the angle it was put at.
 
-That is the same trade 17 makes for an ellipse, settled the same way: stored
+That is the same trade 17 made for an ellipse, settled the same way: stored
 as the polygon it comes out as, losing the fact that it was ever an ellipse,
 because a shape field is a `PLAN_VERSION` bump for something nothing
 downstream reads. Consistency here is worth more than either answer.
 
-**Driven from 17's palette**, which is why it sits behind it. Rotation is a
-handle on a shape, and the shapes are what 17 builds; doing this first would
-mean fitting the handle to a palette that does not exist yet.
+**Driven from the shape palette** that 17 built: rotation is a handle on a
+shape, and the palette is where the shapes are. It has room in its grid for a
+tool of this kind beside the polygon, the rectangle and the ellipse.
 
 **It does not letter rotated text**, and is worth having without it. The
 typesetter fits each line to the widest horizontal run inside the polygon on
@@ -292,8 +264,8 @@ balloon instead of a bounding box. 27 is what makes the text follow too.
 
 ## 30 Drawing a region with a brush
 
-Paint a region instead of clicking its corners, with a brush sized from 17's
-palette.
+Paint a region instead of clicking its corners, with a brush sized from the
+shape palette.
 
 **Decided: the region is the outline of whatever was painted.** A plan's region
 is *one simple ring* — `MIN_POLYGON_POINTS` and `polygon_is_simple`, enforced
@@ -337,9 +309,9 @@ uses stroke width for the morphological closing over the original lettering's
 pen strokes, and 28 adds `stroke_color` for the outline around drawn text. A
 third meaning, on a control a person sets, is one too many.
 
-**The rest is window work of a kind that already has a shape**: another mode in
-17's palette beside select, reshape, draw and the shapes 17 adds, its own line
-on the hint bar, and whole-plan undo swallowing a stroke the way it swallows a
+**The rest is window work of a kind that already has a shape**: another mode
+and another cell in the shape palette, beside the polygon, the rectangle and
+the ellipse, its own line on the hint bar, and whole-plan undo swallowing a stroke the way it swallows a
 drag, through the same run-key coalescing the arrow keys use.
 
 ## 18 Chapter metadata in the plan

@@ -23,6 +23,18 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A region can be drawn as a rectangle or an ellipse.** Add Region on the
+  toolbar opens a palette of shapes, three to a row, with room for more; the
+  Edit menu lists the same ones under Add Region. The polygon is clicked
+  corner by corner as before, still on Ctrl+Shift+A. A rectangle or an
+  ellipse is dragged from one corner of its box to the other, Shift keeping
+  it square or round, and what is shown while dragging is exactly what is
+  drawn. Both are stored as what the polygon tool produces — one ring of
+  corners, a manual region, no change to the plan format — so an ellipse is
+  as many corners as keep it within a pixel of the curve, 24 at a 100px
+  radius and 48 at 400px. Escape now does the same in all three: what is
+  half-drawn goes first, and with nothing half-drawn the shape is put down,
+  where before a polygon's tool stayed in hand.
 - **A chapter can be read without translating it.** `comictrans read` opens a
   folder of pages, one image, or a CBZ, CBR or PDF in a window of its own: the
   arrow keys page through it, one page at a time or two, left to right or

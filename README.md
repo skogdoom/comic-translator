@@ -66,6 +66,10 @@ Mac — for a menu of what can be done to it.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
+**A region can be drawn as a rectangle or an ellipse** as well as clicked out
+corner by corner: Add Region on the toolbar opens a palette of the shapes.
+See **review** below.
+
 **A chapter can be read without translating it.** `comictrans read` opens a
 folder of pages or a chapter file in a window of its own — the arrow keys
 page through it, one page or two, left to right or right to left — and reads
@@ -573,10 +577,17 @@ manual`: what it says about itself is no longer that detection traced or
 guessed it, and the "check this" flag an approximate region carries clears,
 because checking it is exactly what you have just done.
 
-**Edit > Add Region** (`Ctrl+Shift+A`) draws one by hand, for a balloon
-detection missed entirely. Click to place each corner; click the first corner
-again, double-click, or press Enter to close the outline; Backspace takes a
-corner back and `Esc` abandons it. A region drawn here has no OCR reading:
+**Add Region** draws one by hand, for a balloon detection missed entirely.
+On the toolbar it opens a palette of shapes, three to a row; **Edit > Add
+Region** lists the same ones. A **polygon** (`Ctrl+Shift+A`) is clicked
+corner by corner: click the first corner again, double-click, or press Enter
+to close the outline, and Backspace takes a corner back. A **rectangle** or an
+**ellipse** is dragged from one corner of its box to the other, with Shift to
+keep it square or round. `Esc` abandons what is half-drawn and, pressed again,
+puts the shape down. All three are stored the same way, as the ring of
+corners they come out as: an ellipse is as many corners as keep it within a
+pixel of the curve, and nothing records that it was an ellipse. A region drawn
+here has no OCR reading:
 type its **source text** in along with the translation, or use **Extract Text
 from Region** below to have the recogniser read it. Until there is text, the
 region is flagged as held back. It records `geometry: manual` and
