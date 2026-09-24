@@ -17,6 +17,7 @@ import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QToolBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -67,6 +69,7 @@ from .canvas import (
     COLOR_APPROXIMATE,
     COLOR_EXACT,
     COLOR_MANUAL,
+    DRAWING_MODES,
     CanvasMode,
     PageCanvas,
     RegionAppearance,
@@ -100,6 +103,7 @@ from .run_job import (
 )
 from .run_panel import RunPanel
 from .sampling import color_at, sample_region_colors
+from .shape_palette import ShapePalette
 
 log = logging.getLogger(__name__)
 
@@ -466,11 +470,24 @@ class MainWindow(QMainWindow):
         self._edit_shape_action.toggled.connect(self._on_edit_shape_toggled)
         edit_menu.addAction(self._edit_shape_action)
 
+        # One action per shape, each a mode like the two above, and the same
+        # actions under Add Region here and in the toolbar's palette. The
+        # polygon keeps the shortcut Add Region always had.
+        self._draw_polygon_action = QAction(self.tr("&Polygon"), self)
+        self._draw_polygon_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self._draw_rectangle_action = QAction(self.tr("&Rectangle"), self)
+        self._draw_ellipse_action = QAction(self.tr("&Ellipse"), self)
+        add_menu = edit_menu.addMenu(self.tr("&Add Region"))
+        for action, mode in self._shape_actions():
+            action.setCheckable(True)
+            action.toggled.connect(partial(self._on_shape_toggled, mode))
+            add_menu.addAction(action)
+
+        # The toolbar's one button for all of them, which opens the palette
+        # rather than drawing; see _build_toolbar. Checked while any shape is
+        # being drawn, so the bar says a drawing tool is in hand.
         self._add_region_action = QAction(self.tr("&Add Region"), self)
         self._add_region_action.setCheckable(True)
-        self._add_region_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
-        self._add_region_action.toggled.connect(self._on_add_region_toggled)
-        edit_menu.addAction(self._add_region_action)
 
         # No ellipsis, and not Ctrl+M. The ellipsis is for a command that
         # stops to ask something; this one is a mode you are in, with a
@@ -696,6 +713,9 @@ class MainWindow(QMainWindow):
         "_redo_action": "redo",
         "_edit_shape_action": "edit-shape",
         "_add_region_action": "add-region",
+        "_draw_polygon_action": "shape-polygon",
+        "_draw_rectangle_action": "shape-rectangle",
+        "_draw_ellipse_action": "shape-ellipse",
         "_merge_action": "merge-region",
         "_delete_region_action": "delete-region",
         "_previous_region_action": "previous-region",
@@ -743,7 +763,19 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._redo_action)
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._edit_shape_action)
+        self._add_region_action.setMenu(
+            ShapePalette(
+                [action for action, _mode in self._shape_actions()],
+                self._toolbar.iconSize(),
+                self,
+            )
+        )
         self._toolbar.addAction(self._add_region_action)
+        shapes_button = self._toolbar.widgetForAction(self._add_region_action)
+        if isinstance(shapes_button, QToolButton):
+            # A click opens the palette: the button has no shape of its own
+            # to draw until one has been picked from it.
+            shapes_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._toolbar.addAction(self._merge_action)
         self._toolbar.addAction(self._delete_region_action)
         self._toolbar.addSeparator()
@@ -919,6 +951,8 @@ class MainWindow(QMainWindow):
         locked = self._current_is_locked
         self._edit_shape_action.setEnabled(can_edit_shapes and not locked)
         self._add_region_action.setEnabled(can_edit_shapes)
+        for action, _mode in self._shape_actions():
+            action.setEnabled(can_edit_shapes)
         self._delete_region_action.setEnabled(
             can_edit_shapes and self._current_region is not None and not locked
         )
@@ -1271,8 +1305,26 @@ class MainWindow(QMainWindow):
     def _on_edit_shape_toggled(self, on: bool) -> None:
         self._canvas.set_mode(CanvasMode.RESHAPE if on else CanvasMode.SELECT)
 
-    def _on_add_region_toggled(self, on: bool) -> None:
-        self._canvas.set_mode(CanvasMode.DRAW if on else CanvasMode.SELECT)
+    def _shape_actions(self) -> tuple[tuple[QAction, CanvasMode], ...]:
+        """Each shape a region can be drawn as, and the mode that draws it."""
+        return (
+            (self._draw_polygon_action, CanvasMode.DRAW),
+            (self._draw_rectangle_action, CanvasMode.RECTANGLE),
+            (self._draw_ellipse_action, CanvasMode.ELLIPSE),
+        )
+
+    def _on_shape_toggled(self, mode: CanvasMode, on: bool) -> None:
+        """Pick a shape up, or put it down.
+
+        Putting down only the shape in hand: picking another shape unticks
+        the last one through the canvas, with signals blocked, so this never
+        hears of it — but a stray untick of a shape not in use must not
+        take the one that is out of the hand.
+        """
+        if on:
+            self._canvas.set_mode(mode)
+        elif self._canvas.mode is mode:
+            self._canvas.set_mode(CanvasMode.SELECT)
 
     def _on_canvas_mode_changed(self, mode: str) -> None:
         """Keep the checked action and the canvas saying the same thing.
@@ -1289,11 +1341,13 @@ class MainWindow(QMainWindow):
             self.document.end_edit_run()
         for action, value in (
             (self._edit_shape_action, CanvasMode.RESHAPE),
-            (self._add_region_action, CanvasMode.DRAW),
+            *self._shape_actions(),
             (self._merge_action, CanvasMode.MERGE),
         ):
             with QSignalBlocker(action):
                 action.setChecked(mode == value)
+        with QSignalBlocker(self._add_region_action):
+            self._add_region_action.setChecked(mode in DRAWING_MODES)
         if mode != CanvasMode.PICK:
             self._sampling = None
 

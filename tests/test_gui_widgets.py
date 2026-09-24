@@ -35,6 +35,8 @@ from comictrans.model import (
     PlanImage,
     Region,
     TextCase,
+    ellipse_polygon,
+    polygon_bounds,
 )
 from comictrans.ocr.base import OcrLine
 from comictrans.planfile import load_plan, write_plan
@@ -64,7 +66,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
+    QToolButton,
     QWidget,
 )
 
@@ -117,6 +121,7 @@ from comictrans.gui.run_job import (
     RenderJob,
     RenderRequest,
 )
+from comictrans.gui.shape_palette import ShapePalette
 
 BALLOON_A = Box(60, 60, 260, 200)
 TEXT_A = Box(90, 110, 230, 140)
@@ -3466,10 +3471,12 @@ def test_enter_finishes_reshaping_the_same_way_add_region_finishes_drawing(
     "action_name,expected_mode",
     [
         ("_edit_shape_action", CanvasMode.RESHAPE),
-        ("_add_region_action", CanvasMode.DRAW),
+        ("_draw_polygon_action", CanvasMode.DRAW),
+        ("_draw_rectangle_action", CanvasMode.RECTANGLE),
+        ("_draw_ellipse_action", CanvasMode.ELLIPSE),
         ("_merge_action", CanvasMode.MERGE),
     ],
-    ids=["reshape", "draw", "merge"],
+    ids=["reshape", "polygon", "rectangle", "ellipse", "merge"],
 )
 def test_entering_a_tool_mode_takes_focus_off_a_text_field(
     qapp: object, two_page_plan: Path, action_name: str, expected_mode: CanvasMode
@@ -3830,7 +3837,7 @@ def test_drawing_an_outline_adds_a_region_with_colours_off_the_page(
     qapp: object, two_page_plan: Path
 ) -> None:
     window = _shown_window(two_page_plan)
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     assert window._canvas.mode is CanvasMode.DRAW
 
     # Around the second balloon, which the fixture draws white with black
@@ -3850,13 +3857,13 @@ def test_drawing_an_outline_adds_a_region_with_colours_off_the_page(
     assert added.text_color.as_tuple() == INK_BLACK
     assert window._current_region == added.id, "and it is what you are now editing"
     assert window._canvas.mode is CanvasMode.SELECT, "drawing is over"
-    assert not window._add_region_action.isChecked()
+    assert not window._draw_polygon_action.isChecked()
     assert window.isWindowModified()
 
 
 def test_an_outline_closes_by_clicking_its_first_corner(qapp: object, two_page_plan: Path) -> None:
     window = _shown_window(two_page_plan)
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
 
     for point in ((320, 60), (560, 60), (560, 200)):
         _click_scene(window._canvas, *point)
@@ -3873,7 +3880,7 @@ def test_a_half_drawn_outline_can_be_taken_back_a_corner_at_a_time(
 ) -> None:
     window = _shown_window(two_page_plan)
     before = len(window.document.plan.regions)  # type: ignore[union-attr]
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
 
     for point in ((320, 60), (560, 60), (560, 200)):
         _click_scene(window._canvas, *point)
@@ -3888,10 +3895,199 @@ def test_a_half_drawn_outline_can_be_taken_back_a_corner_at_a_time(
     assert not window.isWindowModified()
 
 
+def _drag_scene(
+    canvas: object,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+) -> None:
+    """Press at one page coordinate, move to another, and let go there."""
+    viewport = canvas.viewport()  # type: ignore[attr-defined]
+    press = canvas.mapFromScene(QPointF(*start))  # type: ignore[attr-defined]
+    release = canvas.mapFromScene(QPointF(*end))  # type: ignore[attr-defined]
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, press)
+    QTest.mouseMove(viewport, release)
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, modifiers, release)
+
+
+def _box_of(polygon: object) -> tuple[int, int, int, int]:
+    box = polygon_bounds(tuple(polygon))  # type: ignore[call-overload]
+    return box.left, box.top, box.right - 1, box.bottom - 1
+
+
+def test_dragging_out_a_rectangle_adds_that_rectangle(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._draw_rectangle_action.setChecked(True)
+    assert window._canvas.mode is CanvasMode.RECTANGLE
+    assert window._add_region_action.isChecked(), "the palette's button says a tool is in hand"
+
+    _drag_scene(window._canvas, (490, 190), (310, 70))  # from either corner
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    assert added.geometry is Geometry.MANUAL
+    assert _near(added.polygon, AROUND_BALLOON_B)
+    assert added.fill_color.as_tuple() == BALLOON_WHITE, "coloured off the page, as drawn ones are"
+    assert window._canvas.mode is CanvasMode.SELECT
+    assert not window._draw_rectangle_action.isChecked()
+    assert not window._add_region_action.isChecked()
+
+
+def test_dragging_out_an_ellipse_adds_the_ellipse_across_that_box(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._draw_ellipse_action.setChecked(True)
+
+    _drag_scene(window._canvas, (310, 70), (490, 190))
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    left, top, right, bottom = _box_of(added.polygon)
+    assert _near(((left, top), (right, bottom)), ((310, 70), (490, 190)))
+    assert added.polygon == ellipse_polygon((left, top), (right, bottom)), (
+        "the ellipse that box makes, not a rectangle and not an approximation of its own"
+    )
+    assert added.geometry is Geometry.MANUAL
+
+
+@pytest.mark.parametrize("action_name", ["_draw_rectangle_action", "_draw_ellipse_action"])
+def test_shift_keeps_a_shape_square_on_its_shorter_side(
+    qapp: object, two_page_plan: Path, action_name: str
+) -> None:
+    window = _shown_window(two_page_plan)
+    getattr(window, action_name).setChecked(True)
+
+    _drag_scene(window._canvas, (310, 70), (490, 190), Qt.KeyboardModifier.ShiftModifier)
+
+    added = window.document.regions_for("page-001.png")[-1]  # type: ignore[union-attr]
+    left, top, right, bottom = _box_of(added.polygon)
+    assert right - left == bottom - top, "square, or round"
+    assert abs((bottom - top) - 120) <= 2, "the shorter side, so it stays inside the drag"
+    assert _near(((left, top),), ((310, 70),)), "from where the drag began"
+
+
+def test_a_click_is_not_a_shape_and_the_tool_stays_in_hand(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._draw_ellipse_action.setChecked(True)
+
+    _drag_scene(window._canvas, (400, 100), (400, 100))
+
+    assert len(window.document.plan.regions) == before  # type: ignore[union-attr]
+    assert window._canvas.mode is CanvasMode.ELLIPSE
+    assert not window.isWindowModified()
+
+
+def test_the_shape_being_dragged_is_shown_before_it_is_let_go(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    window._draw_rectangle_action.setChecked(True)
+    viewport = canvas.viewport()
+
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(310, 70)))
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(490, 190)))
+
+    shown = canvas._draft_item
+    assert shown is not None
+    rect = shown.path().boundingRect()
+    assert _near(
+        ((round(rect.left()), round(rect.top())), (round(rect.right()), round(rect.bottom()))),
+        ((310, 70), (490, 190)),
+    )
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(490, 190))
+    )
+    assert canvas._draft_item is None, "and gone once it is a region"
+
+
+def test_escape_drops_the_shape_then_the_tool(qapp: object, two_page_plan: Path) -> None:
+    """The same for all three: what is half-drawn first, then the tool itself."""
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._draw_rectangle_action.setChecked(True)
+    viewport = canvas.viewport()
+
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(310, 70)))
+    QTest.mouseMove(viewport, canvas.mapFromScene(QPointF(490, 190)))
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, pos=canvas.mapFromScene(QPointF(490, 190))
+    )
+
+    assert len(window.document.plan.regions) == before, "the shape went, not to the plan"  # type: ignore[union-attr]
+    assert canvas.mode is CanvasMode.RECTANGLE, "and the tool is still in hand"
+
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    assert canvas.mode is CanvasMode.SELECT
+    assert not window._draw_rectangle_action.isChecked()
+
+    window._draw_polygon_action.setChecked(True)
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+    assert canvas.mode is CanvasMode.SELECT, "the polygon's tool goes down the same way"
+
+
+def test_a_shape_is_one_undo_step(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    before = window.document.plan  # type: ignore[union-attr]
+    window._draw_ellipse_action.setChecked(True)
+    _drag_scene(window._canvas, (310, 70), (490, 190))
+
+    window._on_undo()
+
+    assert window.document.plan == before  # type: ignore[union-attr]
+
+
+def test_add_region_opens_the_palette_of_shapes(qapp: object, two_page_plan: Path) -> None:
+    """One button on the bar, and a grid of the shapes under it."""
+    window = _shown_window(two_page_plan)
+    button = window._toolbar.widgetForAction(window._add_region_action)
+    palette = window._add_region_action.menu()
+
+    assert isinstance(palette, ShapePalette)
+    assert button.popupMode() is QToolButton.ToolButtonPopupMode.InstantPopup
+    assert [b.defaultAction() for b in palette.buttons] == [
+        window._draw_polygon_action,
+        window._draw_rectangle_action,
+        window._draw_ellipse_action,
+    ]
+    assert [b.toolTip() for b in palette.buttons] == ["Polygon", "Rectangle", "Ellipse"]
+
+    palette.popup(button.mapToGlobal(button.rect().bottomLeft()))
+    palette.buttons[1].click()
+
+    assert window._canvas.mode is CanvasMode.RECTANGLE
+    assert not palette.isVisible(), "picking a shape puts the palette away"
+    assert window._add_region_action.isChecked()
+
+    palette.buttons[2].click()
+    assert window._canvas.mode is CanvasMode.ELLIPSE, "another shape swaps the tool"
+    assert not window._draw_rectangle_action.isChecked()
+
+    palette.buttons[2].click()
+    assert window._canvas.mode is CanvasMode.SELECT, "the same shape again puts it down"
+
+
+def test_the_edit_menu_offers_the_same_shapes(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    edit = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Edit")
+    add = next(a.menu() for a in edit.actions() if a.menu() and a.text() == "&Add Region")
+
+    assert [a for a in add.actions() if not a.isSeparator()] == [
+        window._draw_polygon_action,
+        window._draw_rectangle_action,
+        window._draw_ellipse_action,
+    ]
+    assert window._draw_polygon_action.shortcut().toString() == "Ctrl+Shift+A", "as before"
+
+
 def test_two_corners_are_not_a_region(qapp: object, two_page_plan: Path) -> None:
     window = _shown_window(two_page_plan)
     before = len(window.document.plan.regions)  # type: ignore[union-attr]
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
 
     for point in ((320, 60), (560, 60)):
         _click_scene(window._canvas, *point)
@@ -3905,7 +4101,7 @@ def test_the_two_shape_modes_are_not_both_on_at_once(qapp: object, two_page_plan
     window = _shown_window(two_page_plan)
     window._edit_shape_action.setChecked(True)
 
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
 
     assert not window._edit_shape_action.isChecked(), "the toolbar follows the canvas"
     assert window._canvas.mode is CanvasMode.DRAW
@@ -3963,7 +4159,7 @@ def test_the_source_text_of_a_drawn_region_is_typed_in(qapp: object, two_page_pl
     # A hand-drawn region has no OCR reading and no way to get one: nothing
     # in review reads a page for text.
     window = _shown_window(two_page_plan)
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     for point in ((320, 60), (560, 60), (560, 200)):
         _click_scene(window._canvas, *point)
     QTest.keyClick(window._canvas, Qt.Key.Key_Return)
@@ -3985,7 +4181,7 @@ def test_undoing_a_drawn_region_takes_its_outline_off_the_page(
     qapp: object, two_page_plan: Path
 ) -> None:
     window = _shown_window(two_page_plan)
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     for point in AROUND_BALLOON_B:
         _click_scene(window._canvas, *point)
     QTest.keyClick(window._canvas, Qt.Key.Key_Return)
@@ -4008,7 +4204,7 @@ def test_a_region_can_be_drawn_on_a_page_with_nothing_on_it(
     window._pages.select_image("page-003.png")
     assert window._current_region is None
 
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     for point in ((60, 60), (260, 60), (260, 200)):
         _click_scene(window._canvas, *point)
     QTest.keyClick(window._canvas, Qt.Key.Key_Return)
@@ -4024,7 +4220,7 @@ def test_the_outline_being_drawn_follows_the_pointer(qapp: object, two_page_plan
     # viewport tracks by default — this is the test that says so.
     window = _shown_window(two_page_plan)
     canvas = window._canvas
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     _click_scene(canvas, 310, 70)
     reach = canvas._draft_item.path().boundingRect().right()  # type: ignore[union-attr]
 
@@ -4058,7 +4254,7 @@ def test_the_erase_field_writes_through_and_gates_the_fill_colour(
 
 def test_a_drawn_region_arrives_set_to_fill_itself(qapp: object, two_page_plan: Path) -> None:
     window = _shown_window(two_page_plan)
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     for point in AROUND_BALLOON_B:
         _click_scene(window._canvas, *point)
     QTest.keyClick(window._canvas, Qt.Key.Key_Return)
@@ -4237,10 +4433,10 @@ def test_the_hint_line_says_what_a_click_does_in_each_mode(
     assert window._hint.hint() == mode_hint(CanvasMode.RESHAPE)
     assert "double-click an edge" in window._hint.hint()
 
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
     assert window._hint.hint() == mode_hint(CanvasMode.DRAW)
 
-    window._add_region_action.setChecked(False)
+    window._draw_polygon_action.setChecked(False)
     assert window._hint.hint() == mode_hint(CanvasMode.SELECT), "and it comes back"
 
 
@@ -4417,7 +4613,7 @@ def test_the_cursor_says_where_a_modifier_drag_would_move_something(
     assert not canvas.wants_move_cursor(inside, Qt.KeyboardModifier.NoModifier)
     assert not canvas.wants_move_cursor(elsewhere, Qt.KeyboardModifier.ControlModifier)
 
-    window._add_region_action.setChecked(True)
+    window._draw_polygon_action.setChecked(True)
 
     assert not canvas.wants_move_cursor(inside, Qt.KeyboardModifier.ControlModifier), (
         "not while drawing"
@@ -7039,6 +7235,7 @@ def test_a_locked_region_is_not_offered_the_commands_that_would_edit_it(
     assert not window._merge_action.isEnabled()
     assert not window._edit_shape_action.isEnabled()
     assert window._add_region_action.isEnabled(), "a lock is about its region, not the page"
+    assert all(action.isEnabled() for action, _mode in window._shape_actions())
     assert window._lock_action.isEnabled(), "and the lock itself stays reachable"
 
 

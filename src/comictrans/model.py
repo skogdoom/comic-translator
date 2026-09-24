@@ -11,6 +11,7 @@ pixels, origin top-left, integers.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -546,6 +547,58 @@ def convex_hull(points: Sequence[Point]) -> Polygon:
     lower = chain(unique)
     upper = chain(list(reversed(unique)))
     return tuple(lower[:-1] + upper[:-1])
+
+
+ELLIPSE_TOLERANCE = 1.0
+"""How far, in page pixels, the polygon standing for an ellipse may stray from it.
+
+A drawn ellipse is stored as a polygon — a plan's region is one ring of
+points and nothing records that it was ever an ellipse — so this is how close
+that ring keeps to the curve. One pixel is below what anything done with a
+region can show: an erase and an outline are both whole pixels. It costs
+corners, which reshaping shows as handles: 24 where the longer radius is 100px
+and 48 at 400px, measured, and 52 for an ellipse the size of the fixture
+balloon detection outlines, 1029 by 697, in 21.
+"""
+
+
+def rectangle_polygon(corner: Point, opposite: Point) -> Polygon:
+    """The rectangle two opposite corners span, clockwise from its top left."""
+    left, right = sorted((corner[0], opposite[0]))
+    top, bottom = sorted((corner[1], opposite[1]))
+    return ((left, top), (right, top), (right, bottom), (left, bottom))
+
+
+def ellipse_polygon(
+    corner: Point, opposite: Point, tolerance: float = ELLIPSE_TOLERANCE
+) -> Polygon:
+    """The ellipse two opposite corners of its box span, as a polygon.
+
+    As many corners as keep every edge within ``tolerance`` of the curve,
+    reckoned on the longer radius, where a chord strays furthest — and a
+    multiple of four, so the ring touches all four sides of the box it was
+    drawn in. Corners are whole pixels, and a corner that rounds onto one
+    already placed is left out — anywhere in the ring, not only the one
+    before it: across the narrow end of a thin ellipse, corners either side
+    of the tip round to the same pixel with the tip between them, measured,
+    and keeping both would leave a spike with no width.
+    """
+    left, right = sorted((corner[0], opposite[0]))
+    top, bottom = sorted((corner[1], opposite[1]))
+    centre_x, centre_y = (left + right) / 2, (top + bottom) / 2
+    across, down = (right - left) / 2, (bottom - top) / 2
+    radius = max(across, down)
+    count = math.ceil(math.pi / math.acos(1 - tolerance / radius)) if radius > tolerance else 4
+    count = max(8, count + (-count) % 4)
+    points: dict[Point, None] = {}
+    for step in range(count):
+        angle = 2 * math.pi * step / count
+        point = (
+            round(centre_x + across * math.cos(angle)),
+            round(centre_y + down * math.sin(angle)),
+        )
+        points.setdefault(point)
+    return tuple(points)
 
 
 def polygon_is_simple(polygon: Polygon) -> bool:

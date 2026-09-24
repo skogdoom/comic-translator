@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
 
 from comictrans.model import (
+    ELLIPSE_TOLERANCE,
     Box,
     Color,
     Geometry,
@@ -13,11 +15,13 @@ from comictrans.model import (
     TextCase,
     boxes_overlap,
     convex_hull,
+    ellipse_polygon,
     point_in_polygon,
     polygon_area,
     polygon_bounds,
     polygon_is_simple,
     polygons_overlap,
+    rectangle_polygon,
     source_path,
     with_image_order,
 )
@@ -270,3 +274,64 @@ def test_the_hull_drops_points_that_add_no_corner() -> None:
 
     assert set(convex_hull(with_extras)) == set(SQUARE), "collinear and interior points go"
     assert len(convex_hull(with_extras)) == 4
+
+
+# -- shapes drawn by hand ------------------------------------------------------
+
+
+def test_a_rectangle_is_the_same_whichever_corner_the_drag_began_at() -> None:
+    expected = ((10, 20), (50, 20), (50, 80), (10, 80))
+
+    for corner, opposite in (((10, 20), (50, 80)), ((50, 80), (10, 20)), ((50, 20), (10, 80))):
+        assert rectangle_polygon(corner, opposite) == expected
+
+
+BOXES = [
+    (width, height)
+    for width in (4, 5, 9, 30, 101, 400, 1029)
+    for height in (4, 7, 30, 250, 697, 1200)
+]
+"""From the smallest drag the canvas keeps to a balloon bigger than a fixture's."""
+
+
+@pytest.mark.parametrize(("width", "height"), BOXES)
+def test_an_ellipse_is_a_region_a_plan_can_hold(width: int, height: int) -> None:
+    """One simple ring of three corners or more, whatever box it was drawn in."""
+    polygon = ellipse_polygon((10, 10), (10 + width, 10 + height))
+
+    assert len(polygon) >= 3
+    assert len(set(polygon)) == len(polygon), "no corner twice"
+    assert polygon_is_simple(polygon)
+
+
+@pytest.mark.parametrize(("width", "height"), BOXES)
+def test_an_ellipse_fills_the_box_it_was_drawn_in(width: int, height: int) -> None:
+    """It touches all four sides and goes past none of them."""
+    polygon = ellipse_polygon((10 + width, 10), (10, 10 + height))
+
+    # Exclusive on the right and at the bottom, as every Box is.
+    assert polygon_bounds(polygon) == Box(10, 10, 11 + width, 11 + height)
+
+
+@pytest.mark.parametrize("radius", [20, 100, 400, 800])
+def test_an_ellipse_keeps_within_its_tolerance_of_the_curve(radius: int) -> None:
+    """A circle, where the furthest a chord strays is simple to measure.
+
+    Half a pixel more than the tolerance, for the corners being whole pixels.
+    """
+    polygon = ellipse_polygon((0, 0), (2 * radius, 2 * radius))
+    worst = 0.0
+    for index, (x1, y1) in enumerate(polygon):
+        x2, y2 = polygon[(index + 1) % len(polygon)]
+        middle = math.hypot((x1 + x2) / 2 - radius, (y1 + y2) / 2 - radius)
+        worst = max(worst, radius - middle, abs(math.hypot(x1 - radius, y1 - radius) - radius))
+
+    assert worst <= ELLIPSE_TOLERANCE + 0.5
+
+
+def test_an_ellipse_has_as_many_corners_as_its_size_needs() -> None:
+    """Measured counts, the ones the docstring quotes; a multiple of four each."""
+    counts = [len(ellipse_polygon((0, 0), (2 * radius, 2 * radius))) for radius in (100, 400)]
+
+    assert counts == [24, 48]
+    assert len(ellipse_polygon((10, 10), (1039, 707))) == 52
