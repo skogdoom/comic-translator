@@ -30,6 +30,7 @@ from PySide6.QtGui import (
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QGraphicsItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
@@ -40,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..model import Point, Polygon
+from ..model import Point, Polygon, ellipse_polygon, polygon_is_simple, rectangle_polygon
 from ..planfile.schema import MIN_POLYGON_POINTS
 
 COLOR_EXACT = QColor(40, 170, 70)
@@ -171,12 +172,24 @@ class CanvasMode(StrEnum):
     DRAW = "draw"
     """Clicks place the corners of a new region until the outline closes."""
 
+    RECTANGLE = "rectangle"
+    """A drag from one corner to the opposite one draws a new region."""
+
+    ELLIPSE = "ellipse"
+    """A drag across the box an ellipse fills draws a new region."""
+
     PICK = "pick"
     """The next click reports the page pixel under it, then this ends."""
 
     MERGE = "merge"
     """The next click reports the region under it, then this ends."""
 
+
+DRAWING_MODES = (CanvasMode.DRAW, CanvasMode.RECTANGLE, CanvasMode.ELLIPSE)
+"""Every mode that draws a new region: the shapes the palette offers."""
+
+_BOX_MODES = frozenset({CanvasMode.RECTANGLE, CanvasMode.ELLIPSE})
+"""The shapes drawn by dragging across a box rather than clicking corners."""
 
 MODE_HINTS: dict[CanvasMode, str] = {
     CanvasMode.SELECT: QCoreApplication.translate(
@@ -194,6 +207,13 @@ MODE_HINTS: dict[CanvasMode, str] = {
         "Canvas",
         "click to place each corner · click the first again, double-click or Enter to "
         "close it · Backspace takes one back · Esc cancels",
+    ),
+    CanvasMode.RECTANGLE: QCoreApplication.translate(
+        "Canvas", "drag from one corner to the other · Shift keeps it square · Esc cancels"
+    ),
+    CanvasMode.ELLIPSE: QCoreApplication.translate(
+        "Canvas",
+        "drag from one corner of its box to the other · Shift keeps it round · Esc cancels",
     ),
     CanvasMode.MERGE: QCoreApplication.translate(
         "Canvas", "click the region to merge the selected one with · Esc cancels"
@@ -389,6 +409,8 @@ class PageCanvas(QGraphicsView):
         self._draft: list[Point] = []
         self._draft_item: QGraphicsPathItem | None = None
         self._draft_handles: list[VertexHandle] = []
+        self._box_start: tuple[Point, QPointF] | None = None
+        """Where a rectangle or ellipse drag began: on the page, and on screen."""
 
     def show_page(self, pixmap: QPixmap, regions: Sequence[RegionAppearance] = ()) -> None:
         """Replace the page and its overlay, fitted to the window.
@@ -417,6 +439,7 @@ class PageCanvas(QGraphicsView):
 
         self._appearances.clear()
         self._draft.clear()
+        self._box_start = None
         self._drag = None
         self._selected_id = None
 
@@ -540,7 +563,7 @@ class PageCanvas(QGraphicsView):
         )
         self.viewport().setCursor(
             Qt.CursorShape.CrossCursor
-            if mode in (CanvasMode.DRAW, CanvasMode.PICK)
+            if mode in (*DRAWING_MODES, CanvasMode.PICK)
             else Qt.CursorShape.PointingHandCursor
             if mode is CanvasMode.MERGE
             else Qt.CursorShape.ArrowCursor
@@ -621,7 +644,70 @@ class PageCanvas(QGraphicsView):
     def _clear_draft(self) -> None:
         """Take the half-drawn outline off the page. Nothing is reported."""
         self._draft.clear()
+        self._box_start = None
         self._refresh_draft()
+
+    # -- dragging out a rectangle or an ellipse ----------------------------
+
+    def _box_shape(self, view_pos: QPointF, modifiers: Qt.KeyboardModifier) -> Polygon:
+        """The shape the drag so far would draw, exactly as it would be drawn.
+
+        Shift makes the box square, on its shorter side, so the shape never
+        reaches past where the pointer is — or past the page, which the start
+        and the pointer are both already kept on.
+        """
+        assert self._box_start is not None
+        (start_x, start_y), _screen = self._box_start
+        end_x, end_y = self._clamped(*self._scene_xy(view_pos))
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            side = min(abs(end_x - start_x), abs(end_y - start_y))
+            end_x = start_x + (side if end_x >= start_x else -side)
+            end_y = start_y + (side if end_y >= start_y else -side)
+        shape = rectangle_polygon if self._mode is CanvasMode.RECTANGLE else ellipse_polygon
+        return shape((start_x, start_y), (end_x, end_y))
+
+    def _show_box(self, polygon: Polygon) -> None:
+        """The shape being dragged out, dashed like a half-drawn outline."""
+        if self._draft_item is not None:
+            self._scene.removeItem(self._draft_item)
+            self._draft_item = None
+        if len(polygon) < MIN_POLYGON_POINTS:
+            return
+        path = QPainterPath(QPointF(*polygon[0]))
+        for point in polygon[1:]:
+            path.lineTo(QPointF(*point))
+        path.closeSubpath()
+        item = QGraphicsPathItem(path)
+        pen = QPen(COLOR_MANUAL)
+        pen.setWidthF(_WIDTH_SELECTED)
+        pen.setCosmetic(True)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        item.setPen(pen)
+        item.setZValue(3.0)
+        self._scene.addItem(item)
+        self._draft_item = item
+
+    def _finish_box(self, view_pos: QPointF, modifiers: Qt.KeyboardModifier) -> None:
+        """Report the shape the drag drew, unless the drag was really a click.
+
+        A press that moved less than the platform's own drag distance is a
+        click, and a click draws nothing: the mode stays on for the drag that
+        was meant. So does a drag too thin to make a region — a line, or a
+        shape that rounds to fewer than three corners.
+        """
+        assert self._box_start is not None
+        _page, screen = self._box_start
+        polygon = self._box_shape(view_pos, modifiers)
+        self._clear_draft()
+        moved = (view_pos - screen).manhattanLength()
+        if (
+            moved < QApplication.startDragDistance()
+            or len(polygon) < MIN_POLYGON_POINTS
+            or not polygon_is_simple(polygon)
+        ):
+            return
+        self.set_mode(CanvasMode.SELECT)
+        self.region_drawn.emit(polygon)
 
     def _pick(self, view_pos: QPointF) -> None:
         # Reported before the mode changes, so that whoever asked for the
@@ -970,6 +1056,13 @@ class PageCanvas(QGraphicsView):
                 self._place_point(event.position())
                 event.accept()
                 return
+            if self._mode in _BOX_MODES:
+                self._box_start = (
+                    self._clamped(*self._scene_xy(event.position())),
+                    event.position(),
+                )
+                event.accept()
+                return
             if (
                 self._mode is CanvasMode.SELECT
                 and event.modifiers() & MOVE_MODIFIER
@@ -1008,6 +1101,10 @@ class PageCanvas(QGraphicsView):
             self._refresh_draft(event.position())
             event.accept()
             return
+        if self._box_start is not None:
+            self._show_box(self._box_shape(event.position(), event.modifiers()))
+            event.accept()
+            return
         if self._mode in (CanvasMode.SELECT, CanvasMode.RESHAPE):
             # Held over the selected region, the modifier turns the pan into a
             # move; the cursor is where that is discoverable without reading.
@@ -1019,6 +1116,10 @@ class PageCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if self._box_start is not None and event.button() == Qt.MouseButton.LeftButton:
+            self._finish_box(event.position(), event.modifiers())
+            event.accept()
+            return
         drag = self._drag
         if drag is None:
             super().mouseReleaseEvent(event)
@@ -1078,8 +1179,10 @@ class PageCanvas(QGraphicsView):
         """Escape abandons what is half-done; drawing and reshaping also take Enter.
 
         Escape leaves a dragged shape as it was and throws away a half-drawn
-        outline — in both cases the plan is untouched, because neither has
-        reached it yet. Enter closes a half-drawn outline the same way
+        outline, or a rectangle or ellipse still being dragged out — in each
+        case the plan is untouched, because none of them has reached it yet.
+        With nothing half-drawn, Escape puts the drawing tool down, the same
+        for all three shapes. Enter closes a half-drawn outline the same way
         clicking its first corner does, and, in reshape mode, is the
         keyboard's way of turning Edit Region Shape back off — every edit it
         made is already on the region, the same as it would be leaving the
@@ -1122,11 +1225,16 @@ class PageCanvas(QGraphicsView):
             self.set_mode(CanvasMode.SELECT)
             event.accept()
             return
-        if self._mode is CanvasMode.DRAW:
-            if key == Qt.Key.Key_Escape:
+        if key == Qt.Key.Key_Escape and self._mode in DRAWING_MODES:
+            # What is half-drawn goes first, and the tool stays in hand for
+            # another try; with nothing half-drawn, the tool is put down.
+            if self._draft or self._box_start is not None:
                 self._clear_draft()
-                event.accept()
-                return
+            else:
+                self.set_mode(CanvasMode.SELECT)
+            event.accept()
+            return
+        if self._mode is CanvasMode.DRAW:
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 self._finish_drawing()
                 event.accept()

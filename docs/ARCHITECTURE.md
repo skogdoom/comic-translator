@@ -908,6 +908,7 @@ canvas.py      the page: a pixmap, and clickable region outlines over it
 hint_line.py    the line under it: what a click does, elided to fit
 busy_bar.py     the status bar's indeterminate bar, while a page renders
 sampling.py    colours read off the page for a region drawn by hand
+shape_palette.py the shapes a region is drawn as, in a grid under Add Region
 inspector.py   one region's fields, writing straight through to the document
 color_box.py    a colour field: a swatch, the standard values, the eyedropper
 page_list.py   one row per page, with a region-and-flag-count summary
@@ -1503,6 +1504,27 @@ than a set of switches that could be on together. The window's two checkable
 actions follow the canvas through `mode_changed` rather than driving it,
 because the canvas leaves a mode on its own: an outline that closes and a
 pixel that is picked both end the mode that produced them.
+
+**Three shapes, one kind of region.** A region can be drawn as a polygon,
+clicked corner by corner, or dragged out as a rectangle or an ellipse — a mode
+each, `DRAW`, `RECTANGLE` and `ELLIPSE`, `canvas.DRAWING_MODES` between them.
+All three end in `region_drawn` with a polygon, so the window, the document
+and the plan never learn which shape it was: one simple ring, a manual region,
+no schema change. That loses the fact that an ellipse was an ellipse, and it
+is the trade the roadmap made for it and for rotation alike, because a shape
+field would be a format bump for something nothing downstream reads.
+`model.ellipse_polygon` spends as many corners as keep the ring within
+`ELLIPSE_TOLERANCE`, one page pixel, of the curve — below what an erase or an
+outline can show — which is 24 at a 100px radius and 48 at 400px, measured;
+reshaping shows each as a handle.
+
+The toolbar offers them through one button, Add Region, whose click opens
+`ShapePalette`: a grid three wide, in as many rows as there are shapes, so a
+shape still to come joins it without the toolbar growing a button. Each cell
+is the window's own `QAction` for that shape, the same one the Edit menu's
+Add Region submenu holds, so a tick, a drawing or a shortcut cannot differ
+between the two. Escape does the same thing in all three modes: what is
+half-drawn goes first, and with nothing half-drawn the shape is put down.
 
 **The region context menu is select mode's own, not a fifth mode.**
 Right-click — and Control-click, which Qt maps to the same
@@ -2277,7 +2299,7 @@ window uses to minimise. The menu now opens with Minimise and Zoom, then a
 separator, then this window's own panels, which is the order every other one
 has. There is no Bring All to Front because there is nothing to bring: one
 window, and no way to open a second. Merge Region moved to Cmd+Shift+M, which
-pairs it with Add Region's Cmd+Shift+A.
+pairs it with Cmd+Shift+A, the polygon under Add Region.
 
 **An ellipsis means the command stops to ask; a tick means you are in a
 mode.** Merge Region wore one because a second click follows it — which is
