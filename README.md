@@ -67,7 +67,8 @@ The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
 **A region can be drawn as a rectangle or an ellipse** as well as clicked out
-corner by corner: Add Region on the toolbar opens a palette of the shapes.
+corner by corner, **or painted with a brush**: Add Region on the toolbar opens
+a palette of the shapes and four brushes.
 **And turned**, for a balloon that sits at an angle: Edit Region Shape puts a
 round handle above the region that turns it. See **review** below.
 
@@ -590,11 +591,17 @@ Region** lists the same ones. A **polygon** (`Ctrl+Shift+A`) is clicked
 corner by corner: click the first corner again, double-click, or press Enter
 to close the outline, and Backspace takes a corner back. A **rectangle** or an
 **ellipse** is dragged from one corner of its box to the other, with Shift to
-keep it square or round. `Esc` abandons what is half-drawn and, pressed again,
-puts the shape down. All three are stored the same way, as the ring of
-corners they come out as: an ellipse is as many corners as keep it within a
-pixel of the curve, and nothing records that it was an ellipse. A region drawn
-here has no OCR reading:
+keep it square or round. A **brush** — fine, small, medium or large — paints
+the region instead: drag over the lettering, and letting go makes the outline
+of what was painted a region, one stroke to one region. A loop painted round
+the text is filled in, since a region has no holes. The brushes are shares of
+the page's height, each twice the last, from about a line of lettering, so a
+brush covers the same part of a page scanned at any resolution; its outline
+follows the pointer. `Esc` abandons what is half-drawn and, pressed again,
+puts the shape or brush down. All of them are stored the same way, as the
+ring of corners they come out as: an ellipse, or the outline of a stroke, is
+as many corners as keep it within a pixel of what was drawn, and nothing
+records how it was drawn. A region drawn here has no OCR reading:
 type its **source text** in along with the translation, or use **Extract Text
 from Region** below to have the recogniser read it. Until there is text, the
 region is flagged as held back. It records `geometry: manual` and

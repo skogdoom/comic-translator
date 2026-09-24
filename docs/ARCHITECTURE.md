@@ -908,7 +908,8 @@ canvas.py      the page: a pixmap, and clickable region outlines over it
 hint_line.py    the line under it: what a click does, elided to fit
 busy_bar.py     the status bar's indeterminate bar, while a page renders
 sampling.py    colours read off the page for a region drawn by hand
-shape_palette.py the shapes a region is drawn as, in a grid under Add Region
+brush.py       a brush stroke, as the outline of what it painted — no Qt
+shape_palette.py the shapes and brushes a region is drawn with, under Add Region
 inspector.py   one region's fields, writing straight through to the document
 color_box.py    a colour field: a swatch, the standard values, the eyedropper
 page_list.py   one row per page, with a region-and-flag-count summary
@@ -935,8 +936,9 @@ reader_window.py the reader: a chapter paged through, decoded on a thread
 app.py         available() / run() / read() — the CLI's entry points
 ```
 
-`document.py`, `preview.py`, `sampling.py`, `about.py`, `preferences.py`,
-`recent.py`, `logfile.py` and `crash.py` need no display and import no Qt;
+`document.py`, `preview.py`, `sampling.py`, `brush.py`, `about.py`,
+`preferences.py`, `recent.py`, `logfile.py` and `crash.py` need no display and
+import no Qt;
 they are tested directly, the same as any other module. `run_report.py` is
 the one module in between: it owns no widget and needs no display, but every
 word it produces is read off a panel, so it is translated like the rest of
@@ -1514,17 +1516,52 @@ no schema change. That loses the fact that an ellipse was an ellipse, and it
 is the trade the roadmap made for it and for rotation alike, because a shape
 field would be a format bump for something nothing downstream reads.
 `model.ellipse_polygon` spends as many corners as keep the ring within
-`ELLIPSE_TOLERANCE`, one page pixel, of the curve — below what an erase or an
+`SHAPE_TOLERANCE`, one page pixel, of the curve — below what an erase or an
 outline can show — which is 24 at a 100px radius and 48 at 400px, measured;
 reshaping shows each as a handle.
 
-The toolbar offers them through one button, Add Region, whose click opens
-`ShapePalette`: a grid three wide, in as many rows as there are shapes, so a
-shape still to come joins it without the toolbar growing a button. Each cell
-is the window's own `QAction` for that shape, the same one the Edit menu's
-Add Region submenu holds, so a tick, a drawing or a shortcut cannot differ
-between the two. Escape does the same thing in all three modes: what is
-half-drawn goes first, and with nothing half-drawn the shape is put down.
+**A brush stroke is the outline of what it painted.** `BRUSH` is a fourth
+drawing mode: a drag paints, and the release hands the points to
+`gui.brush.stroke_outline`, which paints them into a scratch mask, traces it
+with `RETR_EXTERNAL` and simplifies the trace with
+`detect.contour.simplified_rings` — the same steps, coarsest first, and the
+same refusal of a ring that folds over itself, that growing a polygon over
+its lines in `detect` uses. A plan's region is one ring, and a loop painted
+round the lettering is a doughnut, so the hole is filled; `RETR_EXTERNAL`
+ignores holes, which is that rule exactly. Nothing painted is left out — the
+roadmap's reason for refusing the other answer, keeping the largest piece as
+detect does with a mask — and one stroke cannot paint two pieces, since its
+points are on the page and each is joined to the next, so there is never a
+second outline to choose between. One stroke is one region, committed on
+release; strokes that accumulated until an explicit commit would reopen
+that question and were not built. It reaches the plan through `region_drawn`
+like every shape, so it is one undo step without any coalescing.
+
+The one part of detect's path it does not take is the tolerance. Detect's is
+`approx_epsilon_ratio` of the outline's perimeter, which suits a balloon; a
+long thin stroke has a long outline, so a coarse tolerance cut straight
+across the painted band — over 3,000 random strokes, 1.2% of what was painted
+fell outside the ring at the median, 10% at the 95th percentile and 64% at
+worst. A stroke is held to `SHAPE_TOLERANCE` instead, the pixel the ellipse
+is held to: over 1,500 strokes no painted pixel was more than about a pixel
+outside, none was refused (detect's refused two), and the outline cost 12 to
+35 corners at the median by brush size.
+
+The brushes are `gui.brush.BRUSH_SIZES`, shares of the page's height rather
+than pixels, like every size in `config.py`, so a brush covers the same part
+of a page at any scan resolution: 1%, about a line of lettering on the
+six-panel fixture (34px of 3880), doubling to 8%. The canvas holds the share
+and works the diameter out for the page it shows; the window has one action
+per brush, all of them the one mode, and ticks the brush in hand itself,
+because swapping brushes is not a change of mode and the canvas reports none.
+
+The toolbar offers them all through one button, Add Region, whose click opens
+`ShapePalette`: a grid three wide, in as many rows as there are shapes and
+brushes, so one still to come joins it without the toolbar growing a button.
+Each cell is the window's own `QAction`, the same one the Edit menu's Add
+Region submenu holds, so a tick, a drawing or a shortcut cannot differ
+between the two. Escape does the same thing in every drawing mode: what is
+half-drawn goes first, and with nothing half-drawn the tool is put down.
 
 **A turn is a gesture, not a property.** Edit Region Shape adds a round
 `TurnHandle` above the selected region to the square corner handles, and
