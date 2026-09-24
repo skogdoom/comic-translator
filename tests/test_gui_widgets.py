@@ -3979,6 +3979,35 @@ def test_a_click_is_not_a_shape_and_the_tool_stays_in_hand(
     assert not window.isWindowModified()
 
 
+def test_a_drag_shorter_than_the_platforms_own_is_a_click(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """A hand that twitches on a click must not leave a sliver of a region.
+
+    Short of the distance the platform itself takes for the start of a drag,
+    in both directions, which on this page is still a rectangle a few pixels
+    across — so the refusal is the drag distance's and nothing else's.
+    """
+    window = _shown_window(two_page_plan)
+    canvas = window._canvas
+    before = len(window.document.plan.regions)  # type: ignore[union-attr]
+    window._draw_rectangle_action.setChecked(True)
+    step = (QApplication.startDragDistance() - 1) // 2
+    press = canvas.mapFromScene(QPointF(400, 100))
+    release = press + QPoint(step, step)
+    corner = canvas.mapToScene(release)
+    assert round(corner.x()) - 400 >= 2 and round(corner.y()) - 100 >= 2, (
+        "sanity: a shape a few pixels across, which a plan would take"
+    )
+
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=press)
+    QTest.mouseMove(canvas.viewport(), release)
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=release)
+
+    assert len(window.document.plan.regions) == before  # type: ignore[union-attr]
+    assert canvas.mode is CanvasMode.RECTANGLE
+
+
 def test_the_shape_being_dragged_is_shown_before_it_is_let_go(
     qapp: object, two_page_plan: Path
 ) -> None:

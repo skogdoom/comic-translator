@@ -1316,15 +1316,11 @@ class MainWindow(QMainWindow):
     def _on_shape_toggled(self, mode: CanvasMode, on: bool) -> None:
         """Pick a shape up, or put it down.
 
-        Putting down only the shape in hand: picking another shape unticks
-        the last one through the canvas, with signals blocked, so this never
-        hears of it — but a stray untick of a shape not in use must not
-        take the one that is out of the hand.
+        Only ever the shape in hand is put down: picking another unticks the
+        last one through :meth:`_on_canvas_mode_changed`, with its signals
+        blocked, so this does not hear of it.
         """
-        if on:
-            self._canvas.set_mode(mode)
-        elif self._canvas.mode is mode:
-            self._canvas.set_mode(CanvasMode.SELECT)
+        self._canvas.set_mode(mode if on else CanvasMode.SELECT)
 
     def _on_canvas_mode_changed(self, mode: str) -> None:
         """Keep the checked action and the canvas saying the same thing.

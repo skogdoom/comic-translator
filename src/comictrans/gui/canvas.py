@@ -1061,7 +1061,6 @@ class PageCanvas(QGraphicsView):
                     self._clamped(*self._scene_xy(event.position())),
                     event.position(),
                 )
-                self._show_box(self._box_shape(event.position(), event.modifiers()))
                 event.accept()
                 return
             if (
