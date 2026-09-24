@@ -1,0 +1,145 @@
+"""Reading a chapter in place, and how its pages sit side by side."""
+
+from __future__ import annotations
+
+import zipfile
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from comictrans.errors import InputError
+from comictrans.reading import group_of, is_spread, open_pages, pages_to_keep, spreads
+
+from .conftest import save_page
+
+PAGE = (650, 1000)
+"""A printed page's proportions."""
+
+WIDE = (1300, 1000)
+"""Two of them, scanned as one."""
+
+
+def _png(path: Path, shade: int) -> Path:
+    return save_page(np.full((30, 20, 3), shade, dtype=np.uint8), path)
+
+
+# -- layout -----------------------------------------------------------------
+
+
+def test_one_at_a_time_is_every_page_alone() -> None:
+    assert spreads([PAGE, WIDE, PAGE], two_up=False) == ((0,), (1,), (2,))
+
+
+def test_two_at_a_time_opens_like_a_printed_comic() -> None:
+    """The cover alone, then each left page beside its right, and a last
+    page with nothing to face alone."""
+    assert spreads([PAGE] * 6, two_up=True) == ((0,), (1, 2), (3, 4), (5,))
+
+
+def test_a_spread_is_shown_alone_and_the_pairing_starts_again_after_it() -> None:
+    assert spreads([PAGE, PAGE, PAGE, WIDE, PAGE, PAGE], two_up=True) == (
+        (0,),
+        (1, 2),
+        (3,),
+        (4, 5),
+    )
+
+
+def test_the_page_a_spread_would_have_faced_is_alone_too() -> None:
+    assert spreads([PAGE, PAGE, PAGE, PAGE, WIDE, PAGE, PAGE], two_up=True) == (
+        (0,),
+        (1, 2),
+        (3,),
+        (4,),
+        (5, 6),
+    )
+
+
+def test_a_page_not_yet_measured_is_taken_for_one_page() -> None:
+    assert spreads([None, None, None], two_up=True) == ((0,), (1, 2))
+
+
+def test_a_spread_is_a_page_wider_than_tall() -> None:
+    assert [is_spread(size) for size in (WIDE, PAGE, (1000, 1000), (1001, 1000), None)] == [
+        True,
+        False,
+        False,
+        True,
+        False,
+    ]
+
+
+def test_a_page_is_found_in_whichever_group_shows_it() -> None:
+    groups = spreads([PAGE] * 6, two_up=True)
+
+    assert [group_of(groups, page) for page in range(6)] == [0, 1, 1, 2, 2, 3]
+    assert group_of(groups, 99) == 3, "past the end is the last group"
+
+
+def test_what_is_kept_decoded_is_on_screen_then_next_then_previous() -> None:
+    groups = spreads([PAGE] * 8, two_up=True)  # (0,) (1,2) (3,4) (5,6) (7,)
+
+    assert pages_to_keep(groups, 2) == (3, 4, 5, 6, 1, 2)
+    assert pages_to_keep(groups, 0) == (0, 1, 2), "nothing before the first"
+    assert pages_to_keep(groups, 4) == (7, 5, 6), "nothing after the last"
+
+
+# -- reading in place -------------------------------------------------------
+
+
+def test_a_folder_is_read_in_the_order_extract_reads_it(tmp_path: Path) -> None:
+    for name, shade in (("page10.png", 10), ("page2.png", 2), ("page1.png", 1)):
+        _png(tmp_path / name, shade)
+    (tmp_path / "notes.txt").write_text("not a page")
+
+    with open_pages(tmp_path) as pages:
+        labels = [pages.label(index) for index in range(len(pages))]
+        second = pages.read(1)
+
+    assert labels == ["page1.png", "page2.png", "page10.png"]
+    assert second == (tmp_path / "page2.png").read_bytes()
+
+
+def test_one_image_is_a_chapter_of_one_page(tmp_path: Path) -> None:
+    page = _png(tmp_path / "page.png", 1)
+
+    with open_pages(page) as pages:
+        assert (len(pages), pages.read(0)) == (1, page.read_bytes())
+
+
+def test_a_chapter_file_is_read_without_being_unpacked(tmp_path: Path) -> None:
+    """The ``<stem>-pages`` folder extract makes is exactly what must not appear."""
+    first = _png(tmp_path / "a.png", 1).read_bytes()
+    second = _png(tmp_path / "b.png", 2).read_bytes()
+    chapter = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(chapter, "w") as archive:
+        archive.writestr("001.png", first)
+        archive.writestr("002.png", second)
+    before = sorted(tmp_path.iterdir())
+
+    with open_pages(chapter) as pages:
+        read = [pages.read(1), pages.read(0)]
+
+    assert read == [second, first]
+    assert sorted(tmp_path.iterdir()) == before
+
+
+@pytest.mark.parametrize(
+    ("name", "refusal"),
+    [("missing", "does not exist"), ("empty", "no supported images found")],
+)
+def test_nothing_to_read_is_refused(tmp_path: Path, name: str, refusal: str) -> None:
+    (tmp_path / "empty").mkdir()
+
+    with pytest.raises(InputError, match=refusal), open_pages(tmp_path / name):
+        pass
+
+
+def test_a_page_that_has_gone_is_named_when_it_is_read(tmp_path: Path) -> None:
+    page = _png(tmp_path / "page.png", 1)
+
+    with open_pages(tmp_path) as pages:
+        page.unlink()
+        with pytest.raises(InputError, match=r"cannot read page\.png"):
+            pages.read(0)

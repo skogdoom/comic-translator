@@ -98,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_extract(subparsers, verbosity)
     _add_apply(subparsers, verbosity)
     _add_review(subparsers, verbosity)
+    _add_read(subparsers, verbosity)
     _add_validate(subparsers, verbosity)
     return parser
 
@@ -355,6 +356,27 @@ def _add_review(
     )
     review_parser.add_argument(
         "plan", type=Path, nargs="?", help="plan file to open (optional; asks for one if omitted)"
+    )
+
+
+def _add_read(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    verbosity: argparse.ArgumentParser,
+) -> None:
+    read_parser = subparsers.add_parser(
+        "read",
+        parents=[verbosity],
+        help="read a chapter in a window, without translating it (needs the 'gui' extra)",
+        description=(
+            "Opens a chapter to read: arrow keys page through it, one page or "
+            "two at a time, left to right or right to left. Reads what extract "
+            "reads — a folder of pages, one image, or a .cbz, .cbr, .zip, .rar "
+            "or .pdf — and a chapter file is read where it is, never unpacked: "
+            "nothing is written beside it. Needs PySide6: uv sync --extra gui."
+        ),
+    )
+    read_parser.add_argument(
+        "input", type=Path, help="folder of pages, one image, or chapter file to read"
     )
 
 
@@ -642,6 +664,13 @@ def run_review(args: argparse.Namespace) -> int:
     return gui_app.run(args.plan)
 
 
+def run_read(args: argparse.Namespace) -> int:
+    # Lazily, for the reason run_review gives.
+    from .gui import app as gui_app
+
+    return gui_app.read(args.input)
+
+
 def _validate_summary(report: ValidateReport) -> None:
     print(f"\n{report.plan_path}")
     if report.parsed:
@@ -671,6 +700,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "extract": run_extract,
         "apply": run_apply,
         "review": run_review,
+        "read": run_read,
         "validate": run_validate,
     }
     try:

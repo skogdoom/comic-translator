@@ -9,6 +9,13 @@ save a directory nobody had asked to be rid of. Unpacking first costs the
 disk twice and changes nothing downstream: what comes out is a folder of
 images, which is what this tool has always read.
 
+**The reader window is the exception, because it has no plan.** It reads a
+chapter to show it and nothing more, so it holds the file open and reads a
+page when one is asked for — :func:`open_chapter` — and writes nothing, not
+even a directory: opening somebody's CBZ to read it must not leave a folder
+next to it. It is handed the same entries ``unpack`` writes, so it gets the
+same refusals; see :data:`_Reader`.
+
 The unpacked pages are **outputs of this stage, not sources being
 modified**. The container itself is opened read-only and never written to,
 like every other source this tool touches.
@@ -42,7 +49,9 @@ import os
 import stat
 import zipfile
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
@@ -85,9 +94,46 @@ own rule is that it must be inside the first kilobyte."""
 UNRAR_ENV = "COMICTRANS_UNRAR"
 """Names the RAR tool when it is not on ``PATH``; see the module docstring."""
 
-_Page = tuple[str, bytes]
-"""What a reader yields: the name the page should take on disk, before the
-index prefix, and the bytes to write under it."""
+
+@dataclass(frozen=True, slots=True)
+class _Loaded:
+    """One page, read."""
+
+    name: str
+    """The name the page takes on disk, before the index prefix."""
+
+    data: bytes
+
+    doubt: str | None = None
+    """Why it may not be the page it should be — see :func:`_page_doubt`."""
+
+
+class _NotAPageError(Exception):
+    """Reading an entry showed it is not a page after all; the message says why.
+
+    Only a PDF can do this: what kind of image a page holds, and whether it
+    can be had at all, is only known by asking for it.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class _Entry:
+    """One page of a chapter, found and not yet read.
+
+    Found by the checks every reader makes before it reads anything — the
+    size cap, the link test, the resource-fork and hidden-file skips, the
+    PDF's turned and many-image pages — so an entry is something that passed
+    them. Reading it is ``load``, which can be called again: it records
+    nothing, and whoever calls it decides what a skip or a doubt is for.
+    """
+
+    label: str
+    """What it is called inside the chapter: an archive entry's own name, or
+    ``page 3`` of a PDF."""
+
+    load: Callable[[], _Loaded]
+    """Its bytes, or :class:`_NotAPageError`. Only while the chapter is open."""
+
 
 PAGE_SHAPE_TOLERANCE = 0.10
 """How far a page image's proportions may sit from the page's own before it
@@ -145,7 +191,14 @@ class _Notes:
     something this tool does not read is only found by looking at it."""
 
 
-_Reader = Callable[[Path, _Notes], Iterator[_Page]]
+_Reader = Callable[[Path, _Notes], AbstractContextManager[Sequence[_Entry]]]
+"""Opens a chapter and hands over its pages, in reading order, until closed.
+
+**The one door into a chapter file.** ``unpack`` writes each entry out; the
+reader window reads them where they are, by index, and writes nothing. Both
+get the same entries, so both get the same four refusals — a page past
+:data:`MAX_PAGE_BYTES`, a link, a resource fork, a hidden file — and a
+second way in would be a way round them."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,9 +291,9 @@ def _zip_is_regular(member: Any) -> bool:
     return kind in (0, stat.S_IFREG)
 
 
-def _archive_pages(
+def _archive_entries(
     archive: _Archive, notes: _Notes, regular: Callable[[Any], bool]
-) -> Iterator[_Page]:
+) -> list[_Entry]:
     """The pages of an open zip or rar, in the order a reader would show them.
 
     One function for both because a CBR is a CBZ with a different compressor
@@ -270,17 +323,21 @@ def _archive_pages(
     # nothing to walk, and knowing how many pages are coming is what lets a
     # progress bar mean something.
     notes.total = len(members)
-    for info in members:
-        yield PurePosixPath(info.filename).name, archive.read(info)
+
+    def load(info: Any) -> _Loaded:
+        return _Loaded(PurePosixPath(info.filename).name, archive.read(info))
+
+    return [_Entry(info.filename, partial(load, info)) for info in members]
 
 
-def _zip_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
+@contextmanager
+def _zip_pages(source: Path, notes: _Notes) -> Iterator[list[_Entry]]:
     try:
         archive = zipfile.ZipFile(source)
     except (zipfile.BadZipFile, OSError) as exc:
         raise InputError(f"cannot read {source.name}: {exc}") from exc
     with archive:
-        yield from _archive_pages(archive, notes, _zip_is_regular)
+        yield _archive_entries(archive, notes, _zip_is_regular)
 
 
 def _unrar_tool(named: str = "") -> None:
@@ -312,7 +369,8 @@ def _unrar_tool(named: str = "") -> None:
         ) from exc
 
 
-def _rar_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
+@contextmanager
+def _rar_pages(source: Path, notes: _Notes) -> Iterator[list[_Entry]]:
     import rarfile
 
     try:
@@ -320,7 +378,7 @@ def _rar_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
     except rarfile.Error as exc:
         raise InputError(f"cannot read {source.name}: {exc}") from exc
     with archive:
-        yield from _archive_pages(archive, notes, lambda member: not member.is_symlink())
+        yield _archive_entries(archive, notes, lambda member: not member.is_symlink())
 
 
 def _page_doubt(page: Any, image: Any) -> str | None:
@@ -369,7 +427,8 @@ def _page_doubt(page: Any, image: Any) -> str | None:
     return None
 
 
-def _pdf_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
+@contextmanager
+def _pdf_pages(source: Path, notes: _Notes) -> Iterator[list[_Entry]]:
     """The image on each page of a scan, exactly as the PDF stores it.
 
     A scanned comic is one photograph per page, so the page's own image is
@@ -414,26 +473,20 @@ def _pdf_pages(source: Path, notes: _Notes) -> Iterator[_Page]:
         readable.append((label, page))
     notes.total = len(readable)
 
-    for label, page in readable:
+    def load(page: Any) -> _Loaded:
         try:
             image = page.images[0]
         except (PyPdfError, ValueError, NotImplementedError) as exc:
-            notes.skipped.append((label, f"its image could not be read: {exc}"))
-            continue
+            raise _NotAPageError(f"its image could not be read: {exc}") from exc
         suffix = PurePosixPath(image.name).suffix.lower()
         if suffix not in IMAGE_SUFFIXES:
-            notes.skipped.append(
-                (
-                    label,
-                    f"its image is {suffix or 'of an unknown kind'}, which is not"
-                    f" one of {', '.join(sorted(IMAGE_SUFFIXES))}",
-                )
+            raise _NotAPageError(
+                f"its image is {suffix or 'of an unknown kind'}, which is not"
+                f" one of {', '.join(sorted(IMAGE_SUFFIXES))}"
             )
-            continue
-        doubt = _page_doubt(page, image)
-        if doubt is not None:
-            notes.doubtful.append((label, doubt))
-        yield f"page{suffix}", image.data
+        return _Loaded(f"page{suffix}", image.data, _page_doubt(page, image))
+
+    yield [_Entry(label, partial(load, page)) for label, page in readable]
 
 
 _READERS: dict[str, _Reader] = {ZIP: _zip_pages, RAR: _rar_pages, PDF: _pdf_pages}
@@ -521,6 +574,24 @@ def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
     )
 
 
+def _loaded(entries: Sequence[_Entry], notes: _Notes) -> Iterator[_Loaded]:
+    """Each entry read in turn, with what reading it showed put in ``notes``.
+
+    A page that turns out not to be one is a skip, in the position it was
+    met; one that may not be the page it should be is a doubt, and still a
+    page.
+    """
+    for entry in entries:
+        try:
+            page = entry.load()
+        except _NotAPageError as exc:
+            notes.skipped.append((entry.label, str(exc)))
+            continue
+        if page.doubt is not None:
+            notes.doubtful.append((entry.label, page.doubt))
+        yield page
+
+
 def check_readable(source: Path, unrar_tool: str = "") -> None:
     """Raise unless :func:`unpack` could read this, reading nothing itself.
 
@@ -534,6 +605,62 @@ def check_readable(source: Path, unrar_tool: str = "") -> None:
     if not source.is_file():
         raise InputError(f"input path does not exist: {source}")
     _reader_for(source, unrar_tool)
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterPages:
+    """A chapter file, open, read a page at a time and never written out.
+
+    What the reader window holds instead of an unpacked directory: the same
+    entries :func:`unpack` writes, read where they are — see
+    :data:`_Reader`. Only usable inside :func:`open_chapter`'s ``with``.
+    """
+
+    source: Path
+    entries: Sequence[_Entry]
+    skipped: tuple[tuple[str, str], ...]
+    """What was found not to be a page before anything was read, as
+    :attr:`UnpackReport.skipped` has it."""
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    def label(self, index: int) -> str:
+        """What page ``index`` is called inside the chapter."""
+        return self.entries[index].label
+
+    def read(self, index: int) -> bytes:
+        """Page ``index``'s bytes, as :func:`unpack` would have written them.
+
+        Read every time it is asked for: nothing is kept here, so what a
+        chapter costs to hold is whatever its caller chooses to keep. A PDF
+        page that turns out not to hold a page image raises
+        :class:`InputError` saying why, where ``unpack`` would have skipped
+        it.
+        """
+        entry = self.entries[index]
+        try:
+            return entry.load().data
+        except _NotAPageError as exc:
+            raise InputError(f"{entry.label}: {exc}") from exc
+
+
+@contextmanager
+def open_chapter(source: Path, unrar_tool: str = "") -> Iterator[ChapterPages]:
+    """Open a chapter file to read it, writing nothing — not even a directory.
+
+    Refuses what :func:`unpack` refuses, for the same reasons and in the same
+    words: a file that is not a chapter, a CBR with no tool to read it, an
+    archive that will not open, one with no pages in it.
+    """
+    if not source.is_file():
+        raise InputError(f"input path does not exist: {source}")
+    reader = _reader_for(source, unrar_tool)
+    notes = _Notes()
+    with reader(source, notes) as entries:
+        if not entries:
+            raise InputError(f"no pages found in {source.name}")
+        yield ChapterPages(source, entries, tuple(notes.skipped))
 
 
 def unpack(
@@ -574,34 +701,35 @@ def unpack(
     pages: list[Path] = []
     reused = 0
     cancelled = False
-    for index, (name, data) in enumerate(reader(source, notes), start=1):
-        if should_cancel is not None and should_cancel():
-            cancelled = True
-            log.warning("cancelled after %d page(s) of %s", len(pages), source.name)
-            break
-        if progress is not None:
-            progress(PageProgress(index=index - 1, total=notes.total, image=name))
-        if not pages:
-            # Made when there is a page to put in it, so that a file which
-            # turns out not to be a chapter at all leaves the directory it
-            # would have had uncreated rather than empty.
-            try:
-                directory.mkdir(parents=True, exist_ok=True)
-            except OSError as exc:
-                raise InputError(f"cannot unpack into {directory}: {exc}") from exc
-        target = directory / f"{index:03d}-{name}"
-        if target.exists():
-            if target.read_bytes() == data:
-                reused += 1
-                pages.append(target)
-                continue
-            raise InputError(
-                f"{target} is already there and is not the page {source.name} "
-                "holds for it. Unpack somewhere else with --unpack-dir, or "
-                "delete that directory and run this again."
-            )
-        target.write_bytes(data)
-        pages.append(target)
+    with reader(source, notes) as entries:
+        for index, page in enumerate(_loaded(entries, notes), start=1):
+            if should_cancel is not None and should_cancel():
+                cancelled = True
+                log.warning("cancelled after %d page(s) of %s", len(pages), source.name)
+                break
+            if progress is not None:
+                progress(PageProgress(index=index - 1, total=notes.total, image=page.name))
+            if not pages:
+                # Made when there is a page to put in it, so that a file which
+                # turns out not to be a chapter at all leaves the directory it
+                # would have had uncreated rather than empty.
+                try:
+                    directory.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise InputError(f"cannot unpack into {directory}: {exc}") from exc
+            target = directory / f"{index:03d}-{page.name}"
+            if target.exists():
+                if target.read_bytes() == page.data:
+                    reused += 1
+                    pages.append(target)
+                    continue
+                raise InputError(
+                    f"{target} is already there and is not the page {source.name} "
+                    "holds for it. Unpack somewhere else with --unpack-dir, or "
+                    "delete that directory and run this again."
+                )
+            target.write_bytes(page.data)
+            pages.append(target)
 
     for name, reason in notes.skipped:
         log.warning("%s: skipping %s: %s", source.name, name, reason)
@@ -658,10 +786,12 @@ __all__ = [
     "UNRAR_ENV",
     "ZIP",
     "ZIP_SUFFIXES",
+    "ChapterPages",
     "UnpackReport",
     "chapter_kind",
     "check_readable",
     "default_unpack_dir",
     "is_container",
+    "open_chapter",
     "unpack",
 ]

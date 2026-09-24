@@ -1,4 +1,4 @@
-"""Entry point for ``comictrans review``.
+"""Entry points for ``comictrans review`` and ``comictrans read``.
 
 Two layers of "is this actually usable", not one. ``PySide6`` importing
 successfully only means the wheel is installed — it does not touch a
@@ -25,7 +25,10 @@ from typing import TYPE_CHECKING
 from ..errors import GuiUnavailableError
 
 if TYPE_CHECKING:  # this module has to import without PySide6 — see ``available``
+    from PySide6.QtCore import QCoreApplication, QSettings
     from PySide6.QtWidgets import QWidget
+
+    from .preferences import Preferences
 
 log = logging.getLogger(__name__)
 
@@ -95,30 +98,19 @@ def close_down(window: QWidget) -> None:
         shiboken6.delete(window)
 
 
-def run(plan_path: Path | None = None) -> int:
-    """Open the review window, on a plan file if one was named. Blocks until closed.
+def _application(window: str) -> tuple[QCoreApplication, QSettings, Preferences, str]:
+    """Everything a window of this tool needs before it can be built.
 
-    With no plan file it opens empty, and stays that way until asked. It used
-    to put the Open dialog up immediately, on the grounds that there was
-    nothing else to do in an empty window — which stopped being true when
-    extract moved into the window. An empty window is now the front door to
-    two things, and a modal dialog in front of one of them is in the way of
-    the other. The status bar names both.
+    Diagnostics first, then Qt, then the language — in that order, and before
+    any widget module is imported; see the comments below for why each has
+    to come where it does. Returns the application, the settings, the
+    preferences read from them, and the language the window will speak.
 
-    Diagnostics are turned on first, before anything can go wrong. A window
-    launched from Finder has no stderr at all, so both halves go to files:
-    :mod:`comictrans.gui.logfile` for what a running window says and for
-    anything nobody caught, and :mod:`comictrans.gui.crash` for the traceback
-    of a process that dies outright.
-
-    Raises :class:`GuiUnavailableError` rather than letting an import error or
-    a platform-plugin failure escape as something unreadable — both are things
-    a user can plausibly fix (install the extra; install the missing system
-    library) if the message says so.
+    ``window`` names what is being opened, for the refusal when it cannot be.
     """
     if not available():
         raise GuiUnavailableError(
-            "the review GUI needs PySide6, which is not installed "
+            f"the {window} needs PySide6, which is not installed "
             f"({unavailable_reason()}). Install it with: uv sync --extra gui"
         )
 
@@ -188,15 +180,16 @@ def run(plan_path: Path | None = None) -> int:
     #
     # The settings are read here rather than by the window, because the
     # language is one of them and the window is what a language has to be
-    # chosen before. The same object is handed to the window below, so there
-    # is one of them and not two.
+    # chosen before. The same object is handed to the window, so there is
+    # one of them and not two.
     from PySide6.QtCore import QSettings
 
     from . import translations
     from .preferences import load_preferences
 
     settings = QSettings(_ORGANIZATION, _APPLICATION)
-    language = translations.install(app, load_preferences(settings).language)
+    preferences = load_preferences(settings)
+    language = translations.install(app, preferences.language)
 
     # Set on the application rather than the window, so every window and
     # dialog this process opens inherits it. On macOS the Dock reads the
@@ -209,6 +202,31 @@ def run(plan_path: Path | None = None) -> int:
     # `QApplication.instance()` types as the QCoreApplication that has no
     # window to put an icon on.
     QApplication.setWindowIcon(icons.app_icon())
+    return app, settings, preferences, language
+
+
+def run(plan_path: Path | None = None) -> int:
+    """Open the review window, on a plan file if one was named. Blocks until closed.
+
+    With no plan file it opens empty, and stays that way until asked. It used
+    to put the Open dialog up immediately, on the grounds that there was
+    nothing else to do in an empty window — which stopped being true when
+    extract moved into the window. An empty window is now the front door to
+    two things, and a modal dialog in front of one of them is in the way of
+    the other. The status bar names both.
+
+    Diagnostics are turned on first, before anything can go wrong. A window
+    launched from Finder has no stderr at all, so both halves go to files:
+    :mod:`comictrans.gui.logfile` for what a running window says and for
+    anything nobody caught, and :mod:`comictrans.gui.crash` for the traceback
+    of a process that dies outright.
+
+    Raises :class:`GuiUnavailableError` rather than letting an import error or
+    a platform-plugin failure escape as something unreadable — both are things
+    a user can plausibly fix (install the extra; install the missing system
+    library) if the message says so.
+    """
+    app, settings, _preferences, language = _application("review GUI")
 
     from .main_window import MainWindow
 
@@ -217,4 +235,32 @@ def run(plan_path: Path | None = None) -> int:
     log.debug("window open in %s", language)
     code = app.exec()
     close_down(window)
+    return code
+
+
+def read(target: Path) -> int:
+    """Open the reader window on a chapter. Blocks until closed.
+
+    A folder of pages, one image, or a chapter file, which is read where it
+    is and never unpacked — see :mod:`comictrans.reading`. Something that
+    cannot be read is refused before the window opens, as ``extract``
+    refuses it. The preferences are the review window's: the language the
+    window speaks, and where the RAR tool is for a ``.cbr``.
+    """
+    app, _settings, preferences, language = _application("reader window")
+
+    from ..reading import open_pages
+    from .reader_window import ReaderWindow
+
+    with open_pages(target, preferences.unrar_tool) as pages:
+        window = ReaderWindow(pages, target.name)
+        window.show()
+        log.debug("reader open in %s on %s", language, target)
+        try:
+            code = app.exec()
+        finally:
+            # The chapter closes when this block ends, and nothing may still
+            # be reading it by then.
+            window.shutdown()
+            close_down(window)
     return code

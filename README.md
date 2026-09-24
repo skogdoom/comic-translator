@@ -66,6 +66,11 @@ Mac — for a menu of what can be done to it.
 The window is translated: it follows the system's language, English
 otherwise, and Swedish is the translation that ships.
 
+**A chapter can be read without translating it.** `comictrans read` opens a
+folder of pages or a chapter file in a window of its own — the arrow keys
+page through it, one page or two, left to right or right to left — and reads
+a chapter file where it is, without unpacking it. See **read** below.
+
 **A comic's languages are picked by name.** Wherever the window asks which
 language a chapter is in or is going into — the plan header, Extract Pages,
 Preferences — it shows *Italian (it)* rather than `it`, from a list that
@@ -112,7 +117,8 @@ fails to load with that said plainly, the same as a broken one would.
 
 Chapters can arrive as one file and leave as one: `extract` reads CBZ, CBR
 and PDF by unpacking them into a folder of pages first, and `apply --output
-chapter.cbz` writes the rendered chapter back as one file. CBR output needs
+chapter.cbz` writes the rendered chapter back as one file. `read` opens the
+same three without unpacking anything. CBR output needs
 the `rar` compressor, which cannot ship here; PDF output does not exist.
 `docs/ROADMAP.md` covers that and everything else planned, in the order it is
 worth building, `known-bugs.md` records what is known to be wrong and left
@@ -940,6 +946,45 @@ unsaved changes asks first, and offers to save rather than only to discard.
 Like every other pass, `review` never writes to a source image — only ever
 to the plan file you explicitly save to.
 
+## read
+
+```
+comictrans read chapter.cbz
+```
+
+Opens a chapter to read rather than to translate: a window of its own, with
+no plan in it, nothing to edit and nothing to save. It reads what `extract`
+reads — a folder of pages, one image, or a CBZ, CBR or PDF — and reads a
+chapter file where it is, a page at a time. Nothing is unpacked, and nothing
+is written beside it. Needs PySide6, like `review`.
+
+- The arrow keys, Page Up, Page Down and Space turn the pages; Home and End
+  go to the first and the last.
+- **One Page** and **Two Pages**, or the keys 1 and 2. Two at a time opens the
+  way a printed comic does: the cover on its own, then each page beside the one
+  it faces. A page wider than it is tall is taken for both halves of a spread
+  scanned as one, and is shown on its own; the pairing starts again after it.
+- **Right to Left**, for a chapter that reads that way: facing pages swap
+  sides, and the left arrow goes forward. A chapter file does not say which way
+  it reads, so this is a choice rather than a guess.
+- The View menu fits the page, or its width, or shows it at the size it was
+  scanned, and zooms in and out from there; Ctrl (Command on a Mac) and the
+  wheel zoom as they do in `review`, and so does a pinch on a trackpad. There
+  is no toolbar: the pages have the window, and every command is in the View
+  menu and on a key.
+- A slider and the page count appear along the foot of the window while the
+  pointer is over it.
+
+Pages are decoded on a thread of their own, and the next spread is decoded
+before it is asked for. What is held is the spread on screen and one either
+side of it — six pages at most, however long the chapter — and the rest of it
+is measured from its pages' headers in the background, so that two pages at a
+time pairs the right pages even after a jump. A page past about 64
+megapixels — 8000 pixels square — is more than Qt will decode, and the window
+says so where the page would be; a 600dpi scan of a comic page is about 24.
+It opens from the command line only: the application bundle opens the review
+window.
+
 ## validate
 
 ```
@@ -1127,7 +1172,8 @@ raises, so the exit code is 1 there too. `review` has no code 1: it is
 interactive, not a batch run, so there is nothing to report at the end beyond
 what is already on screen — it exits 0 when the window closes normally, 2 if
 it could not open one at all (PySide6 missing, or the platform's own
-windowing libraries).
+windowing libraries). `read` is the same, and exits 2 as well for something it
+cannot read, before any window opens.
 
 ## Out of scope
 

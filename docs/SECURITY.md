@@ -116,6 +116,20 @@ An entry past it is skipped and named in the report, which is what the reader
 already did for an entry that is not a page. A chapter with one bomb in it is
 still a chapter.
 
+**The reader window goes through the same door.** `comictrans read`, which
+came after this reading, reads a chapter file where it is rather than
+unpacking it, and it is handed the entries `unpack` writes rather than
+opening the archive for itself: the cap, the link test and the two skips are
+made once, before either of them sees an entry. `tests/test_security.py`
+builds one archive carrying all of them and checks the two agree. What it
+holds is in memory rather than on disk, and it is bounded: the spread on
+screen and one either side, six pages, each decoded by Qt, which refuses an
+image it reckons at more than its default allocation limit of 256MB, counting
+four bytes a pixel before it decodes anything — measured, and nothing here
+raises it; `tests/test_gui_security.py` would notice if something did. The
+price is that a page past about 64 megapixels, 8000 pixels square, is not
+shown; a 600dpi scan of a comic page is about 24.
+
 ### What was checked and found sound
 
 Nothing below was changed. What each did gain is a test, because a defence
@@ -201,8 +215,8 @@ the scope above.
 
 | Where | What it holds |
 | --- | --- |
-| `tests/test_security.py` | No module imports anything that speaks to a network; `openUrl` only ever gets a local file; the pipeline runs end to end with `socket` unusable; zip slip; the size cap; a plan file constructing nothing |
-| `tests/test_gui_security.py` | No plugin is imported until experimental features are on; the guide names nothing remote and cannot navigate |
+| `tests/test_security.py` | No module imports anything that speaks to a network; `openUrl` only ever gets a local file; the pipeline runs end to end with `socket` unusable; zip slip; the size cap; the reader window handed exactly what `unpack` writes; a plan file constructing nothing |
+| `tests/test_gui_security.py` | No plugin is imported until experimental features are on; the guide names nothing remote and cannot navigate; the reader refuses a page past Qt's allocation limit |
 | `tests/test_audit.py` | The dependency tool's bookkeeping — which packages were audited, which were skipped, and the exit code a scheduled run reads |
 
 The network invariant is checked twice on purpose. Reading the source is
