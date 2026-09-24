@@ -1,10 +1,10 @@
 """The shapes a region can be drawn as, in a grid under one toolbar button.
 
 Add Region opens this rather than drawing straight away, so the shape is
-picked first: a polygon clicked corner by corner, or a rectangle or an
-ellipse dragged out. Three to a row, in as many rows as there are shapes, so
-the ones still to come — a region rotated, a region painted with a brush —
-join it without the toolbar growing a button for each.
+picked first: a polygon clicked corner by corner, a rectangle or an ellipse
+dragged out, or a brush of one of four sizes to paint with. Three to a row,
+in as many rows as there are, so one still to come joins it without the
+toolbar growing a button for each.
 
 Each button stands for an action the window owns, the same one the Edit menu
 lists, so the check mark, the drawing, the shortcut and the tooltip are the

@@ -64,6 +64,7 @@ from ..plugins import FailedPlugin, LoadedPlugin, discover_plugins, plugin_direc
 from ..sources import is_container
 from . import about, alerts, help_dialog, icons, plugin_settings, recent, translations
 from .about_dialog import AboutDialog
+from .brush import BRUSH_SIZES
 from .busy_bar import BusyBar
 from .canvas import (
     COLOR_APPROXIMATE,
@@ -483,6 +484,18 @@ class MainWindow(QMainWindow):
             action.toggled.connect(partial(self._on_shape_toggled, mode))
             add_menu.addAction(action)
 
+        # The brushes, one action per size, all of them the canvas's one
+        # brush mode with a different brush in hand.
+        self._brush_fine_action = QAction(self.tr("&Fine Brush"), self)
+        self._brush_small_action = QAction(self.tr("&Small Brush"), self)
+        self._brush_medium_action = QAction(self.tr("&Medium Brush"), self)
+        self._brush_large_action = QAction(self.tr("&Large Brush"), self)
+        add_menu.addSeparator()
+        for action, share in self._brush_actions():
+            action.setCheckable(True)
+            action.toggled.connect(partial(self._on_brush_toggled, share))
+            add_menu.addAction(action)
+
         # The toolbar's one button for all of them, which opens the palette
         # rather than drawing; see _build_toolbar. Checked while any shape is
         # being drawn, so the bar says a drawing tool is in hand.
@@ -716,6 +729,10 @@ class MainWindow(QMainWindow):
         "_draw_polygon_action": "shape-polygon",
         "_draw_rectangle_action": "shape-rectangle",
         "_draw_ellipse_action": "shape-ellipse",
+        "_brush_fine_action": "brush-fine",
+        "_brush_small_action": "brush-small",
+        "_brush_medium_action": "brush-medium",
+        "_brush_large_action": "brush-large",
         "_merge_action": "merge-region",
         "_delete_region_action": "delete-region",
         "_previous_region_action": "previous-region",
@@ -765,7 +782,10 @@ class MainWindow(QMainWindow):
         self._toolbar.addAction(self._edit_shape_action)
         self._add_region_action.setMenu(
             ShapePalette(
-                [action for action, _mode in self._shape_actions()],
+                [
+                    *(action for action, _mode in self._shape_actions()),
+                    *(action for action, _share in self._brush_actions()),
+                ],
                 self._toolbar.iconSize(),
                 self,
             )
@@ -1313,6 +1333,30 @@ class MainWindow(QMainWindow):
             (self._draw_ellipse_action, CanvasMode.ELLIPSE),
         )
 
+    def _brush_actions(self) -> tuple[tuple[QAction, float], ...]:
+        """Each brush on offer, and its size as a share of the page's height."""
+        actions = (
+            self._brush_fine_action,
+            self._brush_small_action,
+            self._brush_medium_action,
+            self._brush_large_action,
+        )
+        return tuple(zip(actions, BRUSH_SIZES, strict=True))
+
+    def _on_brush_toggled(self, share: float, on: bool) -> None:
+        """Pick a brush up, or put it down, as :meth:`_on_shape_toggled` does.
+
+        Swapping one brush for another leaves the canvas in the mode it was
+        in, so it reports no change of mode, and the brush put down is
+        unticked here instead.
+        """
+        if not on:
+            self._canvas.set_mode(CanvasMode.SELECT)
+            return
+        self._canvas.set_brush(share)
+        self._canvas.set_mode(CanvasMode.BRUSH)
+        self._show_tools_checked()
+
     def _on_shape_toggled(self, mode: CanvasMode, on: bool) -> None:
         """Pick a shape up, or put it down.
 
@@ -1327,25 +1371,37 @@ class MainWindow(QMainWindow):
 
         The canvas leaves a mode on its own — an outline that closed, a pixel
         that was picked — so the toolbar follows it rather than the other way
-        round. Signals are blocked because setting a check mark here must not
-        look like someone clicking it.
+        round.
         """
         self._hint.set_hint(mode_hint(CanvasMode(mode)))
         # Entering a mode is a deliberate act, so it breaks a run of nudges
         # the way moving the selection does.
         if self.document is not None:
             self.document.end_edit_run()
-        for action, value in (
-            (self._edit_shape_action, CanvasMode.RESHAPE),
-            *self._shape_actions(),
-            (self._merge_action, CanvasMode.MERGE),
-        ):
-            with QSignalBlocker(action):
-                action.setChecked(mode == value)
-        with QSignalBlocker(self._add_region_action):
-            self._add_region_action.setChecked(mode in DRAWING_MODES)
+        self._show_tools_checked()
         if mode != CanvasMode.PICK:
             self._sampling = None
+
+    def _show_tools_checked(self) -> None:
+        """Tick what the canvas has in hand, and nothing else.
+
+        Signals are blocked because setting a check mark here must not look
+        like someone clicking it.
+        """
+        mode = self._canvas.mode
+        brush = self._canvas.brush
+        for action, checked in (
+            (self._edit_shape_action, mode is CanvasMode.RESHAPE),
+            *((action, mode is value) for action, value in self._shape_actions()),
+            *(
+                (action, mode is CanvasMode.BRUSH and brush == share)
+                for action, share in self._brush_actions()
+            ),
+            (self._merge_action, mode is CanvasMode.MERGE),
+            (self._add_region_action, mode in DRAWING_MODES),
+        ):
+            with QSignalBlocker(action):
+                action.setChecked(checked)
 
     def _on_region_drawn(self, polygon: Polygon) -> None:
         """Turn a hand-drawn outline into a region, with colours off the page.

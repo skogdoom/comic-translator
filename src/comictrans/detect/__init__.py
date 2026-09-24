@@ -35,7 +35,13 @@ from ..ocr.base import OcrLine
 from ..ocr.grouping import sort_lines
 from .color import MaskArray, interior_uniformity, sample_colors
 from .colorseg import segment
-from .contour import ContourCandidate, GrayArray, build_candidates, enclosing_candidate
+from .contour import (
+    ContourCandidate,
+    GrayArray,
+    build_candidates,
+    enclosing_candidate,
+    simplified_rings,
+)
 from .fallback import approximate_polygon, cluster_lines
 
 log = logging.getLogger(__name__)
@@ -263,20 +269,16 @@ def _cover_lines(page: PageImage, region: DetectedRegion, cfg: DetectConfig) -> 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return region
-    contour = max(contours, key=cv2.contourArea)
-    perimeter = float(cv2.arcLength(contour, True))
-
-    polygon: Polygon | None = None
-    for factor in (1.0, 0.5, 0.25):
-        approx = cv2.approxPolyDP(contour, cfg.approx_epsilon_ratio * perimeter * factor, True)
-        candidate = tuple(
-            (int(point[0][0]) + window.left, int(point[0][1]) + window.top) for point in approx
-        )
-        if len(candidate) < 3 or not polygon_is_simple(candidate):
-            continue
-        if _covers(candidate, region.lines):
-            polygon = candidate
-            break
+    contour = max(contours, key=cv2.contourArea).astype(np.int32)
+    tolerance = cfg.approx_epsilon_ratio * float(cv2.arcLength(contour, True))
+    polygon = next(
+        (
+            ring
+            for ring in simplified_rings(contour, tolerance, (window.left, window.top))
+            if _covers(ring, region.lines)
+        ),
+        None,
+    )
     if polygon is None:
         # A contour too ragged to simplify into a covering shape. The convex
         # hull always covers and is always simple, but it fills concavities —
