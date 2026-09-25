@@ -65,6 +65,7 @@ from PySide6.QtGui import (
     QAction,
     QContextMenuEvent,
     QDesktopServices,
+    QFocusEvent,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
@@ -2538,6 +2539,118 @@ def test_undoing_a_header_edit_puts_the_dialog_fields_back(
 
     assert dialog._font.currentText() == "Comic Sans MS"
     assert not window.document.dirty, "repopulating must not write itself back out"  # type: ignore[union-attr]
+
+
+def test_the_header_dialog_writes_the_comics_details_as_they_are_typed(
+    qapp: object, two_page_plan: Path
+) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog
+    from comictrans.model import ReadingDirection
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    dialog = HeaderDialog(window.document, window)  # type: ignore[arg-type]
+    edited: list[bool] = []
+    described: list[bool] = []
+    dialog.edited.connect(lambda: edited.append(True))
+    dialog.described.connect(lambda: described.append(True))
+
+    QTest.keyClicks(dialog._details["series"], "Dylan Dog")
+    QTest.keyClicks(dialog._details["volume"], "3")
+    QTest.keyClicks(dialog._details["number"], "12")
+    QTest.keyClicks(dialog._year, "1986")
+    dialog._direction.setCurrentIndex(dialog._direction.findText("right to left"))
+    dialog.hide()
+
+    header = window.document.plan.header  # type: ignore[union-attr]
+    assert (header.series, header.volume, header.number) == ("Dylan Dog", "3", "12")
+    assert header.year == 1986
+    assert header.reading_direction is ReadingDirection.RIGHT_TO_LEFT
+    assert described, "reported as the comic's details"
+    assert not edited, "and not as a change to how anything is drawn"
+
+
+def test_a_year_is_four_digits_or_nothing(qapp: object, two_page_plan: Path) -> None:
+    """Empty is an answer; a year half-typed is not, and does not stay."""
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    document = window.document
+    assert document is not None
+    dialog = HeaderDialog(document, window)
+    year = dialog._year
+    assert year.text() == "" and year.placeholderText() == "not stated"
+
+    QTest.keyClicks(year, "0")
+    assert year.text() == "", "no year starts with a nought"
+    QTest.keyClicks(year, "19")
+    assert document.plan.header.year is None, "not a year yet"
+    QTest.keyClicks(year, "86")
+    assert document.plan.header.year == 1986
+    QTest.keyClicks(year, "7")
+    assert year.text() == "1986", "and not five digits"
+
+    year.backspace()
+    QApplication.sendEvent(year, QFocusEvent(QEvent.Type.FocusOut))
+    assert year.text() == "1986", "left half-typed, it shows what the plan holds"
+    assert document.plan.header.year == 1986
+
+    year.selectAll()
+    QTest.keyClick(year, Qt.Key.Key_Delete)
+    assert document.plan.header.year is None, "cleared, the plan no longer says"
+
+
+def test_the_comics_details_are_not_a_reason_to_render_the_page_again(
+    qapp: object, two_page_plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """They change no page, and they are typed a letter at a time."""
+    from comictrans.gui.header_dialog import HeaderDialog
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    window._showing_preview = True
+    rendered: list[bool] = []
+    monkeypatch.setattr(window, "_on_render_preview", lambda: rendered.append(True))
+
+    def typing(dialog: HeaderDialog) -> int:
+        QTest.keyClicks(dialog._details["series"], "Dylan Dog")
+        return 0
+
+    monkeypatch.setattr(HeaderDialog, "exec", typing)
+    window._header_action.trigger()
+
+    assert window.document.plan.header.series == "Dylan Dog"  # type: ignore[union-attr]
+    assert not rendered
+    assert window.isWindowModified(), "but the plan has changed, and the title says so"
+    assert window._undo_action.isEnabled()
+
+
+def test_undoing_a_detail_puts_the_dialog_field_back(qapp: object, two_page_plan: Path) -> None:
+    from comictrans.gui.header_dialog import HeaderDialog
+    from comictrans.model import ReadingDirection
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    document = window.document
+    assert document is not None
+    document.set_header_detail("writer", "Tiziano Sclavi")
+    document.set_header_year(1986)
+    document.set_header_reading_direction(ReadingDirection.LEFT_TO_RIGHT)
+    dialog = HeaderDialog(document, window)
+    assert dialog._details["writer"].text() == "Tiziano Sclavi", "opened on what the plan says"
+    assert dialog._year.text() == "1986"
+    assert dialog._direction.currentText() == "left to right"
+
+    for _ in range(3):
+        window._on_undo()
+    dialog.repopulate()
+    dialog.hide()
+
+    assert dialog._details["writer"].text() == ""
+    assert dialog._year.text() == "" and dialog._year.value() is None
+    assert dialog._direction.currentText() == "not stated"
+    assert not document.dirty, "repopulating must not write itself back out"
 
 
 def test_the_header_action_needs_a_document_and_opens_the_dialog(

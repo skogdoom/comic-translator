@@ -7,6 +7,7 @@ import pytest
 
 from comictrans.errors import InputError, PlanError
 from comictrans.gui.document import (
+    CHAPTER_TEXT_FIELDS,
     MANUAL_CONFIDENCE,
     UNDO_LIMIT,
     PlanDocument,
@@ -23,6 +24,7 @@ from comictrans.model import (
     Geometry,
     PlanHeader,
     PlanImage,
+    ReadingDirection,
     Region,
     TextCase,
 )
@@ -636,6 +638,83 @@ def test_an_edited_header_still_loads_back(project: Path, tmp_path: Path) -> Non
     assert reloaded.case is TextCase.PRESERVE
     assert reloaded.font_size_min_ratio == pytest.approx(0.02)
     assert reloaded.condense_min == pytest.approx(0.75)
+
+
+def test_the_comics_details_are_set_trimmed_and_cleared(project: Path) -> None:
+    doc = PlanDocument.open(project)
+
+    doc.set_header_detail("series", "  Dylan Dog ")
+    doc.set_header_detail("number", "1.5")
+    doc.set_header_year(1986)
+    doc.set_header_reading_direction(ReadingDirection.RIGHT_TO_LEFT)
+
+    header = doc.plan.header
+    assert (header.series, header.number, header.year) == ("Dylan Dog", "1.5", 1986)
+    assert header.reading_direction is ReadingDirection.RIGHT_TO_LEFT
+    assert header.font == "Comic Sans MS", "the lettering is untouched"
+
+    doc.set_header_detail("series", "")
+    doc.set_header_year(None)
+    doc.set_header_reading_direction(None)
+    header = doc.plan.header
+    assert (header.series, header.year, header.reading_direction) == ("", None, None)
+
+
+def test_typing_a_series_is_one_undo_step_and_a_trailing_space_is_none(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    for text in ("D", "Dy", "Dylan", "Dylan "):
+        doc.set_header_detail("series", text)
+    steps = len(doc._undo)
+    doc.set_header_detail("series", "Dylan ")
+    assert len(doc._undo) == steps, "the space typed on the way to a word changed nothing"
+    doc.set_header_detail("series", "Dylan Dog")
+
+    doc.undo()
+
+    assert doc.plan.header.series == ""
+    assert not doc.can_undo
+
+
+def test_the_comics_details_refuse_what_the_reader_would(project: Path) -> None:
+    doc = PlanDocument.open(project)
+
+    with pytest.raises(ValueError, match="not one of the comic's details"):
+        doc.set_header_detail("font", "")  # the way round the font's own refusal
+    for year in (999, 10000):
+        with pytest.raises(ValueError, match="between 1000 and 9999"):
+            doc.set_header_year(year)
+
+    assert not doc.dirty
+
+
+def test_the_comics_details_are_saved_and_read_back(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    for field in CHAPTER_TEXT_FIELDS:
+        doc.set_header_detail(field, f"the {field}")
+    doc.set_header_year(2025)
+    doc.set_header_reading_direction(ReadingDirection.LEFT_TO_RIGHT)
+    doc.save()
+
+    reloaded = load_plan(project, check_images=False).header
+
+    assert reloaded == doc.plan.header
+
+
+def test_a_plan_whose_details_are_cleared_again_is_the_file_it_was(project: Path) -> None:
+    """Empty is not a value written out: a plan that names nothing stays as it was."""
+    before = project.read_bytes()
+    doc = PlanDocument.open(project)
+    for field in CHAPTER_TEXT_FIELDS:
+        doc.set_header_detail(field, "something")
+        doc.set_header_detail(field, "")
+    doc.set_header_year(2025)
+    doc.set_header_year(None)
+    doc.set_header_reading_direction(ReadingDirection.RIGHT_TO_LEFT)
+    doc.set_header_reading_direction(None)
+
+    doc.save()
+
+    assert project.read_bytes() == before
 
 
 def test_regions_using_header_font_counts_the_ones_without_an_override(project: Path) -> None:

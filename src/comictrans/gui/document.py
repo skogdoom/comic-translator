@@ -24,6 +24,7 @@ from ..model import (
     Plan,
     PlanHeader,
     Polygon,
+    ReadingDirection,
     Region,
     TextCase,
     boxes_overlap,
@@ -38,6 +39,7 @@ from ..planfile.schema import (
     CONDENSE_MIN_RANGE,
     FONT_SIZE_MIN_RATIO_RANGE,
     MIN_POLYGON_POINTS,
+    YEAR_RANGE,
 )
 from ..util import slugify
 
@@ -48,6 +50,11 @@ _HEADER_RANGES: dict[str, tuple[float, float]] = {
     "condense_min": CONDENSE_MIN_RANGE,
 }
 """The reader's own limits, so an edit cannot outrun what will load again."""
+
+CHAPTER_TEXT_FIELDS = ("series", "title", "volume", "number", "publisher", "writer")
+"""The header's details of the comic that are free text, in the order the
+plan file writes them. The year and the reading direction are the two that
+are not, and have setters of their own."""
 
 UNDO_LIMIT = 500
 """How many edits back the history goes.
@@ -864,6 +871,29 @@ class PlanDocument:
     def set_header_target_language(self, language: str) -> PlanHeader:
         """Also picks the hyphenation dictionary used when text is fitted."""
         return self._update_header(target_language=language.strip())
+
+    def set_header_detail(self, field: str, text: str) -> PlanHeader:
+        """One of the :data:`CHAPTER_TEXT_FIELDS`: the series, the title and so on.
+
+        Empty is an answer — the plan does not say — and is what clearing
+        the field leaves, so a plan that names nothing stays the file it was.
+        Trimmed, so a space typed on the way to the next word is not an edit
+        of its own and a name is never saved with one hanging off it.
+        """
+        if field not in CHAPTER_TEXT_FIELDS:
+            raise ValueError(f"{field!r} is not one of the comic's details")
+        return self._update_header(**{field: text.strip()})
+
+    def set_header_year(self, year: int | None) -> PlanHeader:
+        """The year of publication, or ``None`` for a plan that does not say."""
+        low, high = YEAR_RANGE
+        if year is not None and not low <= year <= high:
+            raise ValueError(f"header year must be between {low} and {high}, got {year!r}")
+        return self._update_header(year=year)
+
+    def set_header_reading_direction(self, direction: ReadingDirection | None) -> PlanHeader:
+        """Which way the pages read, or ``None`` for a plan that does not say."""
+        return self._update_header(reading_direction=direction)
 
     def save(self) -> None:
         """Write back to the file this document was opened from."""

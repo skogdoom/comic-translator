@@ -79,7 +79,8 @@ class ReadingDirection(StrEnum):
     ``None``: unstated is not the same claim as left-to-right, and a reader
     that has to pick one should know it is picking rather than being told.
 
-    Nothing reads this yet — see ``planfile.schema.READABLE_VERSIONS``.
+    Set in the plan header dialog; nothing downstream acts on it yet — see
+    ``planfile.schema.READABLE_VERSIONS``.
     """
 
     LEFT_TO_RIGHT = "ltr"
@@ -347,10 +348,11 @@ class PlanHeader:
     font_size_min_ratio: float
     condense_min: float
 
-    # What the comic is. Nothing measures any of it from the pages and nothing
-    # reads it back yet: `extract` fills in none of these, and a plan that
-    # names none is the plan this wrote before they existed. Empty is a valid
-    # answer for every one of them, which is what lets that stay true.
+    # What the comic is. Nothing measures any of it from the pages: `extract`
+    # fills in none of these, the plan header dialog is where they are typed,
+    # and a plan that names none is the plan this wrote before they existed.
+    # Empty is a valid answer for every one of them, which is what lets that
+    # stay true. Nothing downstream writes them anywhere yet.
     series: str = ""
     title: str = ""
     volume: str = ""

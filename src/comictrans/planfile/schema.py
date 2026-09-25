@@ -32,9 +32,11 @@ They were added together on purpose: the reader rejects unknown keys, so each
 one added on its own would be its own bump, its own migration, and its own
 window in which two builds disagree about what a plan may contain.
 
-**Nothing reads any of them yet**, which is the state this version was
-deliberately left in. A field being here is not an instruction to fill it in
-— see the milestones in ``docs/ROADMAP.md`` that each claim one."""
+**Nothing read any of them at first**, which is the state this version was
+deliberately left in, and each is put to use by the milestone that claims it:
+``locked`` by marking a region finished, the chapter's details by the plan
+header dialog. ``angle`` and ``stroke_color`` still wait on theirs. A field
+being here is not an instruction to fill it in — see ``docs/ROADMAP.md``."""
 
 MIN_POLYGON_POINTS = 3
 """Fewest points a polygon may have.
