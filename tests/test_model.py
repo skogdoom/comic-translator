@@ -16,6 +16,7 @@ from comictrans.model import (
     boxes_overlap,
     convex_hull,
     ellipse_polygon,
+    normalised_angle,
     point_in_polygon,
     polygon_area,
     polygon_bounds,
@@ -364,3 +365,26 @@ def test_a_turned_ellipse_is_still_a_region_a_plan_can_hold(degrees: int) -> Non
 
     assert len(turned) == len(ellipse), "every corner kept"
     assert polygon_is_simple(turned)
+
+
+@pytest.mark.parametrize(
+    ("given", "written"),
+    [
+        (0.0, 0.0),
+        (-0.0, 0.0),
+        (30.0, 30.0),
+        (-30.0, -30.0),
+        (180.0, 180.0),
+        (-180.0, 180.0),
+        (190.0, -170.0),
+        (-190.0, 170.0),
+        (360.0, 0.0),
+        (-345.0, 15.0),
+        (12.345, 12.3),
+        (-29.7, -29.7),
+        (359.96, 0.0),
+    ],
+)
+def test_an_angle_is_written_one_way_within_a_half_turn(given: float, written: float) -> None:
+    assert normalised_angle(given) == written
+    assert str(normalised_angle(given)) != "-0.0", "a level region is 0, not minus 0"

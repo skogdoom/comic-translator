@@ -23,6 +23,18 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A region's lettering can be tilted.** Turning a region with its handle
+  now turns its lettering with it, in the same undo step, and the Region panel
+  has a text angle field that tilts the lettering alone — for a balloon
+  extract found already at an angle. The text is fitted in the polygon turned
+  level and drawn turned back in one resample, so it fits at the same size at
+  any angle: 29px at 0, 20, 30 and 45 degrees alike on the same box. Measured
+  with Tesseract, that resample costs nothing at 8px and above; at 6px turned
+  text reads worse than level (0.66–0.70 of the characters against 0.77),
+  and only drawing at four times the size recovers it, which would no longer
+  match the widths the lines were fitted to. A region with no angle is drawn
+  exactly as before. The plan's `angle` field, in the format since version 4,
+  is what records it.
 - **A plan can say what the comic is.** Edit > Plan Header has a section
   for the series, title, volume and number, year, publisher, writer and reading
   direction — the header fields version 4 added, put to use. None of it is on
@@ -46,10 +58,8 @@ plan that says nothing new is byte for byte the file it was.
   whole shape about the middle of its box, in 15° steps with Shift. It goes
   below the region when there is no room above it on screen. A turn that would
   take a corner off the page stops where the shape last fitted, rather than
-  flattening it against the edge. The angle is not recorded — a region turned
-  is the corners it now has, a manual region in one undo step, and the plan
-  format does not change — and the lettering inside it stays level, which is
-  milestone 27's to change.
+  flattening it against the edge. The turn is a manual region in one undo
+  step. (Its lettering turns with it since the entry above.)
 - **A region can be drawn as a rectangle or an ellipse.** Add Region on the
   toolbar opens a palette of shapes, three to a row, with room for more; the
   Edit menu lists the same ones under Add Region. The polygon is clicked

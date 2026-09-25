@@ -5,11 +5,32 @@ what makes horizontal condensing possible: the line is laid out and rendered
 at its natural width, then scaled on the x axis alone. Scaling a rendered
 line is also the only way to condense without a variable font — and the spec
 forbids faking anything about the face.
+
+**A tilted region is lettered level in a frame of its own**, then turned onto
+the page. Its polygon is turned level about the middle of its box and handed
+to the typesetter unchanged — the band algorithm thinks in horizontal bands
+and needs no other way of thinking, only a polygon that is already upright —
+and its lines are drawn into one layer the size of that frame, turned back by
+the region's angle in a single resample and composited. A region with no
+angle takes neither step, so it renders exactly as it always has.
+
+That resample was measured before it was chosen, by giving Tesseract lines
+of lettering turned 5, 20 and 45 degrees and turned back. From 8px up it
+reads them as well as level text, and as well as text drawn at four times the
+size, turned and averaged down — the obvious better route. At 6px it does
+not: level text read at 0.77 of the characters, one resample at 0.66 to 0.70,
+and drawing at 4x at 0.82 to 0.93. Turning the 1x drawing at 2x or 4x instead
+gains nothing (0.53 to 0.69) and costs 6 to 35 times as long. Drawing at 4x
+is not taken because glyphs drawn four times the size are not four times as
+wide as the hinted ones the layout was measured with, so a line fitted to its
+band would no longer be the line drawn in it. 6px is the readable minimum on
+a page about 500 pixels tall.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -20,7 +41,16 @@ from .erase import erase
 from .fonts import FontFace
 from .imaging import PageImage
 from .markup import MarkupError, tokenize
-from .model import Color, Region, TextCase, boxes_overlap
+from .model import (
+    Box,
+    Color,
+    Polygon,
+    Region,
+    TextCase,
+    boxes_overlap,
+    polygon_bounds,
+    rotate_polygon,
+)
 from .progress import CancelCheck
 from .typeset import FitFailure, Layout, layout_text
 
@@ -94,8 +124,98 @@ class RegionOutcome:
         return self.status in {"skipped_empty", "failed"}
 
 
-def draw_layout(image: Image.Image, layout: Layout, style: RegionStyle, color: Color) -> None:
-    """Draw a fitted layout onto an RGB image, in place."""
+FRAME_MARGIN = 4
+"""Pixels of room around a tilted region's polygon in its own frame.
+
+The lines are fitted inside the polygon, but a glyph's ink can reach a pixel
+or two past the advance it was measured by, and a frame cut to the polygon
+exactly would clip it."""
+
+
+@dataclass(frozen=True, slots=True)
+class UprightFrame:
+    """A tilted region's own frame, in which its lettering is fitted level.
+
+    The region's polygon turned level about the middle of its box — the same
+    pivot the window turns a region about — and moved so its box sits
+    :data:`FRAME_MARGIN` in from the frame's top left corner.
+    """
+
+    angle: float
+    """The region's tilt: positive counter-clockwise, as the plan has it."""
+
+    bounds: Box
+    """The polygon's box on the page. The lettering is fitted inside the
+    polygon, so this, grown by :data:`FRAME_MARGIN`, is all of the page it
+    can reach once it is turned back."""
+
+    offset: tuple[int, int]
+    """Where the frame's top left corner is in the polygon's level position."""
+
+    size: tuple[int, int]
+    polygon: Polygon
+    """The polygon, level, in the frame's own coordinates."""
+
+    @property
+    def pivot(self) -> tuple[float, float]:
+        """The middle of the polygon's box, in continuous coordinates — a
+        pixel's middle is half a pixel in from its corner, which is why this
+        is not ``rotate_polygon``'s middle but half a pixel on from it."""
+        return (
+            (self.bounds.left + self.bounds.right) / 2,
+            (self.bounds.top + self.bounds.bottom) / 2,
+        )
+
+
+def upright_frame(region: Region) -> UprightFrame | None:
+    """The frame a region's lettering is fitted in, or ``None`` for a level one.
+
+    A whole turn is no turn, so a plan that spells level as 360 is lettered
+    exactly as one that says 0.
+    """
+    if region.angle % 360.0 == 0.0:
+        return None
+    # rotate_polygon turns clockwise for a positive angle, and a region
+    # tilted counter-clockwise by its angle is levelled by turning it back.
+    level = rotate_polygon(region.polygon, region.angle)
+    box = polygon_bounds(level)
+    left, top = box.left - FRAME_MARGIN, box.top - FRAME_MARGIN
+    return UprightFrame(
+        angle=region.angle,
+        bounds=region.bounds,
+        offset=(left, top),
+        size=(box.width + 2 * FRAME_MARGIN, box.height + 2 * FRAME_MARGIN),
+        polygon=tuple((x - left, y - top) for x, y in level),
+    )
+
+
+def draw_layout(
+    image: Image.Image,
+    layout: Layout,
+    style: RegionStyle,
+    color: Color,
+    frame: UprightFrame | None = None,
+) -> None:
+    """Draw a fitted layout onto an RGB image, in place.
+
+    With a ``frame``, the layout is in that frame's coordinates: it is drawn
+    level into a layer the frame's size and turned onto the page in one go.
+    """
+    if frame is None:
+        _draw_lines(image, layout, style, color)
+        return
+    layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    _draw_lines(layer, layout, style, color)
+    _turn_onto(image, layer, frame)
+
+
+def _draw_lines(target: Image.Image, layout: Layout, style: RegionStyle, color: Color) -> None:
+    """Each line of a layout, drawn where the layout put it on ``target``.
+
+    ``target`` is the page, or a tilted region's own layer; on a layer the
+    lines are composited over it, since pasting through a mask would multiply
+    their coverage into the layer's alpha a second time.
+    """
     regular = style.face.regular.load(layout.font_size)
     bold = style.face.bold.load(layout.font_size) if style.face.bold else regular
     ascent, descent = regular.getmetrics()
@@ -122,7 +242,45 @@ def draw_layout(image: Image.Image, layout: Layout, style: RegionStyle, color: C
                 Image.Resampling.LANCZOS,
             )
         left = line.band_left + (line.band_width - layer.width) // 2
-        image.paste(layer, (left, line.top), layer)
+        if target.mode == "RGBA":
+            target.alpha_composite(layer, (left, line.top))
+        else:
+            target.paste(layer, (left, line.top), layer)
+
+
+def _turn_onto(image: Image.Image, layer: Image.Image, frame: UprightFrame) -> None:
+    """Turn a region's level layer by its angle and composite it onto the page.
+
+    One resample, measured: see the module docstring. Only the polygon's own
+    box is resampled, grown by the frame's margin: nothing drawn in the frame
+    lies outside the polygon, and a box turned back lies inside it. The
+    frame itself can be longer than that box — a long region at a steep angle
+    — and what of it lies beyond is empty.
+    """
+    turn = math.radians(frame.angle)
+    cos, sin = math.cos(turn), math.sin(turn)
+    pivot_x, pivot_y = frame.pivot
+    offset_x, offset_y = frame.offset
+    reach = frame.bounds.expanded(FRAME_MARGIN)
+    left, top = reach.left, reach.top
+
+    # Pillow's affine transform asks, for each pixel of what it makes, where
+    # to read from in the layer: the page point turned clockwise by the angle
+    # about the pivot, back into the frame.
+    turned = layer.transform(
+        (reach.width, reach.height),
+        Image.Transform.AFFINE,
+        (
+            cos,
+            -sin,
+            cos * (left - pivot_x) - sin * (top - pivot_y) + pivot_x - offset_x,
+            sin,
+            cos,
+            sin * (left - pivot_x) + cos * (top - pivot_y) + pivot_y - offset_y,
+        ),
+        resample=Image.Resampling.BICUBIC,
+    )
+    image.paste(turned, (left, top), turned)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,14 +318,16 @@ def plan_region(
     if not tokens:
         return None, RegionOutcome(region.id, "skipped_empty", "translation is only markup")
 
+    frame = upright_frame(region)
     result = layout_text(
         tokens,
-        region.polygon,
+        region.polygon if frame is None else frame.polygon,
         style.face,
         cfg.typeset,
         page_width=page_width,
         page_height=page_height,
         fixed_size=style.size,
+        canvas=None if frame is None else frame.size,
     )
     if isinstance(result, FitFailure):
         # Nothing is drawn and nothing is erased: a region that will not fit
@@ -291,5 +451,11 @@ def render_page(
 
     image = Image.fromarray(rgb)
     for entry in planned:
-        draw_layout(image, entry.layout, entry.style, entry.region.text_color)
+        draw_layout(
+            image,
+            entry.layout,
+            entry.style,
+            entry.region.text_color,
+            upright_frame(entry.region),
+        )
     return image, outcomes

@@ -417,6 +417,13 @@ class PageCanvas(QGraphicsView):
     actually changed. Whoever receives it decides whether it is legal; the
     canvas draws shapes, it does not know what a plan file will accept."""
 
+    polygon_turned = Signal(str, object, float)
+    """A region was turned with its handle: its id, the polygon, and how far
+    it turned in degrees, clockwise as the page is seen. Instead of
+    ``polygon_edited`` rather than as well as it, because a turn is one edit
+    of the outline and of the angle its lettering is set at, and whoever
+    records it records both at once."""
+
     polygon_nudged = Signal(str, object)
     """A key moved the selected region: its id and the polygon. Separate from
     ``polygon_edited`` because it is a step in a run rather than a finished
@@ -471,6 +478,8 @@ class PageCanvas(QGraphicsView):
         self._handles: list[VertexHandle] = []
         self._turn_handle: TurnHandle | None = None
         self._drag: _ShapeDrag | None = None
+        self._turned_by = 0.0
+        """How far the turn being dragged has gone, as last drawn."""
         self._nudge_repeats = 0
         self._draft: list[Point] = []
         self._draft_item: QGraphicsPathItem | None = None
@@ -985,8 +994,9 @@ class PageCanvas(QGraphicsView):
 
     def _turned_polygon(
         self, drag: _ShapeDrag, scene_point: QPointF, modifiers: Qt.KeyboardModifier
-    ) -> Polygon | None:
-        """The shape turned as far as the pointer has gone round its middle.
+    ) -> tuple[Polygon, float] | None:
+        """The shape turned as far as the pointer has gone round its middle,
+        and how many degrees that is, clockwise.
 
         Measured as the angle the pointer has swept about the middle of the
         box since the press, so the grip can be taken anywhere on it. Shift
@@ -1008,7 +1018,7 @@ class PageCanvas(QGraphicsView):
             rect.left() <= x <= rect.right() - 1 and rect.top() <= y <= rect.bottom() - 1
             for x, y in turned
         )
-        return turned if inside else None
+        return (turned, degrees) if inside else None
 
     def _page_rect(self) -> QRectF:
         return self._scene.sceneRect()
@@ -1344,7 +1354,8 @@ class PageCanvas(QGraphicsView):
             scene_point = self.mapToScene(event.position().toPoint())
             turned = self._turned_polygon(self._drag, scene_point, event.modifiers())
             if turned is not None:
-                self._draw_polygon(self._drag.region_id, turned)
+                polygon, self._turned_by = turned
+                self._draw_polygon(self._drag.region_id, polygon)
             if self._turn_handle is not None:
                 # The grip goes with the pointer while it turns, rather than
                 # jumping about with the box of a shape that is turning.
@@ -1407,7 +1418,10 @@ class PageCanvas(QGraphicsView):
         # A press that went nowhere is a click, not an edit. Reporting it
         # would put an undo step behind every stray click on a balloon.
         if polygon is not None and polygon != drag.polygon:
-            self.polygon_edited.emit(drag.region_id, polygon)
+            if drag.turning:
+                self.polygon_turned.emit(drag.region_id, polygon, self._turned_by)
+            else:
+                self.polygon_edited.emit(drag.region_id, polygon)
         event.accept()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override

@@ -1580,18 +1580,54 @@ Region submenu holds, so a tick, a drawing or a shortcut cannot differ
 between the two. Escape does the same thing in every drawing mode: what is
 half-drawn goes first, and with nothing half-drawn the tool is put down.
 
-**A turn is a gesture, not a property.** Edit Region Shape adds a round
-`TurnHandle` above the selected region to the square corner handles, and
-dragging it turns the whole outline about the middle of its box through
-`model.rotate_polygon`. Nothing records the angle: the region is the corners
-it now has, a manual one like any shape set by hand, so the plan format does
-not move — the same trade the ellipse makes. The turn is computed afresh from
+**A turn moves the outline and the lettering together.** Edit Region Shape
+adds a round `TurnHandle` above the selected region to the square corner
+handles, and dragging it turns the whole outline about the middle of its box
+through `model.rotate_polygon`. The canvas reports a finished turn on
+`polygon_turned` rather than `polygon_edited`, with how far it went, and
+`PlanDocument.turn_region` records the new corners and the region's `angle`
+in one edit: the angle is counter-clockwise and the turn is measured
+clockwise, so it goes down by as much as the shape went round. The Region
+panel's text angle sets `angle` alone, for a balloon extract found already at
+an angle. Either way the window writes it with `model.normalised_angle`,
+within a half turn either way and to a tenth of a degree, and rounded after
+the subtraction, which is where a float leaves a tail — `-29.7` came out as
+`-29.69999999999999` before it was. The turn is computed afresh from
 the shape as it was at the press on every move, so a long drag gathers no
 rounding, and one that would put a corner off the page is held at the last
 angle that fitted, as a moved region is held at the edge, rather than having
 its corners clamped one by one and the shape squashed. The handle is drawn a
 fixed distance away on screen, so which side of the region there is room for
 it depends on the zoom, and a zoom change places it again.
+
+**Tilted lettering is fitted level and turned once.** `render.upright_frame`
+turns a region's polygon level about the middle of its box and moves it into
+a frame of its own, `FRAME_MARGIN` clear of the edge, and `typeset.layout_text`
+fits into that polygon unmodified — handed the frame's size as its canvas, so
+a level polygon longer than the page is wide is not clipped, while the page's
+height still decides every font size. The fit was measured before this was
+built: 87px over three lines at 0, 20, 30 and 45 degrees alike, against 87,
+68, 70 and 66 for the same box laid out level in page coordinates; the
+finished path gives one size at every angle, and a test holds it.
+`draw_layout` draws the lines into one layer the frame's size and
+`_turn_onto` turns it onto the page with a single affine resample, over the
+polygon's box grown by the margin — the lettering is inside the polygon, so
+nothing beyond that can be drawn. Pixel centres are half a pixel in, so the
+pivot is `rotate_polygon`'s middle plus a half: half a pixel off, a turned
+triangle landed 573 pixels off its outline where the right pivot leaves 205
+to 222 of rounding along the edge. A region with no angle — or a whole turn
+of one — takes none of this and is drawn as it always was.
+
+The resample is bicubic, measured rather than assumed. Tesseract read lines
+of lettering turned 5, 20 and 45 degrees and turned back as well as level
+text from 8px up, one resample or not; at 6px it read level text at 0.77 of
+the characters, once-resampled at 0.66 to 0.70, and text drawn at four times
+the size, turned and averaged down at 0.82 to 0.93. Turning the 1x drawing at
+2x or 4x instead gained nothing (0.53 to 0.69) at 6 to 35 times the cost.
+Drawing at 4x is the one that helps and is not taken, because glyphs drawn
+four times the size are not four times the hinted width the layout was
+measured at, and a line fitted to its band would no longer be the line drawn
+in it. 6px is the readable minimum on a page about 500 pixels tall.
 
 **The region context menu is select mode's own, not a fifth mode.**
 Right-click — and Control-click, which Qt maps to the same

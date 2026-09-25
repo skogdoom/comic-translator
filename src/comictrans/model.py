@@ -287,12 +287,13 @@ class Region:
     Nothing draws it yet."""
 
     angle: float = 0.0
-    """Tilt of this region, in degrees, positive counter-clockwise.
+    """Tilt of this region's lettering, in degrees, positive counter-clockwise.
 
-    ``0.0`` is the upright region every plan holds today. Nothing rotates
-    anything by it yet — the typesetter still fits level text inside whatever
-    polygon it is given, which is why this is a field rather than a change to
-    what a polygon means."""
+    ``0.0`` is level, which is every region extract writes. Not a change to
+    what the polygon means: the polygon is still the outline on the page, and
+    the lettering is fitted in it turned level by this much and drawn turned
+    back — see ``render``. Turning a region in the window turns its angle
+    with it; typing one tilts the lettering alone."""
 
     font: str | None = None
     font_size: int | None = None
@@ -608,9 +609,9 @@ def rotate_polygon(polygon: Polygon, degrees: float) -> Polygon:
     Positive is clockwise as the page is seen, since y grows downwards. The
     middle of the box rather than the centroid: it is the point the eye takes
     for the middle of a balloon, and what a handle drawn over the box turns
-    it about. Nothing records the angle: a region turned is simply the
-    corners it now has, so turning it back is turning it again, rounding and
-    all.
+    it about. This turns the outline and nothing else; the window turns the
+    region's lettering angle by the same amount in the same edit — see
+    ``PlanDocument.turn_region``.
     """
     box = polygon_bounds(polygon)
     centre_x = (box.left + box.right - 1) / 2
@@ -624,6 +625,21 @@ def rotate_polygon(polygon: Polygon, degrees: float) -> Polygon:
         )
         for x, y in polygon
     )
+
+
+def normalised_angle(degrees: float) -> float:
+    """A tilt as the window writes it: within (-180, 180], to a tenth of a degree.
+
+    The plan accepts a full turn either way, and nothing about the lettering
+    depends on how an angle is spelled, but the window keeps one spelling so
+    that turning a region back gives the number it started with, and a tenth
+    of a degree is far below what anything drawn can show.
+    """
+    turned = round(degrees % 360.0, 1)
+    # Rounded again after the subtraction, which is where a float leaves a
+    # tail: 330.3 less 360 is -29.69999999999999, and that is what a plan
+    # would otherwise say.
+    return round(turned - 360.0, 1) if turned > 180.0 else turned
 
 
 def polygon_is_simple(polygon: Polygon) -> bool:

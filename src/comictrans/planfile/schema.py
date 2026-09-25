@@ -35,7 +35,8 @@ window in which two builds disagree about what a plan may contain.
 **Nothing read any of them at first**, which is the state this version was
 deliberately left in, and each is put to use by the milestone that claims it:
 ``locked`` by marking a region finished, the chapter's details by the plan
-header dialog. ``angle`` and ``stroke_color`` still wait on theirs. A field
+header dialog, ``angle`` by lettering a region at a tilt. ``stroke_color``
+still waits on its own. A field
 being here is not an instruction to fill it in — see ``docs/ROADMAP.md``."""
 
 MIN_POLYGON_POINTS = 3

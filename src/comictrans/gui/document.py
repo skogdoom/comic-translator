@@ -29,6 +29,7 @@ from ..model import (
     TextCase,
     boxes_overlap,
     convex_hull,
+    normalised_angle,
     polygon_is_simple,
     polygons_overlap,
     source_path,
@@ -608,6 +609,30 @@ class PlanDocument:
         """
         return self._update(region_id, polygon=validated_polygon(polygon), geometry=Geometry.MANUAL)
 
+    def turn_region(self, region_id: str, polygon: Polygon, clockwise: float) -> Region:
+        """Reshape a region by turning it, and turn its lettering with it.
+
+        ``clockwise`` is how far the outline went, in degrees, as the window
+        measures a turn; the angle is counter-clockwise, so it goes the other
+        way by the same amount. One edit, not a reshape and then a tilt: undo
+        puts the outline and the lettering back together.
+        """
+        current = self.region(region_id)
+        return self._update(
+            region_id,
+            polygon=validated_polygon(polygon),
+            geometry=Geometry.MANUAL,
+            angle=normalised_angle(current.angle - clockwise),
+        )
+
+    def set_angle(self, region_id: str, degrees: float) -> Region:
+        """Tilt a region's lettering, leaving its outline where it is.
+
+        For a balloon extract found already at an angle, whose outline is
+        right and whose text is level. Positive is counter-clockwise.
+        """
+        return self._update(region_id, angle=normalised_angle(degrees))
+
     def set_source_text(
         self, region_id: str, source_text: str, *, seed_translation: bool = False
     ) -> Region:
@@ -793,6 +818,7 @@ class PlanDocument:
             notes=_joined(first.notes, second.notes),
             font=first.font or second.font,
             font_size=first.font_size or second.font_size,
+            angle=first.angle or second.angle,
             erase=first.erase or second.erase,
         )
         regions = tuple(
