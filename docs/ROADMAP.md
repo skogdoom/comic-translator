@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 27 | Rotated text | M |
 | 28 | Sound effects, lettered over the artwork | M |
 | 19 | ComicInfo.xml, read and written | M |
 | 20 | EPUB output | L |
@@ -85,11 +84,11 @@ reader window, which waited on nothing above it.
 Milestone 29 took the plan format to version 4 and added every field this file
 still wanted — `locked`, an angle for 27, a stroke colour for 28, and the
 chapter header fields for 18 — all optional, all inert, and filled in by
-nothing. `locked` has since been taken up by 4.27, and the chapter's fields by
-18, which is the shape the rest are waiting for. It went first because the reader rejects unknown keys
-by design, so a field added on its own is its own bump, its own migration and
-its own window in
-which two builds disagree about what a plan may contain; four of them
+nothing. `locked` has since been taken up by 4.27, the chapter's fields by 18
+and the angle by 27, which is the shape the last one is waiting for. It went
+first because the reader rejects unknown keys by design, so a field added on
+its own is its own bump, its own migration and its own window in which two
+builds disagree about what a plan may contain; four of them
 separately would have been four of each. Each of those milestones now arrives
 to find its field already there and spends itself on behaviour, which is also
 what makes them independent of one another: none waits on another's migration.
@@ -99,8 +98,9 @@ already hold the answers. 6 sits with them as the third member of the same
 family and the least urgent of the three.
 
 **A field being there is not an instruction to fill it in.** The temptation 29
-existed to resist outlives it: four fields are now sitting in the format with
-nothing reading them, and each belongs to exactly one milestone below. Borrow
+existed to resist outlives it: one field, the stroke colour, is still sitting
+in the format with nothing reading it, and it belongs to exactly one milestone
+below. Borrow
 `known-bugs.md`'s instinct here — meeting one while doing something else is
 not a reason to start on it.
 
@@ -108,10 +108,12 @@ not a reason to start on it.
 questions in this file were answered partly on the grounds that a field costs
 a version bump: whether an ellipse remembers it is an ellipse, which 17
 answered no when it shipped, and whether a rotated region remembers its angle,
-which 26 answered no when it did. The bump is now paid for and the
-mechanism is proven, so both rest on the half that is still true — nothing
-downstream reads either, and a field nothing reads is still a field to
-maintain. Neither is reopened; they are standing on one leg instead of two.
+which 26 answered no when it did. The second has since been answered yes, by
+27, for a reason that was never on the table then: the angle is what the
+lettering is set at, which `apply` reads, rather than a memory of how the
+outline was drawn. The first rests on the half that is still true — nothing
+downstream reads it, and a field nothing reads is still a field to maintain —
+and is not reopened.
 
 28 is placed by what it needs rather than by size. It would have been the
 cheapest of the lettering milestones and is not, because the outline it needs
@@ -222,38 +224,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 27 Rotated text
-
-Letter a tilted region at its own angle rather than level inside it.
-
-**Latin only.** Vertical CJK was considered and is not this: breaking lines
-down a column is not the horizontal algorithm turned sideways, and the two
-share nothing but a schema field.
-
-**The typesetter does not change.** Measured, not assumed. The band algorithm
-does not need to stop thinking in horizontal bands — it needs to be handed a
-polygon that is already upright. Rotating the polygon into the region's own
-frame and calling `layout_text` unmodified recovers the full fit at every
-angle tried: 87px over three lines at 0, 20, 30 and 45 degrees alike, against
-87, 68, 70 and 66 for the same box laid out level in page coordinates.
-
-So the work is three things and none of them is in `typeset`:
-
-- **An angle on the region**, which the plan format already carries — so
-  nothing here touches it. Nothing sets it yet, either: 26 shipped turning a
-  region's corners and recording no angle, deliberately, so this milestone
-  decides how a region comes to have one — a field in the Region panel, or
-  the turning handle writing down what it turned by.
-- **A coordinate transform** either side of the fit: rotate the polygon in,
-  rotate the drawn result back.
-- **`draw_layout` drawing into a region-local layer** and rotating it once
-  before compositing. It already draws each line into a transparent layer and
-  pastes that, so this changes where the layer lands rather than how it is
-  made.
-
-**Not yet measured**: what a single rotation resample does to small text. The
-fit is proven; the rendering of it is not.
 
 ## 28 Sound effects, lettered over the artwork
 

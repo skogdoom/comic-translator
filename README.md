@@ -70,7 +70,9 @@ otherwise, and Swedish is the translation that ships.
 corner by corner, **or painted with a brush**: Add Region on the toolbar opens
 a palette of the shapes and four brushes.
 **And turned**, for a balloon that sits at an angle: Edit Region Shape puts a
-round handle above the region that turns it. See **review** below.
+round handle above the region that turns it, and **its lettering turns with
+it** — or type a text angle in the Region panel to tilt the lettering alone.
+See **review** below.
 
 **A plan can say what the comic is.** Edit > Plan Header has a section for
 the series, title, volume and number, year, publisher, writer and reading
@@ -110,7 +112,8 @@ the fresh reading.
 **The plan format is at version 4**, and plans written by every earlier build
 still open. Version 4 added the fields the milestones still to come will need —
 the lock above, an angle, an outline colour, and the chapter's own details.
-Apart from the lock, nothing writes them and nothing reads them yet. They went
+The lock, the angle and the chapter's details are in use; nothing writes or
+reads the outline colour yet. They went
 in together because the reader rejects unknown keys by design, so adding them
 one at a time would have meant a format change per milestone. See **The plan
 file** below.
@@ -573,9 +576,14 @@ never enough to trace a balloon. A round handle on a stem above the region
 turns it: drag it round, and the whole shape turns about the middle of its
 box, in 15° steps with Shift held. Where there is no room above the region on
 screen, the handle is below it. A turn that would take a corner off the page
-stops where the shape last fitted, and nothing remembers the angle — a region
-turned is simply the corners it now has, which is what keeps the plan format
-where it is. `Esc` abandons a drag or a turn in progress. Each drag
+stops where the shape last fitted. The lettering turns with it: the region's
+`angle` goes by as much as the shape did, in the same undo step, and it is
+lettered at that angle — fitted as though it were level, so it fits at the
+same size at any angle, and turned onto the page. **text angle** in the Region
+panel shows it and takes a typed one, which tilts the lettering and leaves the
+outline, for a balloon extract found already at an angle; positive is
+counter-clockwise, and the window keeps it within a half turn either way.
+`Esc` abandons a drag or a turn in progress. Each drag
 is one undo step, and a shape a plan file could not hold — fewer than three
 corners, off the top or left of the page, an outline that crosses itself — is
 refused with a message and the region left as it was, rather than saved and
@@ -1157,13 +1165,19 @@ have, and image-hash mismatches are all errors that name the offending line.
   the fresh reading. It is not `skip`: `apply` letters a locked region exactly
   as it letters any other.
 
-A plan may also carry fields that nothing acts on yet, added together so that
-the milestones which will use them do not each cost a format change: `angle`
-and `stroke_color` on a region, and the chapter's own details on the header —
-`series`, `title`, `volume`, `number`, `year`, `publisher`, `writer` and
-`reading_direction`. All are optional, `extract` writes none of them, and
-every one defaults to the value that means "as before", so a plan that leaves
-them out is exactly the plan this wrote before they existed. Setting one today
+- `angle` tilts a region's lettering, in degrees, positive counter-clockwise.
+  `apply` fits the text in the polygon turned level by that much and letters
+  it turned back, so a turned region fits at the same size as a level one.
+  `0`, the default, is level and is left out of the file.
+
+A plan may also carry fields added together so that the milestones which use
+them did not each cost a format change: `stroke_color` on a region, which
+nothing acts on yet, and the chapter's own details on the header — `series`,
+`title`, `volume`, `number`, `year`, `publisher`, `writer` and
+`reading_direction` — which are typed in the plan header and not yet written
+anywhere else. All are optional, `extract` writes none of them, and every one
+defaults to the value that means "as before", so a plan that leaves them out
+is exactly the plan this wrote before they existed. Setting one of them today
 changes nothing about what `apply` renders.
 
 Older plans still load. Version 1 carried an `image_sha256` on every region
@@ -1212,7 +1226,7 @@ cannot read, before any window opens.
 
 ## Out of scope
 
-Sound effects in artwork, hand-lettered SFX, rotated or vertical text, PDF
+Sound effects in artwork, hand-lettered SFX, vertical text, PDF
 *output* (milestone 6 — reading one works), ComicInfo.xml or any other
 metadata inside a chapter file, and preserving italic emphasis from the
 source.
