@@ -2462,6 +2462,7 @@ class MainWindow(QMainWindow):
             return
         with transient(dialog):
             dialog.edited.connect(self._on_header_edited)
+            dialog.described.connect(self._on_header_described)
             dialog.exec()
 
     def _on_header_edited(self) -> None:
@@ -2470,6 +2471,11 @@ class MainWindow(QMainWindow):
         if self._current_image is not None and self._showing_preview:
             # What is on screen was rendered under the old header.
             self._on_render_preview()
+        self._update_actions_enabled()
+
+    def _on_header_described(self) -> None:
+        """The comic's details decide no region, so nothing is rendered again."""
+        self._update_title()
         self._update_actions_enabled()
 
     def _on_preferences(self) -> None:

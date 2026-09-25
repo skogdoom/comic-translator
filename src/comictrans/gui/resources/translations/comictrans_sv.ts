@@ -351,7 +351,7 @@
 <context>
     <name>HeaderDialog</name>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="127"/>
+        <location filename="../../header_dialog.py" line="216"/>
         <source>used by all %n region(s)</source>
         <translation>
             <numerusform>används av den enda regionen</numerusform>
@@ -359,7 +359,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="128"/>
+        <location filename="../../header_dialog.py" line="217"/>
         <source>used by {0} of %n region(s); the rest override it</source>
         <translation>
             <numerusform>används av {0} av den enda regionen; resten åsidosätter det</numerusform>
@@ -367,62 +367,122 @@
         </translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="48"/>
+        <location filename="../../header_dialog.py" line="101"/>
         <source>Plan Header</source>
         <translation>Planhuvud</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="83"/>
+        <location filename="../../header_dialog.py" line="146"/>
+        <source>not stated</source>
+        <translation>ej angiven</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="147"/>
+        <source>left to right</source>
+        <translation>vänster till höger</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="148"/>
+        <source>right to left</source>
+        <translation>höger till vänster</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="155"/>
+        <source>number</source>
+        <translation>nummer</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="158"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="85"/>
+        <location filename="../../header_dialog.py" line="160"/>
         <source>case</source>
         <translation>skiftläge</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="86"/>
+        <location filename="../../header_dialog.py" line="161"/>
         <source>smallest text</source>
         <translation>minsta text</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="87"/>
+        <location filename="../../header_dialog.py" line="162"/>
         <source>condensing floor</source>
         <translation>smalaste tillåtna</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="88"/>
+        <location filename="../../header_dialog.py" line="163"/>
         <source>source language</source>
         <translation>källspråk</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="89"/>
+        <location filename="../../header_dialog.py" line="164"/>
         <source>target language</source>
         <translation>målspråk</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="92"/>
+        <location filename="../../header_dialog.py" line="169"/>
+        <source>the comic</source>
+        <translation>verket</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="170"/>
+        <source>series</source>
+        <translation>serie</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="171"/>
+        <source>title</source>
+        <translation>titel</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="172"/>
+        <source>volume</source>
+        <translation>volym</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="173"/>
+        <source>year</source>
+        <translation>år</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="174"/>
+        <source>publisher</source>
+        <translation>förlag</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="175"/>
+        <source>writer</source>
+        <translation>författare</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="176"/>
+        <source>reading direction</source>
+        <translation>läsriktning</translation>
+    </message>
+    <message>
+        <location filename="../../header_dialog.py" line="179"/>
         <source>written by</source>
         <translation>skriven av</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="93"/>
+        <location filename="../../header_dialog.py" line="180"/>
         <source>created</source>
         <translation>skapad</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="94"/>
+        <location filename="../../header_dialog.py" line="181"/>
         <source>OCR engine</source>
         <translation>OCR-motor</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="95"/>
+        <location filename="../../header_dialog.py" line="182"/>
         <source>plan version</source>
         <translation>planversion</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="104"/>
+        <location filename="../../header_dialog.py" line="191"/>
         <source>recorded when this plan was written</source>
         <translation>noterat när planen skrevs</translation>
     </message>
@@ -1106,47 +1166,47 @@
         <translation>öppnar planhuvudet</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2485"/>
+        <location filename="../../main_window.py" line="2491"/>
         <source>opening preferences</source>
         <translation>öppnar inställningar</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2522"/>
+        <location filename="../../main_window.py" line="2528"/>
         <source>{0} will be in {1} the next time it starts.</source>
         <translation>{0} kommer att vara på {1} nästa gång programmet startar.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2525"/>
+        <location filename="../../main_window.py" line="2531"/>
         <source>Quit and open it again to change the language of this window.</source>
         <translation>Avsluta och öppna igen för att byta språk i det här fönstret.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2608"/>
+        <location filename="../../main_window.py" line="2614"/>
         <source>{0} is not there any more.</source>
         <translation>{0} finns inte längre.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2609"/>
+        <location filename="../../main_window.py" line="2615"/>
         <source>It has been taken off the recent list. It was at {0}.</source>
         <translation>Den har tagits bort från listan över senaste. Den låg i {0}.</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2654"/>
+        <location filename="../../main_window.py" line="2660"/>
         <source>{0}: {1}</source>
         <translation>{0}: {1}</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2658"/>
+        <location filename="../../main_window.py" line="2664"/>
         <source>{0} failed: {1} — see the log</source>
         <translation>{0} misslyckades: {1} — se loggen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2675"/>
+        <location filename="../../main_window.py" line="2681"/>
         <source>opening the log folder</source>
         <translation>öppnar loggmappen</translation>
     </message>
     <message>
-        <location filename="../../main_window.py" line="2678"/>
+        <location filename="../../main_window.py" line="2684"/>
         <source>logs are in {0}</source>
         <translation>loggarna finns i {0}</translation>
     </message>
@@ -1955,6 +2015,14 @@
             <numerusform>%n region · {0} med låg säkerhet · {1} ungefärliga · {2} utan förifylld text</numerusform>
             <numerusform>%n regioner · {0} med låg säkerhet · {1} ungefärliga · {2} utan förifylld text</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>YearBox</name>
+    <message>
+        <location filename="../../header_dialog.py" line="66"/>
+        <source>not stated</source>
+        <translation>ej angivet</translation>
     </message>
 </context>
 </TS>

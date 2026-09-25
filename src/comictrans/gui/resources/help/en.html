@@ -322,6 +322,15 @@ modified marker tracks what is on disk, so undoing back to your last save
 clears it. <b>Revert to Saved</b> re-reads the file and throws away what is
 unsaved.</p>
 
+<p><b>Plan Header</b> holds what every region is drawn under &mdash; the font,
+the case, the two fit limits and the languages &mdash; and, under <i>the
+comic</i>, what the chapter is: its series, title, volume and number, year,
+publisher, writer, and which way its pages read. Nothing on the pages says
+any of that, so Extract leaves it empty and it is typed here. Empty is an
+answer: a field left empty means the plan does not say, and a year is four
+digits or nothing. Every field writes as you type, and each is its own
+undo step.</p>
+
 <p><b>Extract Text from Region</b> asks the recogniser what one region says and
 puts it in the source text &mdash; for a region you drew, which has no reading
 of its own, and for one the first pass read badly. It reads that balloon
@@ -347,9 +356,10 @@ drawn.</p>
 
 <p>Pages inside a chapter file are numbered in the order the plan has them, so
 a reader shows them in the order you put them in rather than the order they
-were scanned. Nothing else is written into it: no ComicInfo.xml, because the
-only thing this tool knows about your chapter is which languages it is between,
-and a file claiming more than that is worse than one claiming nothing.</p>
+were scanned. Nothing else is written into it: no ComicInfo.xml. The comic's
+details in <b>Plan Header</b> are kept in the plan, but nothing writes them
+into a chapter file yet, and a file claiming what nobody told it is worse than
+one claiming nothing.</p>
 
 <p>Both run in the background: the window stays usable, and a panel along the
 bottom reports what happened. Cancelling differs between the two, and
