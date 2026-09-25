@@ -15,7 +15,7 @@
 <context>
     <name>HeaderDialog</name>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="127"/>
+        <location filename="../../header_dialog.py" line="216"/>
         <source>used by all %n region(s)</source>
         <translation>
             <numerusform>used by the only region</numerusform>
@@ -23,7 +23,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="128"/>
+        <location filename="../../header_dialog.py" line="217"/>
         <source>used by {0} of %n region(s); the rest override it</source>
         <translation>
             <numerusform>used by {0} of the one region; the rest override it</numerusform>

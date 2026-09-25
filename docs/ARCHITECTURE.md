@@ -736,12 +736,15 @@ down is the pair of properties that make the argument list safe, neither of
 which was obvious from reading it — see `docs/SECURITY.md`.
 
 **No ComicInfo.xml, and no metadata of any kind.** It was considered and
-refused. The plan header knows the source and target languages and nothing
-else about the chapter — not the series, not the volume, not the number, not
-the year — so anything written into such a file would be either those two
-fields alone or invented. A chapter file that carries metadata a reader will
-believe is worse than one that carries none, and the tooling people already
-use for tagging does the job properly.
+refused while the plan header knew the source and target languages and
+nothing else about the chapter, because anything written into such a file
+would have been those two fields alone or invented. A chapter file that
+carries metadata a reader will believe is worse than one that carries none.
+The header now holds the series, title, volume, number, year, publisher,
+writer and reading direction, typed in the plan header dialog — none of it
+measurable from the pages, so `extract` fills in nothing — which removes the
+reason. Writing them is the roadmap's, and whatever writes them writes what
+the plan says and leaves out what it does not.
 
 ## Re-running extract
 
@@ -1040,6 +1043,20 @@ raises rather than recording. The limits themselves live in
 `planfile/schema.py` and are used by both the reader and the dialog's spin
 boxes, because a widget offering one value more than the reader accepts is
 the same defect wearing a different hat.
+
+**The comic's details are typed, and none of them is required.** The header
+dialog's second section edits the eight fields version 4 added:
+`CHAPTER_TEXT_FIELDS` as free text, trimmed as they are typed, and the year
+and reading direction as the two with a type. Empty is an answer for every
+one of them — the writer omits a field at its empty value, so a plan whose
+details were filled in and cleared again saves byte for byte as it was. The
+year is a line rather than a spin box, because a spin box has no empty, only
+a special value at the bottom of its range; four digits not starting with a
+nought is exactly `schema.YEAR_RANGE`, and a year left half-typed goes back to
+the one the plan holds. They are reported on a signal of their own,
+`described`, rather than `edited`: none of them changes a rendered page, so
+none is a reason to render the preview again, and they are typed a letter at
+a time.
 
 **What the header dialog will not let you edit.** `generator`, `created`,
 `ocr_engine` and `version` describe what produced the plan rather than what

@@ -23,6 +23,13 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A plan can say what the comic is.** Edit > Plan Header has a section
+  for the series, title, volume and number, year, publisher, writer and reading
+  direction — the header fields version 4 added, put to use. None of it is on
+  the pages, so `extract` fills in nothing; every field is typed, and empty
+  means the plan does not say: a plan whose details are filled in and cleared
+  again saves byte for byte as it was. The year is four digits or nothing.
+  Nothing writes these into a chapter file yet.
 - **A region can be painted with a brush.** The shape palette has four
   brushes — fine, small, medium and large — and the Edit menu lists them under
   Add Region below the shapes. Drag to paint; letting go makes the outline of

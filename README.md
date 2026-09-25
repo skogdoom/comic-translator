@@ -72,6 +72,11 @@ a palette of the shapes and four brushes.
 **And turned**, for a balloon that sits at an angle: Edit Region Shape puts a
 round handle above the region that turns it. See **review** below.
 
+**A plan can say what the comic is.** Edit > Plan Header has a section for
+the series, title, volume and number, year, publisher, writer and reading
+direction. Nothing measures any of it from the pages, so `extract` leaves it
+empty and it is typed there; nothing writes it into a chapter file yet.
+
 **A chapter can be read without translating it.** `comictrans read` opens a
 folder of pages or a chapter file in a window of its own — the arrow keys
 page through it, one page or two, left to right or right to left — and reads
@@ -429,10 +434,11 @@ review window has to survive as a name; source names that already sort right
 are luck.
 
 **Nothing else goes in.** No ComicInfo.xml, no metadata of any kind. The plan
-file knows the two languages and nothing else about your chapter — not the
-series, not the volume, not the numbering — and a chapter file that claims
-those things because a tool had to fill the fields in is worse than one that
-claims nothing.
+can hold the series, the volume, the numbering and the rest, typed in the plan
+header, but nothing writes them into a chapter file yet — and when something
+does, it will write what the plan says and nothing more, because a chapter
+file that claims things a tool had to fill in is worse than one that claims
+nothing.
 
 **A cancelled run into a chapter file leaves no file at all**, which is not
 the promise a directory makes and is deliberate. Pages are rendered into a
@@ -950,7 +956,11 @@ you install one.
 the font, the case, the two fit limits, and the language pair — each language
 shown by name and recorded as its code. It reports how
 many regions actually follow the header font, since any of them can override
-it. Fields write through as you type, like the region fields, and each one is
+it. Under **the comic** it holds what the chapter is: series, title, volume
+and number, year, publisher, writer, and reading direction, left to right or
+right to left. None of it is on the pages, so `extract` leaves every one
+empty; empty means the plan does not say, and a plan that says nothing is the
+same file it always was. The year is four digits or nothing. Fields write through as you type, like the region fields, and each one is
 its own undo step. What the tool *recorded* — which OCR engine ran, what wrote
 the plan and when — is shown there but cannot be edited: a plan that names an
 engine that never ran is a plan that lies about where its text came from. The

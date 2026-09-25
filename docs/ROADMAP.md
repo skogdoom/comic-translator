@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 18 | Chapter metadata in the plan | M |
 | 27 | Rotated text | M |
 | 28 | Sound effects, lettered over the artwork | M |
 | 19 | ComicInfo.xml, read and written | M |
@@ -86,17 +85,18 @@ reader window, which waited on nothing above it.
 Milestone 29 took the plan format to version 4 and added every field this file
 still wanted — `locked`, an angle for 27, a stroke colour for 28, and the
 chapter header fields for 18 — all optional, all inert, and filled in by
-nothing. `locked` has since been taken up by 4.27, which is the shape the
-rest are waiting for. It went first because the reader rejects unknown keys
+nothing. `locked` has since been taken up by 4.27, and the chapter's fields by
+18, which is the shape the rest are waiting for. It went first because the reader rejects unknown keys
 by design, so a field added on its own is its own bump, its own migration and
 its own window in
 which two builds disagree about what a plan may contain; four of them
 separately would have been four of each. Each of those milestones now arrives
 to find its field already there and spends itself on behaviour, which is also
 what makes them independent of one another: none waits on another's migration.
-18 keeps the job it was sequenced for — 19 and 20 still need the header to stop
-being *empty*, and that is 18 rather than either format milestone. 6 sits with
-them as the third member of the same family and the least urgent of the three.
+18 has done the job it was sequenced for: the header no longer has to be
+*empty*, so 19 and 20 are each a file format wrapped around a header that can
+already hold the answers. 6 sits with them as the third member of the same
+family and the least urgent of the three.
 
 **A field being there is not an instruction to fill it in.** The temptation 29
 existed to resist outlives it: four fields are now sitting in the format with
@@ -223,40 +223,6 @@ It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
 
-## 18 Chapter metadata in the plan
-
-The enabling milestone for the two below it, and the reason they are not each
-carrying their own copy of it.
-
-**The plan header knows almost nothing about the comic.** It holds the two
-languages, the font and the typesetting limits, what wrote it and when — and
-that is all. Not the series, not the volume, not the number, not the year, not
-the reading direction. Milestone 8 refused to write a `ComicInfo.xml` for
-exactly this reason, and the refusal is written into `README.md` and
-`ARCHITECTURE.md` as a decision rather than an omission: a file claiming
-metadata the tool does not have is worse than no file.
-
-19 and 20 both need that to stop being true, and neither should be the
-milestone that changes the plan format to fix it. Version 4 added the fields;
-this one is where they stop being empty. After it, 19 and 20 are each a file
-format wrapped around a header that already holds the answers.
-
-What it is:
-
-- **The header fields put to use.** The format already carries them — series,
-  title, volume, number, year, publisher, writer, and the one that is not
-  bibliographic: **reading direction**, left-to-right or right-to-left, which
-  a manga chapter needs and which 20 writes into the spine. Empty is still a
-  valid answer for every one of them, so a plan that names none stays exactly
-  the plan written today. The reader window has a direction toggle of its own
-  and opens chapters rather than plans, so reading this field is a connection
-  it could make later, not one it waits on.
-- **The header dialog grows a section**, and `extract` fills in nothing: none
-  of this is measurable from the pages, so every field is typed or imported.
-
-Not in scope here: reading any of it from anywhere, which is 19, and writing
-it anywhere, which is 19 and 20.
-
 ## 27 Rotated text
 
 Letter a tilted region at its own angle rather than level inside it.
@@ -349,11 +315,11 @@ half with the most value per line of code in this list.
 
 **Writing.** `pack` adds one entry to the archive, built from the header.
 Only the fields that are set: an element per fact the plan actually holds, and
-nothing invented. This is where the `README.md` and `ARCHITECTURE.md`
-paragraphs that say no metadata is ever written have to be rewritten — the
-reasoning in them was "the plan knows only the language pair", which 18 makes
-untrue, so the honest change is to say what changed rather than to delete the
-paragraph.
+nothing invented. The `README.md` and `ARCHITECTURE.md` paragraphs that say no
+metadata is ever written, and the guide's line about chapter files, already
+say why that no longer has to be so — 18 rewrote their reasoning, which was
+"the plan knows only the language pair" — so this is where they change to say
+what is written.
 
 Worth knowing: the format is a de-facto standard with no schema anybody
 maintains, several mutually contradictory field lists, and readers that
