@@ -527,6 +527,13 @@ class MainWindow(QMainWindow):
         self._extract_text_action.triggered.connect(self._on_extract_text)
         edit_menu.addAction(self._extract_text_action)
 
+        # A region somebody drew over the art, lettered on it: nothing
+        # painted over, hot pink, outlined in black. No ellipsis — it asks
+        # nothing — and no shortcut, since it is once per sound effect.
+        self._sound_effect_action = QAction(self.tr("Ma&ke Sound Effect"), self)
+        self._sound_effect_action.triggered.connect(self._on_make_sound_effect)
+        edit_menu.addAction(self._sound_effect_action)
+
         # No confirmation: undo is the safety net every other edit here gets,
         # and a dialog on every delete would be one to click through rather
         # than read. The status bar says what went and how to get it back.
@@ -976,6 +983,9 @@ class MainWindow(QMainWindow):
             action.setEnabled(can_edit_shapes)
         self._delete_region_action.setEnabled(
             can_edit_shapes and self._current_region is not None and not locked
+        )
+        self._sound_effect_action.setEnabled(
+            has_image and self._current_region is not None and not locked
         )
         self._lock_action.setEnabled(has_image and self._current_region is not None)
         # Set, not toggled: this follows the selection rather than asking for
@@ -1444,6 +1454,7 @@ class MainWindow(QMainWindow):
         self._on_region_clicked(region_id)
         menu = QMenu(self)
         menu.addAction(self._extract_text_action)
+        menu.addAction(self._sound_effect_action)
         menu.addAction(self._edit_shape_action)
         menu.addAction(self._lock_action)
         return menu
@@ -1545,6 +1556,18 @@ class MainWindow(QMainWindow):
         )
 
     # -- reading one region ----------------------------------------------
+
+    def _on_make_sound_effect(self) -> None:
+        """Turn the selected region into a sound effect, as one undo step."""
+        if self.document is None or self._current_region is None:
+            return
+        # A step of its own at both ends, as a gesture is: the colours it
+        # sets are fields somebody may have just been editing by hand.
+        self.document.end_edit_run()
+        self.document.make_sound_effect(self._current_region)
+        self.document.end_edit_run()
+        self._inspector.set_region(self.document, self._current_region)
+        self._on_edited()
 
     def _on_extract_text(self) -> None:
         """Ask the recogniser what the current region says. Returns at once.
@@ -1735,32 +1758,40 @@ class MainWindow(QMainWindow):
         # sentences rather than one with the field's name dropped into it:
         # "fill" and "text" are adjectives here, and a language that inflects
         # one for the noun it qualifies cannot be handed it separately.
-        self._hint.set_hint(
-            self.tr("click the page to take the fill colour · Esc cancels")
-            if field == "fill"
-            else self.tr("click the page to take the text colour · Esc cancels")
-        )
+        hints = {
+            "fill": self.tr("click the page to take the fill colour · Esc cancels"),
+            "text": self.tr("click the page to take the text colour · Esc cancels"),
+            "stroke": self.tr("click the page to take the text outline's colour · Esc cancels"),
+        }
+        self._hint.set_hint(hints[field])
 
     def _on_point_picked(self, point: Point) -> None:
         field, self._sampling = self._sampling, None
         if self.document is None or self._page is None or self._current_region is None:
             return
         color = color_at(self._page, point)
-        if field == "fill":
-            self.document.set_fill_color(self._current_region, color)
-        elif field == "text":
-            self.document.set_text_color(self._current_region, color)
-        else:
+        setters = {
+            "fill": (
+                self.document.set_fill_color,
+                self.tr("fill colour taken from the page: {0}"),
+            ),
+            "text": (
+                self.document.set_text_color,
+                self.tr("text colour taken from the page: {0}"),
+            ),
+            "stroke": (
+                self.document.set_stroke_color,
+                self.tr("text outline colour taken from the page: {0}"),
+            ),
+        }
+        if field not in setters:
             return
+        setter, taken = setters[field]
+        setter(self._current_region, color)
         self.document.end_edit_run()
         self._refresh_page_visuals()
         self._inspector.set_region(self.document, self._current_region)
         self._update_actions_enabled()
-        taken = (
-            self.tr("fill colour taken from the page: {0}")
-            if field == "fill"
-            else self.tr("text colour taken from the page: {0}")
-        )
         self.statusBar().showMessage(taken.format(color.to_hex()), 5000)
 
     def _on_polygon_edited(self, region_id: str, polygon: Polygon) -> None:

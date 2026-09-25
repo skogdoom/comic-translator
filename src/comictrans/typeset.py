@@ -80,6 +80,10 @@ class Layout:
     font_size: int
     condense: float
     line_height: int
+    outline: int = 0
+    """Pixels of outline the fit left room for on every side of each line,
+    inside its band; 0 for lettering with none. Drawn at exactly this width."""
+
     undersized: bool = False
     """Fitted below the size asked for: the readable minimum, or a region's
     own ``font_size`` where one is pinned."""
@@ -254,8 +258,15 @@ def _attempt(
     face: FontFace,
     cfg: TypesetConfig,
     hyphenator: Hyphenator | None,
+    outline: float,
 ) -> Layout | None:
-    """Try one font size and condense factor."""
+    """Try one font size and condense factor.
+
+    ``outline`` is the outline's width as a share of the size, ``0.0`` for
+    none. Its pixels are kept inside the mask the way the text's are: every
+    band is asked for across the rows the outline reaches above and below
+    the line, and narrowed by it at both ends.
+    """
     rows = np.nonzero(mask.max(axis=1) > 0)[0]
     if rows.size == 0:
         return None
@@ -264,12 +275,20 @@ def _attempt(
 
     measurer = _Measurer(face, size)
     line_height = max(1, round(size * cfg.line_spacing))
+    inset = max(1, round(size * outline)) if outline else 0
 
     for count in range(1, available // line_height + 1):
         block = count * line_height
         block_top = top_limit + (available - block) // 2
         spans = [
-            band_span(mask, block_top + index * line_height, block_top + (index + 1) * line_height)
+            _narrowed(
+                band_span(
+                    mask,
+                    block_top + index * line_height - inset,
+                    block_top + (index + 1) * line_height + inset,
+                ),
+                inset,
+            )
             for index in range(count)
         ]
         wrapped = _wrap(tokens, spans, measurer, condense, hyphenator)
@@ -285,8 +304,19 @@ def _attempt(
             )
             for index, (runs, width, span) in enumerate(wrapped)
         )
-        return Layout(lines=lines, font_size=size, condense=condense, line_height=line_height)
+        return Layout(
+            lines=lines, font_size=size, condense=condense, line_height=line_height, outline=inset
+        )
     return None
+
+
+def _narrowed(span: tuple[int, int] | None, inset: int) -> tuple[int, int] | None:
+    """A band with ``inset`` pixels taken off each end.
+
+    A band narrower than both together comes out with its ends crossed,
+    which is a budget below nothing, and no word fits in one of those.
+    """
+    return None if span is None else (span[0] + inset, span[1] - inset)
 
 
 def _hyphenator(cfg: TypesetConfig) -> Hyphenator | None:
@@ -315,6 +345,7 @@ def layout_text(
     page_height: int,
     fixed_size: int | None = None,
     canvas: tuple[int, int] | None = None,
+    outlined: bool = False,
 ) -> Layout | FitFailure:
     """Fit ``tokens`` into ``polygon``, or explain why they will not go.
 
@@ -323,6 +354,10 @@ def layout_text(
     its own, turned level, and its lines come back in that frame's
     coordinates. The page's height still decides every font size, since how
     small is readable is a fact about the page and not about the frame.
+
+    ``outlined`` lettering is fitted with room for an outline of
+    ``cfg.outline_ratio`` of each size tried, on every side of every line:
+    an outline is ink, and ink the fit did not leave room for is an overflow.
 
     ``fixed_size`` comes from a region's ``font_size`` override: that size is
     used as given rather than searched, because overriding it means asking for
@@ -341,23 +376,24 @@ def layout_text(
 
     hyphenator = _hyphenator(cfg)
     minimum = max(1, round(cfg.font_size_min_ratio * page_height))
+    outline = cfg.outline_ratio if outlined else 0.0
 
     # What was asked for: the pinned size, or the smallest comfortable one.
     requested = fixed_size if fixed_size is not None else minimum
 
     if fixed_size is not None:
-        attempt = _attempt(tokens, mask, fixed_size, 1.0, face, cfg, hyphenator)
+        attempt = _attempt(tokens, mask, fixed_size, 1.0, face, cfg, hyphenator, outline)
         if attempt is not None:
             return attempt
     else:
         bounds = polygon_bounds(polygon)
         largest = max(minimum, round(bounds.height * cfg.max_size_ratio))
-        best = _search(tokens, mask, minimum, largest, face, cfg, hyphenator)
+        best = _search(tokens, mask, minimum, largest, face, cfg, hyphenator, outline)
         if best is not None:
             return best
 
     # Only now, at the smallest size asked for, start condensing.
-    condensed = _condense_down(tokens, mask, requested, face, cfg, hyphenator)
+    condensed = _condense_down(tokens, mask, requested, face, cfg, hyphenator, outline)
     if condensed is not None:
         return condensed
 
@@ -366,9 +402,9 @@ def layout_text(
     # optimistic still renders; it is reported either way.
     floor = max(1, round(cfg.font_size_floor_ratio * page_height))
     if floor < requested:
-        smaller = _search(tokens, mask, floor, requested - 1, face, cfg, hyphenator)
+        smaller = _search(tokens, mask, floor, requested - 1, face, cfg, hyphenator, outline)
         if smaller is None:
-            smaller = _condense_down(tokens, mask, floor, face, cfg, hyphenator)
+            smaller = _condense_down(tokens, mask, floor, face, cfg, hyphenator, outline)
         if smaller is not None:
             log.info("fitted at %dpx, below the %dpx asked for", smaller.font_size, requested)
             return replace(smaller, undersized=True)
@@ -387,11 +423,12 @@ def _condense_down(
     face: FontFace,
     cfg: TypesetConfig,
     hyphenator: Hyphenator | None,
+    outline: float,
 ) -> Layout | None:
     """Step the condense factor down to the floor at one font size."""
     condense = 1.0 - cfg.condense_step
     while condense >= cfg.condense_min - 1e-9:
-        attempt = _attempt(tokens, mask, size, round(condense, 4), face, cfg, hyphenator)
+        attempt = _attempt(tokens, mask, size, round(condense, 4), face, cfg, hyphenator, outline)
         if attempt is not None:
             return attempt
         condense -= cfg.condense_step
@@ -406,6 +443,7 @@ def _search(
     face: FontFace,
     cfg: TypesetConfig,
     hyphenator: Hyphenator | None,
+    outline: float,
 ) -> Layout | None:
     """Largest size that fits, by binary search.
 
@@ -418,7 +456,7 @@ def _search(
     low, high = minimum, largest
     while low <= high:
         middle = (low + high) // 2
-        attempt = _attempt(tokens, mask, middle, 1.0, face, cfg, hyphenator)
+        attempt = _attempt(tokens, mask, middle, 1.0, face, cfg, hyphenator, outline)
         if attempt is not None:
             best = attempt
             low = middle + 1

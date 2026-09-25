@@ -9,6 +9,8 @@ from comictrans.errors import InputError, PlanError
 from comictrans.gui.document import (
     CHAPTER_TEXT_FIELDS,
     MANUAL_CONFIDENCE,
+    SOUND_EFFECT_OUTLINE,
+    SOUND_EFFECT_TEXT,
     UNDO_LIMIT,
     PlanDocument,
     finished_a_word,
@@ -1416,6 +1418,49 @@ def test_an_angle_is_saved_and_read_back(project: Path) -> None:
     doc.save()
 
     assert load_plan(project, check_images=False).regions[0].angle == 17.5
+
+
+def test_a_sound_effect_is_three_settings_in_one_edit() -> None:
+    """Lettered on the art, in hot pink outlined black, and undone as one."""
+    doc = _document(_apart(1))
+    before = doc.plan
+
+    region = doc.make_sound_effect("r1")
+
+    assert region.erase is Erase.NONE
+    assert region.text_color == SOUND_EFFECT_TEXT == Color(255, 20, 147)
+    assert region.stroke_color == SOUND_EFFECT_OUTLINE == Color(0, 0, 0)
+    doc.undo()
+    assert doc.plan == before
+
+
+def test_an_outline_can_be_set_and_taken_away() -> None:
+    doc = _document(_apart(1))
+
+    assert doc.set_stroke_color("r1", Color(0, 0, 255)).stroke_color == Color(0, 0, 255)
+    assert doc.set_stroke_color("r1", None).stroke_color is None
+
+
+def test_a_locked_region_is_not_made_a_sound_effect() -> None:
+    doc = _document(_apart(1, locked=True))
+
+    with pytest.raises(ValueError, match="locked"):
+        doc.make_sound_effect("r1")
+    with pytest.raises(ValueError, match="locked"):
+        doc.set_stroke_color("r1", Color(0, 0, 0))
+
+
+def test_a_sound_effect_is_saved_and_read_back(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.make_sound_effect("page-001-001")
+    doc.save()
+
+    reloaded = load_plan(project, check_images=False).regions[0]
+    assert (reloaded.erase, reloaded.text_color, reloaded.stroke_color) == (
+        Erase.NONE,
+        SOUND_EFFECT_TEXT,
+        SOUND_EFFECT_OUTLINE,
+    )
 
 
 def test_a_merge_is_refused_when_either_half_is_locked() -> None:

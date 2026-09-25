@@ -195,41 +195,68 @@ def draw_layout(
     style: RegionStyle,
     color: Color,
     frame: UprightFrame | None = None,
+    outline: Color | None = None,
 ) -> None:
     """Draw a fitted layout onto an RGB image, in place.
 
     With a ``frame``, the layout is in that frame's coordinates: it is drawn
     level into a layer the frame's size and turned onto the page in one go.
+    With an ``outline``, the lettering is drawn round in that colour, as wide
+    as the layout left room for.
     """
     if frame is None:
-        _draw_lines(image, layout, style, color)
+        _draw_lines(image, layout, style, color, outline)
         return
     layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-    _draw_lines(layer, layout, style, color)
+    _draw_lines(layer, layout, style, color, outline)
     _turn_onto(image, layer, frame)
 
 
-def _draw_lines(target: Image.Image, layout: Layout, style: RegionStyle, color: Color) -> None:
+def _draw_lines(
+    target: Image.Image,
+    layout: Layout,
+    style: RegionStyle,
+    color: Color,
+    outline: Color | None,
+) -> None:
     """Each line of a layout, drawn where the layout put it on ``target``.
 
     ``target`` is the page, or a tilted region's own layer; on a layer the
     lines are composited over it, since pasting through a mask would multiply
     their coverage into the layer's alpha a second time.
+
+    An outline is drawn for the whole line before any of its letters, so a
+    run's outline never lies over the letters of the run beside it — a word
+    half in bold is two runs touching. Each line's layer is grown by the
+    outline on every side and placed back by as much, which puts the letters
+    where they would be without it and the outline in the room the fit left.
     """
     regular = style.face.regular.load(layout.font_size)
     bold = style.face.bold.load(layout.font_size) if style.face.bold else regular
     ascent, descent = regular.getmetrics()
     baseline = max(0, (layout.line_height - (ascent + descent)) // 2)
+    edge = layout.outline if outline is not None else 0
 
     for line in layout.lines:
         if not line.runs:
             continue
         width = max(1, line.width)
-        layer = Image.new("RGBA", (width, layout.line_height), (0, 0, 0, 0))
+        layer = Image.new("RGBA", (width + 2 * edge, layout.line_height + 2 * edge), (0, 0, 0, 0))
         pen = ImageDraw.Draw(layer)
+        if outline is not None:
+            for run in line.runs:
+                pen.text(
+                    (run.x + edge, baseline + edge),
+                    run.text,
+                    font=bold if run.bold else regular,
+                    fill=(*outline.as_tuple(), 255),
+                    anchor="la",
+                    stroke_width=edge,
+                    stroke_fill=(*outline.as_tuple(), 255),
+                )
         for run in line.runs:
             pen.text(
-                (run.x, baseline),
+                (run.x + edge, baseline + edge),
                 run.text,
                 font=bold if run.bold else regular,
                 fill=(*color.as_tuple(), 255),
@@ -238,14 +265,14 @@ def _draw_lines(target: Image.Image, layout: Layout, style: RegionStyle, color: 
 
         if layout.condense < 1.0:
             layer = layer.resize(
-                (max(1, round(width * layout.condense)), layout.line_height),
+                (max(1, round(layer.width * layout.condense)), layer.height),
                 Image.Resampling.LANCZOS,
             )
         left = line.band_left + (line.band_width - layer.width) // 2
         if target.mode == "RGBA":
-            target.alpha_composite(layer, (left, line.top))
+            target.alpha_composite(layer, (left, line.top - edge))
         else:
-            target.paste(layer, (left, line.top), layer)
+            target.paste(layer, (left, line.top - edge), layer)
 
 
 def _turn_onto(image: Image.Image, layer: Image.Image, frame: UprightFrame) -> None:
@@ -328,6 +355,7 @@ def plan_region(
         page_height=page_height,
         fixed_size=style.size,
         canvas=None if frame is None else frame.size,
+        outlined=region.stroke_color is not None,
     )
     if isinstance(result, FitFailure):
         # Nothing is drawn and nothing is erased: a region that will not fit
@@ -457,5 +485,6 @@ def render_page(
             entry.style,
             entry.region.text_color,
             upright_frame(entry.region),
+            entry.region.stroke_color,
         )
     return image, outcomes

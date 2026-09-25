@@ -35,9 +35,9 @@ window in which two builds disagree about what a plan may contain.
 **Nothing read any of them at first**, which is the state this version was
 deliberately left in, and each is put to use by the milestone that claims it:
 ``locked`` by marking a region finished, the chapter's details by the plan
-header dialog, ``angle`` by lettering a region at a tilt. ``stroke_color``
-still waits on its own. A field
-being here is not an instruction to fill it in — see ``docs/ROADMAP.md``."""
+header dialog, ``angle`` by lettering a region at a tilt, and ``stroke_color``
+by lettering a sound effect over the art. Each was left empty until then: a
+field being here was never an instruction to fill it in."""
 
 MIN_POLYGON_POINTS = 3
 """Fewest points a polygon may have.

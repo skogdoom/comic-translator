@@ -12,6 +12,7 @@ from comictrans.model import Box, Polygon, polygon_bounds
 from comictrans.typeset import (
     FitFailure,
     Layout,
+    _attempt,
     band_span,
     interior_mask,
     layout_text,
@@ -347,3 +348,63 @@ def test_a_polygon_in_a_frame_of_its_own_is_fitted_in_that_frame(face: FontFace)
     assert (in_frame.font_size, in_frame.undersized) == (on_page.font_size, on_page.undersized), (
         "sized as the same box on the page would be"
     )
+
+
+def test_outlined_lettering_is_fitted_with_room_for_its_outline(face: FontFace) -> None:
+    """The outline's pixels come out of each band, at both ends and top and bottom."""
+    box = Box(100, 100, 700, 260).as_polygon()
+
+    plain = _fit("KABOOM", box, face)
+    outlined = _fit("KABOOM", box, face, outlined=True)
+
+    assert isinstance(plain, Layout) and isinstance(outlined, Layout)
+    assert plain.outline == 0
+    assert outlined.outline == max(1, round(outlined.font_size * CFG.outline_ratio))
+    assert (outlined.lines[0].band_left, outlined.lines[0].band_right) == (
+        plain.lines[0].band_left + outlined.outline,
+        plain.lines[0].band_right - outlined.outline,
+    ), "at one size, the band loses the outline at both ends"
+    mask = interior_mask(box, PAGE, PAGE, CFG)
+    for line in outlined.lines:
+        edge = outlined.outline
+        above, below = line.top - edge, line.top + outlined.line_height + edge
+        assert mask[above:below, line.band_left - edge : line.band_right + edge].all()
+
+
+def test_an_outline_fills_no_room_it_was_not_given_in_a_column_of_lines(face: FontFace) -> None:
+    """Lines stacked to the polygon's height: the outline above the first and
+    below the last is inside it too, not only the one either side of each."""
+    column = Box(100, 100, 260, 700).as_polygon()
+
+    outlined = _fit("ZAP ZAP ZAP ZAP ZAP ZAP ZAP ZAP ZAP ZAP", column, face, outlined=True)
+
+    assert isinstance(outlined, Layout) and len(outlined.lines) > 5
+    mask = interior_mask(column, PAGE, PAGE, CFG)
+    edge = outlined.outline
+    for line in outlined.lines:
+        above, below = line.top - edge, line.top + outlined.line_height + edge
+        assert mask[above:below, line.band_left - edge : line.band_right + edge].all()
+
+
+def test_an_outline_is_never_thinner_than_a_pixel(face: FontFace) -> None:
+    """At a size the ratio rounds to nothing, the outline is still drawn."""
+    tiny = TypesetConfig(font_size_min_ratio=0.004, font_size_floor_ratio=0.002, max_size_ratio=0.6)
+    small = Box(10, 10, 80, 20).as_polygon()
+
+    outlined = _fit("POP", small, face, outlined=True, cfg=tiny)
+
+    assert isinstance(outlined, Layout)
+    assert round(outlined.font_size * tiny.outline_ratio) == 0, "sanity: the ratio rounds away"
+    assert outlined.outline == 1
+
+
+def test_a_band_one_line_tall_has_no_room_for_an_outline_above_or_below(face: FontFace) -> None:
+    """The rows an outline reaches above and below its line are asked for too."""
+    size = 40
+    line = round(size * CFG.line_spacing)
+    mask = np.zeros((300, 800), dtype=np.uint8)
+    mask[100 : 100 + line, 50:750] = 255
+    tokens = tokenize("POW")
+
+    assert _attempt(tokens, mask, size, 1.0, face, CFG, None, 0.0) is not None
+    assert _attempt(tokens, mask, size, 1.0, face, CFG, None, CFG.outline_ratio) is None

@@ -264,6 +264,12 @@ class TypesetConfig:
 
     condense_min: float = DEFAULT_CONDENSE_MIN
     condense_step: float = 0.02
+    outline_ratio: float = 0.08
+    """Width of the outline around lettering that has one, as a fraction of
+    the fitted font size — so two regions fitted at different sizes carry
+    outlines in proportion to their letters, where one width in pixels would
+    look heavy on the one and hairline on the other. Never under a pixel."""
+
     hyphenate: bool = True
     hyphenation_language: str = DEFAULT_TARGET_LANGUAGE
     """Which hyphenation dictionary to use. Apply sets this from the plan

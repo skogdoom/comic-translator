@@ -5125,6 +5125,95 @@ def test_the_hint_line_says_what_a_click_does_in_each_mode(
     assert window._hint.hint() == mode_hint(CanvasMode.SELECT), "and it comes back"
 
 
+def test_make_sound_effect_letters_the_region_on_the_art(qapp: object, two_page_plan: Path) -> None:
+    from comictrans.gui.document import SOUND_EFFECT_OUTLINE, SOUND_EFFECT_TEXT
+
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    before = window.document.plan  # type: ignore[union-attr]
+    assert window._sound_effect_action.isEnabled()
+
+    window._sound_effect_action.trigger()
+
+    region = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert region.erase is Erase.NONE
+    assert (region.text_color, region.stroke_color) == (SOUND_EFFECT_TEXT, SOUND_EFFECT_OUTLINE)
+    inspector = window._inspector
+    assert inspector._stroke_color.value() == SOUND_EFFECT_OUTLINE, "the panel shows it"
+    assert inspector._text_color.value() == SOUND_EFFECT_TEXT
+    assert not inspector._fill_color.isEnabled(), "nothing is painted over now"
+    assert window.isWindowModified()
+    window._on_undo()
+    assert window.document.plan == before, "one step"  # type: ignore[union-attr]
+
+
+def test_make_sound_effect_is_a_step_of_its_own_after_the_erase_field(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The erase set a moment ago stands when the sound effect is undone.
+
+    Both change ``erase``, so without a break the command would join the
+    run of the field edited just before it and one undo would take both.
+    """
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    erase = window._inspector._erase
+    erase.setCurrentIndex(erase.findData(str(Erase.INPAINT)))
+
+    window._sound_effect_action.trigger()
+    window._on_undo()
+
+    assert window.document.region("page-001-001").erase is Erase.INPAINT  # type: ignore[union-attr]
+
+
+def test_make_sound_effect_is_on_the_regions_own_menu_and_the_edit_menu(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    edit = next(m for m in window.menuBar().findChildren(QMenu) if m.title() == "&Edit")
+
+    assert window._sound_effect_action in edit.actions()
+    assert window._sound_effect_action in window._region_menu("page-001-001").actions()
+
+
+def test_make_sound_effect_needs_a_region_it_may_change(qapp: object, two_page_plan: Path) -> None:
+    assert not MainWindow()._sound_effect_action.isEnabled(), "no plan, no region"
+
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._lock_action.setChecked(True)
+
+    assert not window._sound_effect_action.isEnabled(), "a locked region takes no edits"
+    assert not window._inspector._stroke_color.isEnabled(), "its outline among them"
+
+
+def test_the_outline_colour_can_be_none(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    field = window._inspector._stroke_color
+    assert field.value() is None and field.text() == "none", "no outline, as extract writes"
+
+    black = next(a for a in field.menu().actions() if a.text() == "Black")
+    black.trigger()
+    assert window.document.region("page-001-001").stroke_color == Color(0, 0, 0)  # type: ignore[union-attr]
+
+    field.menu().actions()[0].trigger()  # "none", first in the menu
+    assert window.document.region("page-001-001").stroke_color is None  # type: ignore[union-attr]
+    assert field.text() == "none" and field.icon().isNull()
+
+
+def test_the_outline_colour_can_be_taken_off_the_page(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    window._inspector._stroke_color.sample_requested.emit()
+    assert "text outline's colour" in window._hint.hint()
+    _click_scene(window._canvas, 20, 20)
+
+    assert window.document.region("page-001-001").stroke_color.as_tuple() == ART_DARK  # type: ignore[union-attr]
+    assert "text outline colour taken" in window.statusBar().currentMessage()
+
+
 def test_the_hint_line_names_the_colour_being_taken(qapp: object, two_page_plan: Path) -> None:
     # Which of the two colours is being picked is not visible anywhere else.
     window = _shown_window(two_page_plan)

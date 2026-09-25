@@ -343,6 +343,7 @@ class RegionInspector(QWidget):
             self._erase.setItemData(self._erase.count() - 1, hint, Qt.ItemDataRole.ToolTipRole)
         self._fill_color = ColorBox()
         self._text_color = ColorBox()
+        self._stroke_color = ColorBox(none_label=self.tr("none"))
         self._font = FontBox(allow_default=True)
         self._font_size = QSpinBox()
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
@@ -373,6 +374,9 @@ class RegionInspector(QWidget):
         form.addRow(erase_choices.ERASE_FIELD, self._erase)
         form.addRow(self.tr("fill colour"), self._fill_color)
         form.addRow(self.tr("text colour"), self._text_color)
+        # "text outline", not "outline colour": the outline colours are the
+        # ones the window draws round a region, and the guide says so.
+        form.addRow(self.tr("text outline"), self._stroke_color)
         form.addRow(self.tr("font override"), self._font)
         form.addRow(self.tr("font size"), self._font_size)
         form.addRow(self.tr("text angle"), self._angle)
@@ -394,8 +398,10 @@ class RegionInspector(QWidget):
         self._erase.currentIndexChanged.connect(self._on_erase_changed)
         self._fill_color.picked.connect(self._on_fill_color_picked)
         self._text_color.picked.connect(self._on_text_color_picked)
+        self._stroke_color.picked.connect(self._on_stroke_color_picked)
         self._fill_color.sample_requested.connect(lambda: self.sample_requested.emit("fill"))
         self._text_color.sample_requested.connect(lambda: self.sample_requested.emit("text"))
+        self._stroke_color.sample_requested.connect(lambda: self.sample_requested.emit("stroke"))
 
         self.set_region(None, None)
 
@@ -462,6 +468,7 @@ class RegionInspector(QWidget):
             self._erase,
             self._fill_color,
             self._text_color,
+            self._stroke_color,
             self._font,
             self._font_size,
             self._angle,
@@ -479,6 +486,7 @@ class RegionInspector(QWidget):
             self._erase.setCurrentIndex(0)
             self._fill_color.set_color(Color(255, 255, 255))
             self._text_color.set_color(Color(0, 0, 0))
+            self._stroke_color.set_color(None)
             self._font.set_value(None)
             self._font_size.setValue(_FONT_SIZE_AUTO)
             self._angle.setValue(0.0)
@@ -508,6 +516,7 @@ class RegionInspector(QWidget):
         self._erase.setCurrentIndex(_erase_index(region.erase))
         self._fill_color.set_color(region.fill_color)
         self._text_color.set_color(region.text_color)
+        self._stroke_color.set_color(region.stroke_color)
         self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
         self._angle.setValue(region.angle)
@@ -554,6 +563,11 @@ class RegionInspector(QWidget):
     def _on_text_color_picked(self, color: Color) -> None:
         if self._document is not None and self._region_id is not None:
             self._document.set_text_color(self._region_id, color)
+        self._commit()
+
+    def _on_stroke_color_picked(self, color: Color | None) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_stroke_color(self._region_id, color)
         self._commit()
 
     def _on_translation_changed(self) -> None:

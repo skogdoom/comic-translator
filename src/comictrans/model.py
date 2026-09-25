@@ -283,8 +283,9 @@ class Region:
     """Outline drawn around the lettering, or ``None`` for no outline.
 
     Deliberately not implied by ``erase: none``, so that a plan already
-    lettering a caption over artwork does not quietly start outlining it.
-    Nothing draws it yet."""
+    lettering a caption over artwork does not quietly start outlining it. As
+    wide as ``TypesetConfig.outline_ratio`` of the size the text is fitted at,
+    and the fit leaves room for it."""
 
     angle: float = 0.0
     """Tilt of this region's lettering, in degrees, positive counter-clockwise.
