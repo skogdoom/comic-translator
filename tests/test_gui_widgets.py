@@ -37,6 +37,7 @@ from comictrans.model import (
     Region,
     TextCase,
     ellipse_polygon,
+    normalised_angle,
     point_in_polygon,
     polygon_bounds,
     rectangle_polygon,
@@ -4627,6 +4628,88 @@ def test_shift_turns_in_steps_of_fifteen_degrees(qapp: object, two_page_plan: Pa
     _turn(window, 20, Qt.KeyboardModifier.ShiftModifier)
 
     assert window.document.region("page-001-002").polygon == rotate_polygon(before, 15)  # type: ignore[union-attr]
+
+
+def test_turning_a_region_turns_its_lettering_with_it(qapp: object, two_page_plan: Path) -> None:
+    """Clockwise on screen is a negative angle: the plan counts the other way."""
+    window = _shown_window(two_page_plan)
+    before = window.document.region("page-001-002")  # type: ignore[union-attr]
+    _reshaping(window, "page-001-002")
+
+    press, last = _turn(window, 30)
+
+    turned = window.document.region("page-001-002")  # type: ignore[union-attr]
+    swept = _swept(before.polygon, press, last)
+    assert swept > 20, "sanity: it went clockwise"
+    assert turned.angle == normalised_angle(-swept)
+    assert window._inspector._angle.value() == turned.angle, "and the panel says so"
+
+
+def test_shift_turns_the_lettering_in_the_same_steps(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    _reshaping(window, "page-001-002")
+
+    _turn(window, 20, Qt.KeyboardModifier.ShiftModifier)
+
+    assert window.document.region("page-001-002").angle == -15.0  # type: ignore[union-attr]
+
+
+def test_a_typed_angle_tilts_the_lettering_and_not_the_outline(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    outline = window.document.region("page-001-002").polygon  # type: ignore[union-attr]
+    field = window._inspector._angle
+    assert field.value() == 0.0
+
+    field.selectAll()
+    QTest.keyClicks(field, "12.5")
+
+    region = window.document.region("page-001-002")  # type: ignore[union-attr]
+    assert region.angle == 12.5
+    assert region.polygon == outline
+    assert window._canvas.polygon_of("page-001-002") == outline
+    window._on_undo()
+    assert window.document.region("page-001-002").angle == 0.0, "typed as one step"  # type: ignore[union-attr]
+
+
+def test_a_turn_after_a_run_of_nudges_is_a_step_of_its_own(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Both change the outline, so without a break the turn would join the run."""
+    window = _shown_window(two_page_plan)
+    _reshaping(window, "page-001-002")
+    QTest.keyClick(window._canvas, Qt.Key.Key_Right)
+    nudged = window.document.region("page-001-002")  # type: ignore[union-attr]
+
+    _turn(window, 30)
+    window._on_undo()
+
+    assert window.document.region("page-001-002") == nudged, "the nudge stands"  # type: ignore[union-attr]
+
+
+def test_the_angle_field_says_what_the_plan_holds(qapp: object, two_page_plan: Path) -> None:
+    """A tenth of a degree, which is as fine as the window writes an angle."""
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+    field = window._inspector._angle
+
+    field.selectAll()
+    QTest.keyClicks(field, "12.34")
+
+    assert window.document.region("page-001-002").angle == 12.3  # type: ignore[union-attr]
+    assert field.value() == 12.3
+    assert field.text() == "12.3°"
+
+
+def test_a_locked_regions_angle_cannot_be_typed(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-002")
+
+    window._lock_action.setChecked(True)
+
+    assert not window._inspector._angle.isEnabled()
 
 
 def test_a_turn_stops_where_the_shape_last_fitted_on_the_page(

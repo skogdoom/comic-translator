@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import math
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -12,8 +14,16 @@ from PIL import Image, ImageDraw
 from comictrans.config import ApplyConfig, TypesetConfig
 from comictrans.fonts import FontFace, resolve
 from comictrans.imaging import PageImage, PageMeta
-from comictrans.model import Box, Color, Geometry, Region, TextCase
-from comictrans.render import RegionStyle, RenderCancelled, plan_region, render_page
+from comictrans.model import Box, Color, Geometry, Region, TextCase, rotate_polygon
+from comictrans.render import (
+    FRAME_MARGIN,
+    RegionStyle,
+    RenderCancelled,
+    _turn_onto,
+    plan_region,
+    render_page,
+    upright_frame,
+)
 
 INK = Color(20, 20, 20)
 FILL = Color(250, 250, 250)
@@ -245,3 +255,204 @@ def test_render_page_cannot_be_stopped_when_nobody_passes_a_way_to(
 
     assert len(outcomes) == 2, "a page rendered in full, with no hooks to stop it"
     assert image.size == (700, 420)
+
+
+# -- tilted lettering --------------------------------------------------------
+
+RED = Color(200, 30, 30)
+SENTENCE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG AGAIN"
+
+
+def _blank(width: int = 900, height: int = 700) -> PageImage:
+    return PageImage(
+        path=Path("p.png"),
+        rgb=np.full((height, width, 3), 255, dtype=np.uint8),
+        sha256="0" * 64,
+        meta=PageMeta(format="PNG", mode="RGB", dpi=None, icc_profile=None),
+    )
+
+
+TILTED_BOX = Box(300, 250, 600, 400)
+
+
+def _tilted(angle: float, box: Box = TILTED_BOX, **fields: object) -> Region:
+    """A box turned counter-clockwise by ``angle``, lettered at that angle."""
+    return Region(
+        id=f"r{angle}",
+        image="p.png",
+        order=1,
+        geometry=Geometry.MANUAL,
+        polygon=rotate_polygon(box.as_polygon(), -angle),
+        fill_color=Color(255, 255, 255),
+        text_color=RED,
+        confidence=1.0,
+        source_text="X",
+        translation=SENTENCE,
+        angle=angle,
+        **fields,  # type: ignore[arg-type]
+    )
+
+
+def _render_one(region: Region, style: RegionStyle, page: PageImage | None = None) -> tuple:
+    image, (outcome,) = render_page(page or _blank(), (region,), {region.id: style}, ApplyConfig())
+    return np.asarray(image, dtype=np.int16), outcome
+
+
+def _inked(pixels: np.ndarray) -> np.ndarray:
+    return np.argwhere((pixels != 255).any(axis=2))
+
+
+def test_a_tilted_region_fits_at_the_size_it_would_level(style: RegionStyle) -> None:
+    """The measurement the milestone was planned on: turning costs no fit."""
+    sizes = {angle: _render_one(_tilted(angle), style)[1].font_size for angle in (0, 20, 30, 45)}
+
+    assert len(set(sizes.values())) == 1, sizes
+    assert sizes[0] > 0
+
+
+def test_tilted_lettering_stays_inside_its_outline(style: RegionStyle) -> None:
+    import cv2
+
+    region = _tilted(30)
+    pixels, outcome = _render_one(region, style)
+    assert outcome.rendered
+
+    inside = np.zeros(pixels.shape[:2], dtype=np.uint8)
+    cv2.fillPoly(inside, [np.array(region.polygon, dtype=np.int32)], 255)
+    inked = _inked(pixels)
+    assert len(inked) > 500, "something was drawn"
+    assert all(inside[y, x] for y, x in inked)
+
+
+def test_a_positive_angle_turns_the_lettering_counter_clockwise(style: RegionStyle) -> None:
+    """The plan's convention, and Pillow's and OpenCV's: up to the right."""
+    region = _tilted(20, Box(150, 300, 750, 360), font_size=24)
+    pixels, _outcome = _render_one(region, style)
+
+    inked = _inked(pixels).astype(float)
+    ys, xs = inked[:, 0] - inked[:, 0].mean(), inked[:, 1] - inked[:, 1].mean()
+    slope = math.degrees(math.atan2(-(xs * ys).sum(), (xs * xs).sum()))
+
+    assert abs(slope - 20) < 3, f"the line runs at {slope:.1f} degrees"
+
+
+def test_tilted_lettering_is_its_own_colour_to_the_edge(style: RegionStyle) -> None:
+    """Turned, not darkened: every edge pixel is the colour thinned toward white.
+
+    Resampled against empty pixels that were black, the colour would bleed
+    toward black at every edge, which on white shows as a darker red than the
+    lettering itself.
+    """
+    pixels, _outcome = _render_one(_tilted(30), style)
+
+    red = pixels[:, :, 0][(pixels != 255).any(axis=2)]
+    assert red.min() >= RED.r - 1
+
+
+@pytest.mark.parametrize("spelled", [360.0, -360.0])
+def test_a_whole_turn_is_lettered_as_level(style: RegionStyle, spelled: float) -> None:
+    """And level is the path every plan took before angles existed, untouched."""
+    level, _ = _render_one(replace(_tilted(0), angle=0.0), style)
+    turned, _ = _render_one(replace(_tilted(0), angle=spelled), style)
+
+    assert upright_frame(replace(_tilted(0), angle=spelled)) is None
+    assert np.array_equal(level, turned)
+
+
+def test_a_steep_region_in_the_corner_is_lettered_though_its_frame_is_not_on_the_page(
+    style: RegionStyle,
+) -> None:
+    """A long box at 45 degrees is longer level than its box on the page is wide.
+
+    Tucked into the page's corner, its level frame reaches off the top and
+    the left, and the lettering is still fitted and drawn in full.
+    """
+    diamond = rotate_polygon(Box(0, 0, 500, 70).as_polygon(), -45)
+    left = min(x for x, _y in diamond)
+    top = min(y for _x, y in diamond)
+    region = replace(
+        _tilted(45),
+        polygon=tuple((x - left, y - top) for x, y in diamond),
+        translation="THE QUICK BROWN FOX",
+    )
+    frame = upright_frame(region)
+    assert frame is not None and min(frame.offset) < 0, "sanity: the frame is off the page"
+
+    pixels, outcome = _render_one(region, style, _blank(420, 420))
+
+    assert outcome.rendered, outcome.detail
+    assert len(_inked(pixels)) > 300
+
+
+def test_a_tilted_region_is_fitted_in_its_own_frame(style: RegionStyle) -> None:
+    """Level, and moved clear of the page's corner, so nothing of it is lost."""
+    region = _tilted(30, Box(0, 0, 300, 150))
+    frame = upright_frame(region)
+    assert frame is not None
+
+    xs = [x for x, _y in frame.polygon]
+    ys = [y for _x, y in frame.polygon]
+    assert (min(xs), min(ys)) == (4, 4), "the frame's margin, and no further"
+    assert (max(xs) - min(xs), max(ys) - min(ys)) in {
+        (299, 149),
+        (300, 150),
+        (299, 150),
+        (300, 149),
+    }
+    assert frame.size == (max(xs) + 5, max(ys) + 5), "and as much again beyond it"
+
+
+TRIANGLE = ((120, 60), (330, 110), (150, 250))
+"""Lopsided on purpose: its box's middle is nowhere near where its ink is."""
+
+
+@pytest.mark.parametrize("angle", [30.0, -50.0, 75.0])
+def test_a_shape_drawn_level_turns_back_onto_the_outline_it_came_from(angle: float) -> None:
+    """The frame and the turn agree to the pixel, and the edge is smoothed.
+
+    Measured: a turn about the right pivot misses by 205 to 222 pixels of the
+    19,491 the triangle covers, all of it rounding along the edge; half a
+    pixel off, the worst of these angles misses by 573. One resample by
+    interpolation leaves about 570 edge pixels part-way between ink and
+    paper, where turning by the nearest pixel would leave none.
+    """
+    import cv2
+    from PIL import ImageDraw
+
+    region = replace(_tilted(angle), polygon=TRIANGLE)
+    frame = upright_frame(region)
+    assert frame is not None
+    layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    ImageDraw.Draw(layer).polygon(frame.polygon, fill=(0, 0, 0, 255))
+    page = Image.new("RGB", (400, 320), (255, 255, 255))
+
+    _turn_onto(page, layer, frame)
+
+    red = np.asarray(page)[:, :, 0].astype(int)
+    outline = np.zeros(red.shape, dtype=np.uint8)
+    cv2.fillPoly(outline, [np.array(TRIANGLE, dtype=np.int32)], 1)
+    missed = int(((red < 128) != outline.astype(bool)).sum())
+    assert missed < 250, f"{missed} pixels off the outline"
+    assert int(((red > 10) & (red < 245)).sum()) > 100, "the edge is smoothed, not stepped"
+
+
+def test_what_is_turned_back_reaches_the_frames_margin_and_no_further() -> None:
+    """A glyph's ink can pass the polygon's box by a pixel or two; the frame
+    leaves room for that, and so does what is turned back onto the page."""
+    region = replace(_tilted(30.0), polygon=TRIANGLE)
+    frame = upright_frame(region)
+    assert frame is not None
+    everything = Image.new("RGBA", frame.size, (0, 0, 0, 255))
+    page = Image.new("RGB", (400, 320), (255, 255, 255))
+
+    _turn_onto(page, everything, frame)
+
+    ys, xs = np.nonzero(np.asarray(page)[:, :, 0] < 128)
+    box = region.bounds
+    reach = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
+    assert reach == (
+        box.left - FRAME_MARGIN,
+        box.top - FRAME_MARGIN,
+        box.right + FRAME_MARGIN,
+        box.bottom + FRAME_MARGIN,
+    )

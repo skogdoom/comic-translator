@@ -27,6 +27,7 @@ from comictrans.model import (
     ReadingDirection,
     Region,
     TextCase,
+    rotate_polygon,
 )
 from comictrans.planfile import load_plan, write_plan
 from comictrans.planfile.schema import PLAN_VERSION
@@ -1352,6 +1353,69 @@ def test_a_locked_region_refuses_to_be_deleted() -> None:
     with pytest.raises(ValueError, match="is locked"):
         doc.delete_region("r1")
     assert doc.region("r1").id == "r1", "still there"
+
+
+INLAND = tuple((x + 100, y + 100) for x, y in SQUARE)
+"""A square far enough from the page's corner to be turned without leaving it."""
+
+
+def test_turning_a_region_turns_its_lettering_the_other_way_as_one_edit() -> None:
+    """The window measures a turn clockwise; the plan's angle is counter-clockwise."""
+    doc = _document(_apart(1, angle=10.0))
+    before = doc.plan
+    turned = rotate_polygon(INLAND, 30)
+
+    region = doc.turn_region("r1", turned, 30.0)
+
+    assert region.polygon == turned
+    assert region.geometry is Geometry.MANUAL
+    assert region.angle == -20.0
+    doc.undo()
+    assert doc.plan == before, "outline and lettering back together"
+
+
+def test_a_typed_angle_tilts_the_lettering_and_leaves_the_outline() -> None:
+    doc = _document(_apart(1))
+    outline = doc.region("r1").polygon
+
+    region = doc.set_angle("r1", 190.0)
+
+    assert region.angle == -170.0, "spelled within a half turn"
+    assert region.polygon == outline
+    assert region.geometry is not Geometry.MANUAL, "nobody reshaped it"
+
+
+def test_typing_an_angle_is_one_undo_step() -> None:
+    doc = _document(_apart(1))
+    for value in (2.0, 25.0, 25.5):
+        doc.set_angle("r1", value)
+
+    doc.undo()
+
+    assert doc.region("r1").angle == 0.0
+    assert not doc.can_undo
+
+
+def test_a_locked_region_keeps_its_angle() -> None:
+    doc = _document(_apart(1, locked=True))
+
+    with pytest.raises(ValueError, match="locked"):
+        doc.set_angle("r1", 20.0)
+    with pytest.raises(ValueError, match="locked"):
+        doc.turn_region("r1", rotate_polygon(INLAND, 20), 20.0)
+
+
+def test_a_merge_keeps_an_angle_either_half_had() -> None:
+    """The earlier one's, or the later one's where the earlier is level."""
+    assert _halves(angle=12.0).merge_regions("page-001-001", "page-001-002").angle == 12.0
+
+
+def test_an_angle_is_saved_and_read_back(project: Path) -> None:
+    doc = PlanDocument.open(project)
+    doc.set_angle("page-001-001", 17.5)
+    doc.save()
+
+    assert load_plan(project, check_images=False).regions[0].angle == 17.5
 
 
 def test_a_merge_is_refused_when_either_half_is_locked() -> None:

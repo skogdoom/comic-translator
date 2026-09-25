@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QLabel,
     QListWidget,
@@ -347,6 +348,19 @@ class RegionInspector(QWidget):
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
         self._font_size.setSpecialValueText(self.tr("auto"))
         _widen_for_special_value(self._font_size)
+        # The lettering's tilt, which turning the region with its handle
+        # changes too. Typed, it tilts the lettering and leaves the outline,
+        # for a balloon found already at an angle. A half turn either way,
+        # which is every angle there is; it does not wrap, because stepping
+        # up from 180 would come round to -180, the same angle, and the step
+        # would change nothing.
+        self._angle = QDoubleSpinBox()
+        self._angle.setRange(-180.0, 180.0)
+        self._angle.setDecimals(1)
+        self._angle.setSuffix("°")
+        self._angle.setToolTip(
+            self.tr("the lettering's tilt, counter-clockwise; turning the region turns it too")
+        )
 
         form = QFormLayout()
         form.addRow(self.tr("region"), self._id_label)
@@ -361,6 +375,7 @@ class RegionInspector(QWidget):
         form.addRow(self.tr("text colour"), self._text_color)
         form.addRow(self.tr("font override"), self._font)
         form.addRow(self.tr("font size"), self._font_size)
+        form.addRow(self.tr("text angle"), self._angle)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -375,6 +390,7 @@ class RegionInspector(QWidget):
         self._locked.toggled.connect(self._on_locked_changed)
         self._font.chosen.connect(self._on_font_chosen)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
+        self._angle.valueChanged.connect(self._on_angle_changed)
         self._erase.currentIndexChanged.connect(self._on_erase_changed)
         self._fill_color.picked.connect(self._on_fill_color_picked)
         self._text_color.picked.connect(self._on_text_color_picked)
@@ -448,6 +464,7 @@ class RegionInspector(QWidget):
             self._text_color,
             self._font,
             self._font_size,
+            self._angle,
         )
 
     def _populate(self, document: PlanDocument | None, region: Region | None) -> None:
@@ -464,6 +481,7 @@ class RegionInspector(QWidget):
             self._text_color.set_color(Color(0, 0, 0))
             self._font.set_value(None)
             self._font_size.setValue(_FONT_SIZE_AUTO)
+            self._angle.setValue(0.0)
             return
 
         # The geometry stays as the plan spells it — ``exact``, ``approximate``,
@@ -492,6 +510,7 @@ class RegionInspector(QWidget):
         self._text_color.set_color(region.text_color)
         self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
+        self._angle.setValue(region.angle)
 
     def focus_translation(self) -> None:
         """Put the caret in the translation, ready to type.
@@ -569,4 +588,9 @@ class RegionInspector(QWidget):
     def _on_font_size_changed(self, value: int) -> None:
         if self._document is not None and self._region_id is not None:
             self._document.set_font_size(self._region_id, value or None)
+        self._commit()
+
+    def _on_angle_changed(self, value: float) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_angle(self._region_id, value)
         self._commit()

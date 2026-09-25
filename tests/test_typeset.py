@@ -324,3 +324,26 @@ def test_a_pinned_size_that_fits_is_used_exactly(face: FontFace) -> None:
     assert isinstance(result, Layout)
     assert result.font_size == 28
     assert not result.undersized
+
+
+def test_a_polygon_in_a_frame_of_its_own_is_fitted_in_that_frame(face: FontFace) -> None:
+    """How a tilted region is fitted: level, in a frame that is not the page.
+
+    The polygon lies beyond both edges of the page, which on the page would
+    be no room at all; given the frame it is in, it fits, and at the size the
+    page's own height decides it may be.
+    """
+    beyond = Box(PAGE + 20, PAGE + 20, PAGE + 300, PAGE + 160).as_polygon()
+
+    off_page = _fit("HELLO THERE", beyond, face)
+    # A frame ten pages tall: were its height taken for the page's, the
+    # smallest readable size would be ten times what it is.
+    in_frame = _fit("HELLO THERE", beyond, face, canvas=(PAGE + 400, 10 * PAGE))
+    on_page = _fit("HELLO THERE", Box(20, 20, 300, 160).as_polygon(), face)
+
+    assert isinstance(off_page, FitFailure)
+    assert isinstance(in_frame, Layout) and isinstance(on_page, Layout)
+    assert all(line.band_left >= PAGE + 20 and line.top >= PAGE + 20 for line in in_frame.lines)
+    assert (in_frame.font_size, in_frame.undersized) == (on_page.font_size, on_page.undersized), (
+        "sized as the same box on the page would be"
+    )

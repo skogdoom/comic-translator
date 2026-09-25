@@ -338,6 +338,7 @@ class MainWindow(QMainWindow):
         self._canvas.region_selected.connect(self._on_region_clicked)
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._canvas.polygon_edited.connect(self._on_polygon_edited)
+        self._canvas.polygon_turned.connect(self._on_polygon_turned)
         self._canvas.polygon_nudged.connect(self._on_polygon_nudged)
         self._canvas.region_drawn.connect(self._on_region_drawn)
         self._canvas.point_picked.connect(self._on_point_picked)
@@ -1773,6 +1774,14 @@ class MainWindow(QMainWindow):
         if self.document is not None:
             self.document.end_edit_run()
 
+    def _on_polygon_turned(self, region_id: str, polygon: Polygon, clockwise: float) -> None:
+        """A finished turn: the outline, and the lettering's angle with it."""
+        if self.document is not None:
+            self.document.end_edit_run()
+        self._apply_polygon(region_id, polygon, turned_by=clockwise)
+        if self.document is not None:
+            self.document.end_edit_run()
+
     def _on_polygon_nudged(self, region_id: str, polygon: Polygon) -> None:
         """A step in a run: arrow keys, held down or tapped in a row.
 
@@ -1783,18 +1792,24 @@ class MainWindow(QMainWindow):
         """
         self._apply_polygon(region_id, polygon)
 
-    def _apply_polygon(self, region_id: str, polygon: Polygon) -> None:
+    def _apply_polygon(
+        self, region_id: str, polygon: Polygon, *, turned_by: float | None = None
+    ) -> None:
         """Put an edited outline into the document, if the reader will take it.
 
         The canvas has already drawn it. This is the one place that decides
         whether it is a shape a plan file can hold — and puts the old one
         back on screen when it is not, so what is drawn is never something
-        the document does not have.
+        the document does not have. ``turned_by`` is a turn's clockwise
+        degrees, which turn the lettering's angle in the same edit.
         """
         if self.document is None:
             return
         try:
-            self.document.set_polygon(region_id, polygon)
+            if turned_by is None:
+                self.document.set_polygon(region_id, polygon)
+            else:
+                self.document.turn_region(region_id, polygon, turned_by)
         except ValueError as exc:
             self.statusBar().showMessage(self.tr("shape unchanged: {0}").format(exc), 5000)
             self._canvas.set_appearance(

@@ -314,8 +314,15 @@ def layout_text(
     page_width: int,
     page_height: int,
     fixed_size: int | None = None,
+    canvas: tuple[int, int] | None = None,
 ) -> Layout | FitFailure:
     """Fit ``tokens`` into ``polygon``, or explain why they will not go.
+
+    ``canvas`` is the ``(width, height)`` of the frame ``polygon`` is given
+    in, when that is not the page: a tilted region is fitted in a frame of
+    its own, turned level, and its lines come back in that frame's
+    coordinates. The page's height still decides every font size, since how
+    small is readable is a fact about the page and not about the frame.
 
     ``fixed_size`` comes from a region's ``font_size`` override: that size is
     used as given rather than searched, because overriding it means asking for
@@ -327,7 +334,8 @@ def layout_text(
     if not tokens:
         return FitFailure("no text to place")
 
-    mask = interior_mask(polygon, page_height, page_width, cfg)
+    width, height = canvas if canvas is not None else (page_width, page_height)
+    mask = interior_mask(polygon, height, width, cfg)
     if int(np.count_nonzero(mask)) == 0:
         return FitFailure("polygon encloses no pixels")
 
