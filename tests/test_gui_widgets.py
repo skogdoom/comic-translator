@@ -106,6 +106,7 @@ from comictrans.gui.canvas import (
     mode_hint,
     move_modifier_name,
 )
+from comictrans.gui.document import is_sound_effect
 from comictrans.gui.extract_dialog import ExtractDialog
 from comictrans.gui.inspector import ERASE_CHOICES
 from comictrans.gui.main_window import (
@@ -5185,6 +5186,79 @@ def test_make_sound_effect_needs_a_region_it_may_change(qapp: object, two_page_p
 
     assert not window._sound_effect_action.isEnabled(), "a locked region takes no edits"
     assert not window._inspector._stroke_color.isEnabled(), "its outline among them"
+
+
+def test_a_sound_effect_is_turned_off_from_the_same_menu_item(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """Not undo: a later change of mind, with other edits in between."""
+    from comictrans.gui.sampling import sample_region_colors
+
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._sound_effect_action.trigger()
+    assert window._sound_effect_action.isChecked()
+    window.document.set_notes("page-001-001", "meanwhile")  # type: ignore[union-attr]
+    window._go_to_region("page-001-002")
+    assert not window._sound_effect_action.isChecked(), "the tick follows the selection"
+    assert not window._inspector._sound_effect.isChecked(), "and so does the box"
+    window._go_to_region("page-001-001")
+    assert window._sound_effect_action.isChecked()
+    assert window._inspector._sound_effect.isChecked()
+
+    window._region_menu("page-001-001")
+    window._sound_effect_action.trigger()
+
+    region = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert region.erase is None and region.stroke_color is None
+    assert region.text_color == sample_region_colors(window._page, region.polygon)[1], (  # type: ignore[arg-type]
+        "measured off the page again, as a region drawn fresh"
+    )
+    assert region.notes == "meanwhile", "nothing else was taken back"
+    assert not window._sound_effect_action.isChecked()
+    assert not window._inspector._sound_effect.isChecked()
+
+
+def test_the_region_panel_has_a_sound_effect_checkbox(qapp: object, two_page_plan: Path) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    box = window._inspector._sound_effect
+    assert not box.isChecked()
+
+    box.setChecked(True)
+
+    region = window.document.region("page-001-001")  # type: ignore[union-attr]
+    assert is_sound_effect(region)
+    assert window._sound_effect_action.isChecked(), "and the menu says the same"
+
+    box.setChecked(False)
+
+    assert not is_sound_effect(window.document.region("page-001-001"))  # type: ignore[union-attr]
+    assert not window._sound_effect_action.isChecked()
+
+
+def test_taking_the_outline_away_unticks_the_sound_effect(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+    window._sound_effect_action.trigger()
+
+    window._inspector._stroke_color.menu().actions()[0].trigger()  # "none"
+
+    assert not window._sound_effect_action.isChecked()
+    assert not window._inspector._sound_effect.isChecked()
+
+
+def test_a_locked_regions_sound_effect_checkbox_is_not_offered(
+    qapp: object, two_page_plan: Path
+) -> None:
+    window = _shown_window(two_page_plan)
+    window._go_to_region("page-001-001")
+
+    window._lock_action.setChecked(True)
+
+    assert not window._inspector._sound_effect.isEnabled()
 
 
 def test_the_outline_colour_can_be_none(qapp: object, two_page_plan: Path) -> None:

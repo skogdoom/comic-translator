@@ -77,7 +77,7 @@ from .canvas import (
     ViewState,
     mode_hint,
 )
-from .document import PlanDocument, regions_touched
+from .document import PlanDocument, is_sound_effect, regions_touched
 from .extract_dialog import ExtractDialog
 from .header_dialog import HeaderDialog
 from .help_dialog import HelpDialog
@@ -348,6 +348,7 @@ class MainWindow(QMainWindow):
         self._canvas.region_context_menu_requested.connect(self._on_region_context_menu)
         self._inspector.edited.connect(self._on_edited)
         self._inspector.sample_requested.connect(self._on_sample_requested)
+        self._inspector.sound_effect_requested.connect(self._on_sound_effect_toggled)
         self._inspector.escaped.connect(self._on_inspector_escaped)
         self._run_panel.row_activated.connect(self._on_run_row_activated)
         self._run_panel.cancel_requested.connect(self._on_run_cancel)
@@ -528,10 +529,13 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self._extract_text_action)
 
         # A region somebody drew over the art, lettered on it: nothing
-        # painted over, hot pink, outlined in black. No ellipsis — it asks
-        # nothing — and no shortcut, since it is once per sound effect.
-        self._sound_effect_action = QAction(self.tr("Ma&ke Sound Effect"), self)
-        self._sound_effect_action.triggered.connect(self._on_make_sound_effect)
+        # painted over, hot pink, outlined in black. Checkable, like the lock:
+        # it is one state with two values, the tick says which, and the way
+        # back is the same item rather than undo. No shortcut, since it is
+        # once per sound effect.
+        self._sound_effect_action = QAction(self.tr("So&und Effect"), self)
+        self._sound_effect_action.setCheckable(True)
+        self._sound_effect_action.toggled.connect(self._on_sound_effect_toggled)
         edit_menu.addAction(self._sound_effect_action)
 
         # No confirmation: undo is the safety net every other edit here gets,
@@ -900,6 +904,17 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
 
     @property
+    def _current_is_sound_effect(self) -> bool:
+        """Whether the selected region is a sound effect, asked as the lock is."""
+        document, region_id = self.document, self._current_region
+        if document is None or region_id is None:
+            return False
+        try:
+            return is_sound_effect(document.region(region_id))
+        except KeyError:
+            return False
+
+    @property
     def _current_is_locked(self) -> bool:
         """Whether the selected region refuses edits.
 
@@ -987,6 +1002,8 @@ class MainWindow(QMainWindow):
         self._sound_effect_action.setEnabled(
             has_image and self._current_region is not None and not locked
         )
+        with QSignalBlocker(self._sound_effect_action):
+            self._sound_effect_action.setChecked(self._current_is_sound_effect)
         self._lock_action.setEnabled(has_image and self._current_region is not None)
         # Set, not toggled: this follows the selection rather than asking for
         # a change. Measured, because the obvious guess is wrong — letting it
@@ -1557,14 +1574,23 @@ class MainWindow(QMainWindow):
 
     # -- reading one region ----------------------------------------------
 
-    def _on_make_sound_effect(self) -> None:
-        """Turn the selected region into a sound effect, as one undo step."""
+    def _on_sound_effect_toggled(self, on: bool) -> None:
+        """Make the selected region a sound effect, or an ordinary one again.
+
+        From the menu, the region's own menu, or the Region panel's checkbox.
+        Turning it off measures the lettering's colour off the page again, as
+        a region drawn fresh gets it: nothing recorded what it was before.
+        """
         if self.document is None or self._current_region is None:
             return
+        region = self.document.region(self._current_region)
+        text = None
+        if not on and self._page is not None:
+            _fill, text = sample_region_colors(self._page, region.polygon)
         # A step of its own at both ends, as a gesture is: the colours it
         # sets are fields somebody may have just been editing by hand.
         self.document.end_edit_run()
-        self.document.make_sound_effect(self._current_region)
+        self.document.set_sound_effect(self._current_region, on, text_color=text)
         self.document.end_edit_run()
         self._inspector.set_region(self.document, self._current_region)
         self._on_edited()

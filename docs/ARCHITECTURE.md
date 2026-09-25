@@ -1614,14 +1614,24 @@ touch where a word is half bold, and drawn a run at a time the second one's
 outline would lie over the first one's last letter. With no outline the
 reservation is zero and every fit and every line comes out as it did.
 
-**A sound effect is a region somebody draws, then one command.** Telling a
+**A sound effect is a region somebody draws, then one switch.** Telling a
 sound effect from a balloon would be a new class of thing for `detect` and
-was decided against. `PlanDocument.make_sound_effect` sets `erase: none`, hot
-pink text and a black outline in one edit, on a region drawn with any shape
-or brush; the colours and the measurement behind them are in
-`gui/document.py`. The outline is a field rather than something `erase: none`
-implies, so a plan already lettering a caption over art with `erase: none`
-does not start outlining it.
+was decided against. `PlanDocument.set_sound_effect` turned on sets
+`erase: none`, hot pink text and a black outline in one edit, on a region
+drawn with any shape or brush; the colours and the measurement behind them
+are in `gui/document.py`. The outline is a field rather than something
+`erase: none` implies, so a plan already lettering a caption over art with
+`erase: none` does not start outlining it.
+
+Whether a region is one is not recorded. `document.is_sound_effect` reads it
+off the region — lettered on the art and outlined — which is what the menu's
+tick and the Region panel's checkbox show, so it holds for a plan reopened
+later and ends when either half is taken away by hand. Turned off, it puts
+back what a region drawn fresh has: erasing as the run decides, no outline,
+and a text colour the window measures off the page again. That is a
+measurement rather than the colour it had before, because the plan has
+nowhere to keep that without a field of its own; for a region drawn by hand,
+or one extract read, the measurement is where its colour came from anyway.
 
 **Tilted lettering is fitted level and turned once.** `render.upright_frame`
 turns a region's polygon level about the middle of its box and moves it into

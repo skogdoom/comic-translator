@@ -80,9 +80,9 @@ direction. Nothing measures any of it from the pages, so `extract` leaves it
 empty and it is typed there; nothing writes it into a chapter file yet.
 
 **A sound effect can be lettered over the art.** Draw a region over it and
-choose Edit > Make Sound Effect: nothing is painted over, the text is hot
-pink, and it is outlined in black so it reads on paper and ink alike. See
-**review** below.
+tick Edit > Sound Effect: nothing is painted over, the text is hot pink,
+and it is outlined in black so it reads on paper and ink alike. Untick it to
+make it an ordinary region again. See **review** below.
 
 **A chapter can be read without translating it.** `comictrans read` opens a
 folder of pages or a chapter file in a window of its own — the arrow keys
@@ -627,11 +627,17 @@ from Region** below to have the recogniser read it. Until there is text, the
 region is flagged as held back. It records `geometry: manual` and
 `confidence: 1.0` — there is no recogniser's score to report.
 
-**Edit > Make Sound Effect** turns the selected region into one: a region
-you drew over the art, since `extract` does not look for sound effects. One
-undo step sets three things — `erase: none`, so nothing is painted over;
-hot pink lettering, `255,20,147`; and a black outline — and the region's own
-right-click menu offers it too. The outline is what makes it work: measured
+**Edit > Sound Effect** turns the selected region into one: a region you
+drew over the art, since `extract` does not look for sound effects. Ticking
+it sets three things in one undo step — `erase: none`, so nothing is painted
+over; hot pink lettering, `255,20,147`; and a black outline — and the region's
+own right-click menu and a **sound effect** checkbox in the Region panel do
+the same. Unticking any of them, whenever, makes it an ordinary region again:
+erasing as the run decides, no outline, and the lettering's colour measured
+off the page again as a newly drawn region's is, since nothing recorded what
+it was before. The tick is read from the region — lettered on the art with an
+outline — so it survives saving and reopening, and taking the outline away by
+hand clears it. The outline is what makes it work: measured
 over the thirteen fixture pages as the share of the page where the text would
 be hard to read against what is under it, hot pink alone is hard to read on
 up to 43% of a page and hot pink outlined in black on up to 11%, 1.3% on

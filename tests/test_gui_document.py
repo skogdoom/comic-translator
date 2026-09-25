@@ -15,6 +15,7 @@ from comictrans.gui.document import (
     PlanDocument,
     finished_a_word,
     inserted,
+    is_sound_effect,
     overlapping_region_ids,
     region_flags,
     regions_touched,
@@ -1425,13 +1426,56 @@ def test_a_sound_effect_is_three_settings_in_one_edit() -> None:
     doc = _document(_apart(1))
     before = doc.plan
 
-    region = doc.make_sound_effect("r1")
+    region = doc.set_sound_effect("r1", True)
 
     assert region.erase is Erase.NONE
     assert region.text_color == SOUND_EFFECT_TEXT == Color(255, 20, 147)
     assert region.stroke_color == SOUND_EFFECT_OUTLINE == Color(0, 0, 0)
     doc.undo()
     assert doc.plan == before
+
+
+def test_a_sound_effect_is_turned_back_into_an_ordinary_region() -> None:
+    """Erasing as the run decides, no outline, and the colour the caller measured."""
+    doc = _document(_apart(1, erase=Erase.INPAINT))
+    doc.set_sound_effect("r1", True)
+    doc.end_edit_run()
+
+    region = doc.set_sound_effect("r1", False, text_color=Color(20, 20, 20))
+
+    assert (region.erase, region.stroke_color, region.text_color) == (
+        None,
+        None,
+        Color(20, 20, 20),
+    )
+    doc.undo()
+    assert is_sound_effect(doc.region("r1")), "and that is one step back too"
+
+
+def test_turned_back_with_no_colour_measured_the_lettering_keeps_its_colour() -> None:
+    doc = _document(_apart(1))
+    doc.set_sound_effect("r1", True)
+
+    region = doc.set_sound_effect("r1", False)
+
+    assert region.text_color == SOUND_EFFECT_TEXT
+    assert not is_sound_effect(region)
+
+
+def test_a_sound_effect_is_lettering_on_the_art_with_an_outline() -> None:
+    """Read off the region, so taking either half away by hand ends it."""
+    doc = _document(_apart(1))
+    assert not is_sound_effect(doc.region("r1"))
+    doc.set_sound_effect("r1", True)
+    assert is_sound_effect(doc.region("r1"))
+
+    doc.set_text_color("r1", Color(255, 255, 255))
+    assert is_sound_effect(doc.region("r1")), "recoloured, still one"
+    doc.set_stroke_color("r1", None)
+    assert not is_sound_effect(doc.region("r1")), "no outline, no sound effect"
+    doc.set_stroke_color("r1", SOUND_EFFECT_OUTLINE)
+    doc.set_erase("r1", Erase.FLAT)
+    assert not is_sound_effect(doc.region("r1")), "painted over, no sound effect"
 
 
 def test_an_outline_can_be_set_and_taken_away() -> None:
@@ -1445,14 +1489,14 @@ def test_a_locked_region_is_not_made_a_sound_effect() -> None:
     doc = _document(_apart(1, locked=True))
 
     with pytest.raises(ValueError, match="locked"):
-        doc.make_sound_effect("r1")
+        doc.set_sound_effect("r1", True)
     with pytest.raises(ValueError, match="locked"):
         doc.set_stroke_color("r1", Color(0, 0, 0))
 
 
 def test_a_sound_effect_is_saved_and_read_back(project: Path) -> None:
     doc = PlanDocument.open(project)
-    doc.make_sound_effect("page-001-001")
+    doc.set_sound_effect("page-001-001", True)
     doc.save()
 
     reloaded = load_plan(project, check_images=False).regions[0]
