@@ -1600,6 +1600,29 @@ its corners clamped one by one and the shape squashed. The handle is drawn a
 fixed distance away on screen, so which side of the region there is room for
 it depends on the zoom, and a zoom change places it again.
 
+**An outline is ink, so the fit leaves room for it.** A region's
+`stroke_color` outlines its lettering at `TypesetConfig.outline_ratio` of the
+fitted size — a ratio, like every size in that config, so two regions fitted
+at different sizes carry outlines in proportion — and never under a pixel.
+`layout_text(outlined=True)` reserves it: each band is asked for across the
+rows the outline reaches above and below the line and narrowed by it at both
+ends, and the width goes on the `Layout` so `draw_layout` draws exactly what
+was reserved. Without that the outline would reach past the band by its own
+width, and the padding that keeps text off a balloon's edge would be what it
+spent. Every outline on a line is stroked before any letter on it: two runs
+touch where a word is half bold, and drawn a run at a time the second one's
+outline would lie over the first one's last letter. With no outline the
+reservation is zero and every fit and every line comes out as it did.
+
+**A sound effect is a region somebody draws, then one command.** Telling a
+sound effect from a balloon would be a new class of thing for `detect` and
+was decided against. `PlanDocument.make_sound_effect` sets `erase: none`, hot
+pink text and a black outline in one edit, on a region drawn with any shape
+or brush; the colours and the measurement behind them are in
+`gui/document.py`. The outline is a field rather than something `erase: none`
+implies, so a plan already lettering a caption over art with `erase: none`
+does not start outlining it.
+
 **Tilted lettering is fitted level and turned once.** `render.upright_frame`
 turns a region's polygon level about the middle of its box and moves it into
 a frame of its own, `FRAME_MARGIN` clear of the edge, and `typeset.layout_text`

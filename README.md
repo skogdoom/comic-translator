@@ -79,6 +79,11 @@ the series, title, volume and number, year, publisher, writer and reading
 direction. Nothing measures any of it from the pages, so `extract` leaves it
 empty and it is typed there; nothing writes it into a chapter file yet.
 
+**A sound effect can be lettered over the art.** Draw a region over it and
+choose Edit > Make Sound Effect: nothing is painted over, the text is hot
+pink, and it is outlined in black so it reads on paper and ink alike. See
+**review** below.
+
 **A chapter can be read without translating it.** `comictrans read` opens a
 folder of pages or a chapter file in a window of its own — the arrow keys
 page through it, one page or two, left to right or right to left — and reads
@@ -112,8 +117,7 @@ the fresh reading.
 **The plan format is at version 4**, and plans written by every earlier build
 still open. Version 4 added the fields the milestones still to come will need —
 the lock above, an angle, an outline colour, and the chapter's own details.
-The lock, the angle and the chapter's details are in use; nothing writes or
-reads the outline colour yet. They went
+All four are in use. They went
 in together because the reader rejects unknown keys by design, so adding them
 one at a time would have meant a format change per milestone. See **The plan
 file** below.
@@ -473,6 +477,8 @@ quietly missing. It says that before rendering a page, not after the chapter.
   hole.
 - `none` paints nothing: the translation is lettered straight onto the page as
   it is. For a sound effect, or a caption over art that must not be covered.
+  It does not add an outline: a region's `stroke_color` does that, and a
+  caption already lettered with `erase: none` renders as it always did.
 
 **Any region can say for itself**, with an `erase` of its own in the plan
 file, the way it can override `font`. The flag is the default for regions
@@ -620,6 +626,21 @@ type its **source text** in along with the translation, or use **Extract Text
 from Region** below to have the recogniser read it. Until there is text, the
 region is flagged as held back. It records `geometry: manual` and
 `confidence: 1.0` — there is no recogniser's score to report.
+
+**Edit > Make Sound Effect** turns the selected region into one: a region
+you drew over the art, since `extract` does not look for sound effects. One
+undo step sets three things — `erase: none`, so nothing is painted over;
+hot pink lettering, `255,20,147`; and a black outline — and the region's own
+right-click menu offers it too. The outline is what makes it work: measured
+over the thirteen fixture pages as the share of the page where the text would
+be hard to read against what is under it, hot pink alone is hard to read on
+up to 43% of a page and hot pink outlined in black on up to 11%, 1.3% on
+average. Magenta, the obvious colour nobody draws in, is worse still, up to
+68%, because a colour halfway between paper and ink stands out from neither.
+White outlined in black reads best of all and was not chosen: it reads as
+ordinary lettering, and a sound effect should show that it was placed.
+**text outline** in the Region panel sets the outline's colour or, with
+*none*, takes it away; it can be sampled off the page like the other two.
 
 **Edit > Extract Text from Region…** (`Ctrl+Shift+T`) runs the recogniser over
 the selected region and puts what it reads into the **source text** — for a
@@ -1170,15 +1191,17 @@ have, and image-hash mismatches are all errors that name the offending line.
   it turned back, so a turned region fits at the same size as a level one.
   `0`, the default, is level and is left out of the file.
 
-A plan may also carry fields added together so that the milestones which use
-them did not each cost a format change: `stroke_color` on a region, which
-nothing acts on yet, and the chapter's own details on the header — `series`,
-`title`, `volume`, `number`, `year`, `publisher`, `writer` and
-`reading_direction` — which are typed in the plan header and not yet written
-anywhere else. All are optional, `extract` writes none of them, and every one
-defaults to the value that means "as before", so a plan that leaves them out
-is exactly the plan this wrote before they existed. Setting one of them today
-changes nothing about what `apply` renders.
+- `stroke_color` outlines a region's lettering in that colour. The outline
+  is 8% of the size the text is fitted at, never under a pixel, and the fit
+  leaves room for it inside the polygon. Left out, as `extract` leaves it,
+  there is no outline.
+
+The chapter's own details on the header — `series`, `title`, `volume`,
+`number`, `year`, `publisher`, `writer` and `reading_direction` — are typed in
+the plan header and not yet written anywhere else. All of these fields are
+optional, `extract` writes none of them, and every one defaults to the value
+that means "as before", so a plan that leaves them out is exactly the plan
+this wrote before they existed.
 
 Older plans still load. Version 1 carried an `image_sha256` on every region
 and had no `images` list; the list is derived from the regions it does have.
@@ -1226,7 +1249,8 @@ cannot read, before any window opens.
 
 ## Out of scope
 
-Sound effects in artwork, hand-lettered SFX, vertical text, PDF
+Finding sound effects in the artwork (they are drawn by hand), vertical text,
+PDF
 *output* (milestone 6 — reading one works), ComicInfo.xml or any other
 metadata inside a chapter file, and preserving italic emphasis from the
 source.

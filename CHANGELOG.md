@@ -23,6 +23,19 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A sound effect can be lettered over the art.** Edit > Make Sound Effect,
+  also on a region's right-click menu, sets three things in one undo step:
+  `erase: none`, hot pink lettering and a black outline — the combination
+  measured to read on the fixture pages, hard to read on 1.3% of a page on
+  average against 25% for hot pink alone. The outline is the region's
+  `stroke_color`, in the format since version 4 and now drawn: 8% of the
+  fitted font size, never under a pixel, with room for it left inside the
+  polygon by the fit, and every outline on a line drawn before any letter so
+  a half-bold word's outline never covers its own letters. The Region panel's
+  text outline field sets its colour, samples it off the page, or takes it
+  away. `erase: none` alone still adds no outline, so a caption already
+  lettered over art renders as it did. Sound effects are drawn by hand;
+  extract does not look for them.
 - **A region's lettering can be tilted.** Turning a region with its handle
   now turns its lettering with it, in the same undo step, and the Region panel
   has a text angle field that tilts the lettering alone — for a balloon

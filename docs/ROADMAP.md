@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 28 | Sound effects, lettered over the artwork | M |
 | 19 | ComicInfo.xml, read and written | M |
 | 20 | EPUB output | L |
 | 6 | PDF output | L |
@@ -80,29 +79,20 @@ met. 16 and 34 have shipped as well, which leaves no field in the window
 that asks for a code without offering names beside it, and so has 31, the
 reader window, which waited on nothing above it.
 
-**The schema change has shipped, and four milestones are cheaper for it.**
+**The schema change has shipped, and four milestones were cheaper for it.**
 Milestone 29 took the plan format to version 4 and added every field this file
 still wanted — `locked`, an angle for 27, a stroke colour for 28, and the
 chapter header fields for 18 — all optional, all inert, and filled in by
-nothing. `locked` has since been taken up by 4.27, the chapter's fields by 18
-and the angle by 27, which is the shape the last one is waiting for. It went
-first because the reader rejects unknown keys by design, so a field added on
-its own is its own bump, its own migration and its own window in which two
-builds disagree about what a plan may contain; four of them
-separately would have been four of each. Each of those milestones now arrives
-to find its field already there and spends itself on behaviour, which is also
-what makes them independent of one another: none waits on another's migration.
-18 has done the job it was sequenced for: the header no longer has to be
+nothing. Each has since been taken up by its own milestone — `locked` by
+4.27, the chapter's fields by 18, the angle by 27 and the stroke colour by
+28 — and each found its field already there and spent itself on behaviour.
+It went first because the reader rejects unknown keys by design, so a field
+added on its own is its own bump, its own migration and its own window in
+which two builds disagree about what a plan may contain; four of them
+separately would have been four of each. 18 has done the job it was sequenced for: the header no longer has to be
 *empty*, so 19 and 20 are each a file format wrapped around a header that can
 already hold the answers. 6 sits with them as the third member of the same
 family and the least urgent of the three.
-
-**A field being there is not an instruction to fill it in.** The temptation 29
-existed to resist outlives it: one field, the stroke colour, is still sitting
-in the format with nothing reading it, and it belongs to exactly one milestone
-below. Borrow
-`known-bugs.md`'s instinct here — meeting one while doing something else is
-not a reason to start on it.
 
 **What 29 did not settle, and should not be read as settling.** Two open
 questions in this file were answered partly on the grounds that a field costs
@@ -114,11 +104,6 @@ lettering is set at, which `apply` reads, rather than a memory of how the
 outline was drawn. The first rests on the half that is still true — nothing
 downstream reads it, and a field nothing reads is still a field to maintain —
 and is not reopened.
-
-28 is placed by what it needs rather than by size. It would have been the
-cheapest of the lettering milestones and is not, because the outline it needs
-is a field: had it been implied by `erase: none` it would have needed no bump
-at all, and that was considered and refused.
 
 **33 and 32 are last by judgement rather than by dependency**, which is worth
 saying plainly because nothing forces it. They touch `plugins.py`, `run_job.py`
@@ -224,52 +209,6 @@ documentation rule above makes every one of them run a translation pass too.
 It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
-
-## 28 Sound effects, lettered over the artwork
-
-Letter a sound effect straight onto the art, in something that can be read on
-top of it.
-
-**Detection is not part of this.** Telling a sound effect from a balloon would
-be a new class of thing for `detect` to recognise, and it was decided against:
-a sound effect is a region somebody draws. That leaves most of this milestone
-as an affordance over machinery that is already here — `erase: none` is
-documented for exactly this case, the inspector already sets erase per region
-and already picks a text colour, and the canvas already draws a region by
-hand. What is missing is one action that does all three at once, and the
-outline below.
-
-**The outline is the only genuinely new rendering, and it is not optional.** A
-flat colour does not work on a comic page, measured over the thirteen fixture
-pages as the share of page area where the text would be hard to read:
-
-| fill | outline | worst page | mean |
-| --- | --- | --- | --- |
-| magenta `255,0,255` | none | 67.9% | 49.6% |
-| hot pink `255,20,147` | none | 43.3% | 25.2% |
-| hot pink `255,20,147` | black | 11.2% | 1.3% |
-| white | black | 0.0% | 0.0% |
-
-A mid-luminance colour has poor contrast against both the paper and the ink,
-which is why magenta — the obvious "nobody draws in this" choice — is the
-worst of them. **Hot pink with a black outline** is what to build. White on
-black is perfect and was not chosen: it reads as ordinary lettering, and a
-sound effect that announces itself as placed is the point.
-
-**The outline is not implied by `erase: none`.** Decided, so that a plan
-already using `erase: none` for a caption over artwork does not quietly change
-what it renders. It is a field, and the format already carries it.
-
-**One field, not two.** `stroke_color: Color | None`, `None` meaning no
-outline. The width is a ratio in `TypesetConfig` derived from the fitted font
-size, which is the idiom every other size there already follows —
-`padding_ratio`, `max_size_ratio` — and which keeps the outline proportional
-between two regions whose sizes were searched separately. An absolute width in
-pixels would look different on every region of one page. `draw_layout` already
-calls `ImageDraw.text`, which takes `stroke_width` and `stroke_fill`.
-
-**The colour is chosen at extract time and recorded**, like every other colour
-in a plan: `review` may measure the page, `apply` may not.
 
 ## 19 ComicInfo.xml, read and written
 
