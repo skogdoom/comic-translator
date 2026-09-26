@@ -230,6 +230,14 @@ plan that says nothing new is byte for byte the file it was.
   chapter metadata that `ComicInfo.xml` and EPUB both need — each arrive to
   find their field already there.
 
+### Known limitations
+
+- **`extract --merge` keeps the fresh run's header and drops the one worked on** —
+  a header set by hand goes back to what the flags say, or their defaults,
+  on `--merge`: the comic's details, the case and both fit limits, measured.
+  Translations and the rest of the hand work are carried as before. Command
+  line only; the window has no merge.
+
 ## 1.1.0 — 2026-09-18
 
 A chapter now goes in and comes out as one file, the window speaks Swedish,

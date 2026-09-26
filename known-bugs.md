@@ -165,3 +165,44 @@ Preferences > this window > language works, and so does
 language, which is where somebody would look first on a Mac. Nothing about
 the translation itself is affected — the catalogues load, and a Mac set to
 Swedish throughout gets a Swedish window.
+
+## 5. `extract --merge` keeps the fresh run's header and drops the one worked on
+
+`merge_plans` (`src/comictrans/planfile/merge.py`) builds the merged plan with
+`header=fresh.header`. Everything a person set in the plan header is replaced
+by what this run's flags and defaults say, and nothing reports it.
+
+Measured through the command line: extract a folder, set the header by hand,
+then `extract --merge` over the same folder.
+
+| header field | before `--merge` | after |
+| --- | --- | --- |
+| `series` / `number` / `year` | `Tex` / `7` / `1948` | empty / empty / none |
+| `reading_direction` | `rtl` | none |
+| `case` | `preserve` | `upper` |
+| `font_size_min_ratio` | `0.02` | `0.012` |
+| `condense_min` | `0.8` | `0.9` |
+
+`font` and the languages go the same way, back to whatever the flags say or
+default to. Regions' translations, notes, skip flags, locks and overrides are
+carried as documented; it is only the header that is not.
+
+It predates milestone 19, which made it slightly more visible rather than
+different: over a chapter file, the details its `ComicInfo.xml` states come
+back on the fresh run, and anything typed beside them does not.
+
+**Why it is not a one-line fix.** `header=previous.header` is wrong the other
+way: `generator`, `created` and `ocr_engine` describe the run that produced
+the regions, and have to be the fresh ones. The rest needs a rule nobody has
+chosen. The fresh header is built from flags that all have defaults, so
+`--font`, `--case` and the languages given on purpose cannot be told from the
+same values arriving by default — keeping the old value ignores a flag
+somebody typed, and taking the new one is today's behaviour. The chapter
+details have a second source now, too: a `ComicInfo.xml` read on this run
+against a value typed into the old plan, and which of those wins is a
+decision rather than a patch.
+
+**Impact.** Command line only; the window has no merge. Nothing is lost that
+cannot be retyped, and the translations — the bulk of the work — are
+unaffected. But nothing says it happened, so the first sign is a chapter
+packed with no series, or rendered in capitals it was told not to use.
