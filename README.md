@@ -76,8 +76,10 @@ See **review** below.
 
 **A plan can say what the comic is.** Edit > Plan Header has a section for
 the series, title, volume and number, year, publisher, writer and reading
-direction. Nothing measures any of it from the pages, so `extract` leaves it
-empty and it is typed there; nothing writes it into a chapter file yet.
+direction. Nothing measures any of it from the pages: `extract` over a chapter
+file fills in what its `ComicInfo.xml` says, and the rest is typed there. A
+chapter packed from the plan carries it back out in a `ComicInfo.xml` of its
+own. See **ComicInfo.xml** below.
 
 **A sound effect can be lettered over the art.** Draw a region over it and
 tick Edit > Sound Effect: nothing is painted over, the text is hot pink,
@@ -276,9 +278,43 @@ Unpacking the same chapter twice writes nothing the second time: a page
 already there byte for byte is left alone. A file of that name holding
 something *else* stops the run rather than being overwritten — it is somebody
 else's, or an older chapter's, and picking for you is not this tool's job.
-Whatever is not a page — `ComicInfo.xml`, `.DS_Store`, a Mac's `__MACOSX`
-resource forks, a symlink stored in the archive — is named in the summary and
-left where it is.
+Whatever is not a page — `.DS_Store`, a Mac's `__MACOSX` resource forks, a
+symlink stored in the archive — is named in the summary and left where it is.
+The one exception is `ComicInfo.xml`, which is read rather than unpacked: see
+the next section.
+
+### ComicInfo.xml
+
+A `.cbz` or `.cbr` often carries a `ComicInfo.xml` at its root, saying what
+the chapter is. `extract` reads it and fills the plan header's details of the
+comic from it — series, title, volume, number, year, publisher, writer and
+reading direction — and the summary says which it found:
+
+```
+  ComicInfo.xml:     series, number, year, reading direction
+```
+
+Nothing else in it is kept, because a plan has nowhere to put the summary, the
+artists or the page list. The file is read liberally: element names in any
+case, a field that makes no sense dropped rather than the whole file, a
+`Manga` of `YesAndRightToLeft` read as right to left and `No` as left to
+right. One that is not XML at all is named under `SKIPPED` and the chapter
+unpacks without it. It gets the checks a page gets — a link is not read, and
+one claiming to unpack past a megabyte is refused on the claim, before
+anything is decompressed — and one that declares a document type is refused
+outright, since that is how an XML file is made to expand without limit.
+
+**Its language is compared, not taken.** The pages are read in the language
+`extract` was given, and a plan that claimed another would be wrong where
+nothing would notice. When the file names a language that is none of the
+ones OCR reads in, the summary says so after unpacking and before the first
+page is read, so stopping costs nothing:
+
+```
+ComicInfo.xml says this chapter is in ja, and it is about to be read in it.
+```
+
+The window's run panel lists it first, above everything else it found.
 
 **The folder has to hold this chapter and nothing else that looks like a
 page**, and the run stops if it does not. Everything downstream reads the
@@ -440,12 +476,27 @@ Readers sort entries by name, so the order you set by dragging rows in the
 review window has to survive as a name; source names that already sort right
 are luck.
 
-**Nothing else goes in.** No ComicInfo.xml, no metadata of any kind. The plan
-can hold the series, the volume, the numbering and the rest, typed in the plan
-header, but nothing writes them into a chapter file yet — and when something
-does, it will write what the plan says and nothing more, because a chapter
-file that claims things a tool had to fill in is worse than one that claims
-nothing.
+**A `ComicInfo.xml` goes in beside the pages**, at the root where readers
+look for it, and says what the plan header says about the comic and nothing
+more: an element for each detail the header holds, none for one it leaves
+empty, and `LanguageISO` as the target language, since what is packed is the
+translation. A chapter file that claims things a tool had to fill in is worse
+than one that claims nothing. Two details are written only where the format
+can hold them:
+
+- **Volume** is a whole number in the format's schema and free text in a
+  plan, so a volume like `Vol. 3` is left out, with a warning. Written as
+  text it would cost more than the volume: Komga reads the file with
+  Jackson's XML mapper, which was measured refusing `Vol. 3` and `3.5` as a
+  number, and drops the whole file when reading it fails.
+- **Reading direction** is only said in the format by `Manga`, and only right
+  to left: `YesAndRightToLeft` means "a manga, read right to left". Left to
+  right could only be written as `No`, "not a manga", which the plan does not
+  know — so it is written as nothing, which every reader takes as left to
+  right anyway.
+
+A folder of pages gets no `ComicInfo.xml`: it is a folder of pages, as
+before.
 
 **A cancelled run into a chapter file leaves no file at all**, which is not
 the promise a directory makes and is deliberate. Pages are rendered into a
@@ -1204,10 +1255,11 @@ have, and image-hash mismatches are all errors that name the offending line.
 
 The chapter's own details on the header — `series`, `title`, `volume`,
 `number`, `year`, `publisher`, `writer` and `reading_direction` — are typed in
-the plan header and not yet written anywhere else. All of these fields are
-optional, `extract` writes none of them, and every one defaults to the value
-that means "as before", so a plan that leaves them out is exactly the plan
-this wrote before they existed.
+the plan header or read from a chapter file's `ComicInfo.xml`, and written
+into the one a packed chapter carries. All of these fields are optional,
+`extract` writes only what a `ComicInfo.xml` stated, and every one defaults to
+the value that means "as before", so a plan that leaves them out is exactly
+the plan this wrote before they existed.
 
 Older plans still load. Version 1 carried an `image_sha256` on every region
 and had no `images` list; the list is derived from the regions it does have.
@@ -1257,9 +1309,9 @@ cannot read, before any window opens.
 
 Finding sound effects in the artwork (they are drawn by hand), vertical text,
 PDF
-*output* (milestone 6 — reading one works), ComicInfo.xml or any other
-metadata inside a chapter file, and preserving italic emphasis from the
-source.
+*output* (milestone 6 — reading one works), metadata in a chapter file
+beyond the `ComicInfo.xml` fields the plan header holds, and preserving
+italic emphasis from the source.
 
 ## Development
 

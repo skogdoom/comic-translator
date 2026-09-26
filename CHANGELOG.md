@@ -23,6 +23,24 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **A chapter file's ComicInfo.xml is read, and a packed chapter carries
+  one.** `extract` over a `.cbz` or `.cbr` reads the `ComicInfo.xml` at its
+  root and puts the series, title, volume, number, year, publisher, writer and
+  reading direction in the plan header; the summary says which. It is read
+  liberally — any case, a namespace prefix, a field that makes no sense
+  dropped rather than the file — gets the link and size checks a page gets,
+  at a megabyte, and one that declares a document type is refused outright,
+  so no entity in it is ever expanded. Its language is compared rather than
+  taken: when it is none of the languages OCR reads in, the command line says
+  so before the first page is read and the window's run panel lists it first.
+  `apply` into a `.cbz` or `.cbr` writes a `ComicInfo.xml` beside the pages
+  from the plan header — an element per detail it holds, in the schema's
+  order, and `LanguageISO` as the target language. A volume that is not a
+  whole number is left out with a warning, since the schema holds an integer
+  there and Komga's mapper, measured, refuses `Vol. 3` and drops the whole
+  file; left to right is written as nothing, since the format can only say it
+  as "not a manga". A folder of pages gets none. No change to the plan
+  format.
 - **A sound effect can be lettered over the art.** Ticking Edit > Sound
   Effect — also on a region's right-click menu, and a checkbox in the Region
   panel — sets three things in one undo step:
@@ -57,7 +75,8 @@ plan that says nothing new is byte for byte the file it was.
   the pages, so `extract` fills in nothing; every field is typed, and empty
   means the plan does not say: a plan whose details are filled in and cleared
   again saves byte for byte as it was. The year is four digits or nothing.
-  Nothing writes these into a chapter file yet.
+  (A chapter file's ComicInfo.xml fills them in, and a packed chapter carries
+  them, since the entry above.)
 - **A region can be painted with a brush.** The shape palette has four
   brushes — fine, small, medium and large — and the Edit menu lists them under
   Add Region below the shapes. Drag to paint; letting go makes the outline of

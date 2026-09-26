@@ -56,7 +56,6 @@ one section can refer to another without ambiguity.
 
 | # | Milestone | Size |
 |---|-----------|------|
-| 19 | ComicInfo.xml, read and written | M |
 | 20 | EPUB output | L |
 | 6 | PDF output | L |
 | 23 | An empty plan, and pages added by hand | M |
@@ -90,9 +89,10 @@ It went first because the reader rejects unknown keys by design, so a field
 added on its own is its own bump, its own migration and its own window in
 which two builds disagree about what a plan may contain; four of them
 separately would have been four of each. 18 has done the job it was sequenced for: the header no longer has to be
-*empty*, so 19 and 20 are each a file format wrapped around a header that can
-already hold the answers. 6 sits with them as the third member of the same
-family and the least urgent of the three.
+*empty*, and 19 has since shipped as the first file format wrapped around it —
+ComicInfo.xml, read from a chapter file into the header and written back out
+into a packed one. 20 is the second, and 6 sits with it as the third member of
+the same family and the less urgent of the two.
 
 **What 29 did not settle, and should not be read as settling.** Two open
 questions in this file were answered partly on the grounds that a field costs
@@ -210,31 +210,6 @@ It has since shipped as well — so that rule is live, and every milestone
 below now ends with an extraction pass and whatever it added translated.
 Neither was what made 1.0 releasable; both were simply next.
 
-## 19 ComicInfo.xml, read and written
-
-With 18 in, this is small and mostly mechanical — and it reverses a decision,
-which is the part to do deliberately.
-
-**Reading.** A `.cbz` regularly carries `ComicInfo.xml` at its root, and
-`sources` already skips it by name as "not a page". Reading it at unpack time
-gives series, number, volume, year, page count, language and reading
-direction, which is most of what 18 just added — so `extract` over a chapter
-file would fill the header in rather than leaving it to be typed. That is the
-half with the most value per line of code in this list.
-
-**Writing.** `pack` adds one entry to the archive, built from the header.
-Only the fields that are set: an element per fact the plan actually holds, and
-nothing invented. The `README.md` and `ARCHITECTURE.md` paragraphs that say no
-metadata is ever written, and the guide's line about chapter files, already
-say why that no longer has to be so — 18 rewrote their reasoning, which was
-"the plan knows only the language pair" — so this is where they change to say
-what is written.
-
-Worth knowing: the format is a de-facto standard with no schema anybody
-maintains, several mutually contradictory field lists, and readers that
-ignore what they do not recognise. Write a small, conservative subset; be
-liberal about what is read.
-
 ## 20 EPUB output
 
 A chapter as a fixed-layout EPUB 3. **Export only** — see *Ideas* for why
@@ -248,7 +223,9 @@ Three things it needs that nothing here does yet:
 
 - **Reading direction**, which is `page-progression-direction` on the spine
   and is the whole reason a manga chapter reads correctly in a reader. 18 puts
-  it in the header; this is its first consumer.
+  it in the header and 19 writes it into ComicInfo.xml, where the format can
+  only say right to left; this is the first output that lays the pages out by
+  it, and can say either.
 - **Metadata that is required rather than optional.** A package document
   must carry a title, a language and a unique identifier. The first two come
   from 18; the identifier does not exist anywhere yet and has to be minted —

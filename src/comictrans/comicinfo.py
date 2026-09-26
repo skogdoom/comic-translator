@@ -27,11 +27,13 @@ them, and none for a fact it does not hold. Two of the schema's types are
 narrower than the header's, and each is written only where it fits:
 
 - ``Volume`` is an integer in the schema, and free text in the plan. A volume
-  that is not a whole number is left out rather than written as text: Komga,
-  for one, maps the file onto a class whose volume is an integer, and
-  discards the whole file on any exception while mapping it
-  (``ComicInfoProvider.getComicInfo``) — so text there puts the series and
-  everything else at the mercy of how it parses a number.
+  that is not a whole number is left out rather than written as text, because
+  text there can cost the whole file. Komga maps it onto a class whose volume
+  is an integer, with Jackson's ``XmlMapper``, and discards the whole file on
+  any exception while mapping it (``ComicInfoProvider.getComicInfo``).
+  Measured with that mapper, on a class shaped the same: ``3`` and ``03`` map,
+  and ``Vol. 3`` and ``3.5`` each raise ``InvalidFormatException`` — so either
+  would lose the series and everything else with it.
 - ``Manga`` is the only element that states a reading direction, and it does
   so as a side effect of saying the book is a manga: ``YesAndRightToLeft``
   means both. Right to left is written as that. Left to right is written as

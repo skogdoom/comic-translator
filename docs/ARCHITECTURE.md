@@ -592,6 +592,38 @@ measured at 1029:1, which makes a 4MB file a 4GB allocation. Like a resource
 fork or a hidden file, the entry is skipped and named rather than refusing
 the chapter. See `docs/SECURITY.md`.
 
+**ComicInfo.xml is the one entry read that is not a page.** `unpack` finds it
+at the archive's root, in any case, and hands back what it says on
+`UnpackReport.comic_info`; `extract` puts that in the header and the file is
+never written to the directory. It comes through the same walk as the pages,
+so it gets the same link test, and a size cap of its own — `comicinfo.MAX_BYTES`,
+a megabyte, against 81KB measured for a thousand-page chapter's page list —
+checked on the claim like a page's. A second one at the root is skipped as not
+a page, since only one can be the chapter's.
+
+The format is a de-facto standard, so reading is liberal and writing is not.
+Read: element names in any case and with any namespace prefix, only the
+root's own children, the first non-empty value of each, whitespace folded
+because every field lands in a one-line box, and a field that makes no sense —
+a year outside `YEAR_RANGE`, the schema's `-1` for unset — dropped without
+costing the rest. What cannot be read at all is a skip with its reason, and
+the chapter unpacks without it. It is parsed with `pyexpat` directly rather
+than through `ElementTree`, because that is where a handler can be put on the
+start of a document type: one is refused before any entity in it is
+declared. ComicInfo.xml has no use for one, and entity expansion is the one
+attack a file this small still carries, so trusting the parser's own
+amplification limits would be a defence nothing here holds to account.
+
+**Its language is compared, not taken.** The source language is chosen
+before the chapter is opened, and OCR reads in the languages derived from it,
+so a header that took the file's language would claim one its text was not
+read in. `comicinfo.differs` asks whether the file's language is any of the
+OCR languages *to the recogniser* — through `tesseract_name`, so `ja` and
+`jpn` are one and `zh-Hans` and `zh-Hant` are two — and the difference is
+reported: by `run_extract` straight after unpacking, before a page is read,
+and by `ExtractReport.stated_language`, which the window's run panel lists
+first.
+
 **A PDF is read as a scan, not rendered as a document.** One photograph per
 page is what a scanned comic is, so the page's image is lifted out byte for
 byte: lossless, no rasteriser, no guess at a DPI, and no resampling of the
@@ -735,16 +767,31 @@ anybody who can already write to their own `PATH`. What the audit did write
 down is the pair of properties that make the argument list safe, neither of
 which was obvious from reading it — see `docs/SECURITY.md`.
 
-**No ComicInfo.xml, and no metadata of any kind.** It was considered and
-refused while the plan header knew the source and target languages and
-nothing else about the chapter, because anything written into such a file
-would have been those two fields alone or invented. A chapter file that
-carries metadata a reader will believe is worse than one that carries none.
-The header now holds the series, title, volume, number, year, publisher,
-writer and reading direction, typed in the plan header dialog — none of it
-measurable from the pages, so `extract` fills in nothing — which removes the
-reason. Writing them is the roadmap's, and whatever writes them writes what
-the plan says and leaves out what it does not.
+**ComicInfo.xml, holding what the header says and nothing it had to fill
+in.** It was refused while the header knew only the language pair, since
+anything written would have been those two fields or invented; the chapter
+details the header gained removed the reason. `comic_info_xml` writes an
+element per fact the header holds, in the schema's sequence order, none for
+an empty field, and `LanguageISO` as the target language. `pack` puts it at
+the root beside the pages, under the exact name readers look for, and it is
+not among the entry names returned, which are the pages. For RAR it is one
+more file in the staging directory, and a constant name rather than one
+beginning with a digit — still nothing `rar` could take for a switch.
+
+Two fields are narrower in the schema than in the plan, and each is written
+only where it fits. `Volume` is an `xs:int`: Komga maps the file with
+Jackson's `XmlMapper` and drops all of it on any exception, and that mapper
+was measured refusing `Vol. 3` and `3.5` while taking `3` and `03`, so a volume
+that is not one to nine ASCII digits is left out, with a warning, rather than
+risking the rest. And the only element that states a reading direction is
+`Manga`, as a side effect: `YesAndRightToLeft` is "a manga, read right to
+left", so right to left is written as that; left to right could only be
+`No`, "not a manga", which the plan does not know, so it is written as
+nothing — what every reader assumes of a book that does not say. Reading
+takes `No` as left to right, as Komga does. The round trip therefore keeps
+every field but one: a left-to-right chapter comes back unstated. Characters
+XML 1.0 cannot carry are dropped rather than written, since one would make
+the file unreadable to everyone.
 
 ## Re-running extract
 
@@ -1044,8 +1091,10 @@ raises rather than recording. The limits themselves live in
 boxes, because a widget offering one value more than the reader accepts is
 the same defect wearing a different hat.
 
-**The comic's details are typed, and none of them is required.** The header
-dialog's second section edits the eight fields version 4 added:
+**The comic's details are read or typed, and none of them is required.** A chapter
+file's ComicInfo.xml fills in what it states when the plan is extracted; the
+rest waits here. The header dialog's second section edits the eight fields
+version 4 added:
 `CHAPTER_TEXT_FIELDS` as free text, trimmed as they are typed, and the year
 and reading direction as the two with a type. Empty is an answer for every
 one of them — the writer omits a field at its empty value, so a plan whose

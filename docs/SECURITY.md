@@ -130,6 +130,34 @@ raises it; `tests/test_gui_security.py` would notice if something did. The
 price is that a page past about 64 megapixels, 8000 pixels square, is not
 shown; a 600dpi scan of a comic page is about 24.
 
+**A chapter's ComicInfo.xml is parsed now, and was not when this reading
+was done.** Milestone 19 made `unpack` read it rather than skip it, which is
+the first time any part of a chapter file other than a page's bytes is
+interpreted rather than copied. Three things bound it, and each has a test in
+`tests/test_security.py` or beside the module's own:
+
+- It comes through the same walk as the pages, so a link is not read and the
+  size is checked on the archive's claim before anything is decompressed —
+  at a megabyte, `comicinfo.MAX_BYTES`, rather than the half gigabyte a page
+  may be, since this is held in memory and parsed whole.
+- A document type is refused the moment one starts, before any entity in it
+  is declared. Entity expansion — a few hundred bytes declaring gigabytes —
+  is the XML attack a file this size still carries, and an external entity
+  is the other; neither can be reached without a document type, and
+  ComicInfo.xml has no use for one. The Python here links expat 2.6.1, and
+  its own limit does hold, measured: the 803-byte billion laughs in the test
+  is stopped by expat with "limit on input amplification factor breached",
+  but only after 2.6 million characters have been handed over. The refusal
+  stops it at the first line and means an older expat is not what is being
+  relied on.
+- What is read goes into eight text fields of the plan header, whitespace
+  folded, and a year that must be in `YEAR_RANGE`. Nothing in it names a path,
+  runs anything, or reaches the language OCR runs in.
+
+Writing one, into a packed chapter, is not an untrusted input and is covered
+only for correctness: characters XML 1.0 cannot carry are dropped, so a plan
+cannot make a file no reader can open.
+
 ### What was checked and found sound
 
 Nothing below was changed. What each did gain is a test, because a defence

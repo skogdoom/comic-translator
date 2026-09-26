@@ -353,10 +353,10 @@ unsaved.</p>
 the case, the two fit limits and the languages &mdash; and, under <i>the
 comic</i>, what the chapter is: its series, title, volume and number, year,
 publisher, writer, and which way its pages read. Nothing on the pages says
-any of that, so Extract leaves it empty and it is typed here. Empty is an
-answer: a field left empty means the plan does not say, and a year is four
-digits or nothing. Every field writes as you type, and each is its own
-undo step.</p>
+any of that. A chapter file often does, in a ComicInfo.xml inside it, and
+Extract fills in what that says; the rest is typed here. Empty is an answer:
+a field left empty means the plan does not say, and a year is four digits or
+nothing. Every field writes as you type, and each is its own undo step.</p>
 
 <p><b>Extract Text from Region</b> asks the recogniser what one region says and
 puts it in the source text &mdash; for a region you drew, which has no reading
@@ -372,6 +372,14 @@ folder of pages beside it first and read from there. A .cbr needs a RAR tool
 already on this machine; Preferences is where you say where it is, and the
 other two need nothing. The new plan goes in with the pages.</p>
 
+<p>A .cbz or .cbr often carries a ComicInfo.xml saying what the chapter is.
+Extract reads it and puts the series, title, volume, number, year, publisher,
+writer and reading direction in the plan header, and nothing else from it. It
+also says what language the chapter is in, and that one is only compared: the
+pages are read in the language you chose, and when the file names a different
+one the panel says so at the top of its list, since a chapter read in the
+wrong language reads as nonsense on every page.</p>
+
 <p><b>Render Pages</b> draws the open plan into a folder of pages, or into one
 chapter file &mdash; a .cbz or a .cbr &mdash; which is the same choice said
 twice: pick it in the box and the name changes, type the name and the box
@@ -383,10 +391,14 @@ drawn.</p>
 
 <p>Pages inside a chapter file are numbered in the order the plan has them, so
 a reader shows them in the order you put them in rather than the order they
-were scanned. Nothing else is written into it: no ComicInfo.xml. The comic's
-details in <b>Plan Header</b> are kept in the plan, but nothing writes them
-into a chapter file yet, and a file claiming what nobody told it is worse than
-one claiming nothing.</p>
+were scanned. A ComicInfo.xml goes in beside them, saying what <b>Plan
+Header</b> says about the comic and nothing more: a field left empty is left
+out rather than guessed at, and the language it names is the translation's.
+Two fields are written only where the format can hold them. A volume has to be
+a whole number there, so <i>Vol. 3</i> is left out. And the format can only
+say right to left, so a chapter read left to right says nothing about it
+&mdash; which is what every reader assumes anyway. A folder of pages gets no
+ComicInfo.xml.</p>
 
 <p>Both run in the background: the window stays usable, and a panel along the
 bottom reports what happened. Cancelling differs between the two, and

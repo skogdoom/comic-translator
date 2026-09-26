@@ -351,7 +351,7 @@
 <context>
     <name>HeaderDialog</name>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="216"/>
+        <location filename="../../header_dialog.py" line="217"/>
         <source>used by all %n region(s)</source>
         <translation>
             <numerusform>används av den enda regionen</numerusform>
@@ -359,7 +359,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../header_dialog.py" line="217"/>
+        <location filename="../../header_dialog.py" line="218"/>
         <source>used by {0} of %n region(s); the rest override it</source>
         <translation>
             <numerusform>används av {0} av den enda regionen; resten åsidosätter det</numerusform>
@@ -367,122 +367,122 @@
         </translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="101"/>
+        <location filename="../../header_dialog.py" line="102"/>
         <source>Plan Header</source>
         <translation>Planhuvud</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="146"/>
+        <location filename="../../header_dialog.py" line="147"/>
         <source>not stated</source>
         <translation>ej angiven</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="147"/>
+        <location filename="../../header_dialog.py" line="148"/>
         <source>left to right</source>
         <translation>vänster till höger</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="148"/>
+        <location filename="../../header_dialog.py" line="149"/>
         <source>right to left</source>
         <translation>höger till vänster</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="155"/>
+        <location filename="../../header_dialog.py" line="156"/>
         <source>number</source>
         <translation>nummer</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="158"/>
+        <location filename="../../header_dialog.py" line="159"/>
         <source>font</source>
         <translation>typsnitt</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="160"/>
+        <location filename="../../header_dialog.py" line="161"/>
         <source>case</source>
         <translation>skiftläge</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="161"/>
+        <location filename="../../header_dialog.py" line="162"/>
         <source>smallest text</source>
         <translation>minsta text</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="162"/>
+        <location filename="../../header_dialog.py" line="163"/>
         <source>condensing floor</source>
         <translation>smalaste tillåtna</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="163"/>
+        <location filename="../../header_dialog.py" line="164"/>
         <source>source language</source>
         <translation>källspråk</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="164"/>
+        <location filename="../../header_dialog.py" line="165"/>
         <source>target language</source>
         <translation>målspråk</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="169"/>
+        <location filename="../../header_dialog.py" line="170"/>
         <source>the comic</source>
         <translation>verket</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="170"/>
+        <location filename="../../header_dialog.py" line="171"/>
         <source>series</source>
         <translation>serie</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="171"/>
+        <location filename="../../header_dialog.py" line="172"/>
         <source>title</source>
         <translation>titel</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="172"/>
+        <location filename="../../header_dialog.py" line="173"/>
         <source>volume</source>
         <translation>volym</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="173"/>
+        <location filename="../../header_dialog.py" line="174"/>
         <source>year</source>
         <translation>år</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="174"/>
+        <location filename="../../header_dialog.py" line="175"/>
         <source>publisher</source>
         <translation>förlag</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="175"/>
+        <location filename="../../header_dialog.py" line="176"/>
         <source>writer</source>
         <translation>författare</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="176"/>
+        <location filename="../../header_dialog.py" line="177"/>
         <source>reading direction</source>
         <translation>läsriktning</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="179"/>
+        <location filename="../../header_dialog.py" line="180"/>
         <source>written by</source>
         <translation>skriven av</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="180"/>
+        <location filename="../../header_dialog.py" line="181"/>
         <source>created</source>
         <translation>skapad</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="181"/>
+        <location filename="../../header_dialog.py" line="182"/>
         <source>OCR engine</source>
         <translation>OCR-motor</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="182"/>
+        <location filename="../../header_dialog.py" line="183"/>
         <source>plan version</source>
         <translation>planversion</translation>
     </message>
     <message>
-        <location filename="../../header_dialog.py" line="191"/>
+        <location filename="../../header_dialog.py" line="192"/>
         <source>recorded when this plan was written</source>
         <translation>noterat när planen skrevs</translation>
     </message>
@@ -1929,62 +1929,67 @@
 <context>
     <name>RunText</name>
     <message>
-        <location filename="../../run_report.py" line="62"/>
+        <location filename="../../run_report.py" line="64"/>
         <source>page failed</source>
         <translation>sidan misslyckades</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="63"/>
+        <location filename="../../run_report.py" line="65"/>
         <source>did not fit</source>
         <translation>fick inte plats</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="64"/>
+        <location filename="../../run_report.py" line="66"/>
         <source>no translation</source>
         <translation>ingen översättning</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="65"/>
+        <location filename="../../run_report.py" line="67"/>
         <source>below minimum size</source>
         <translation>under minsta storlek</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="66"/>
+        <location filename="../../run_report.py" line="68"/>
         <source>condensed</source>
         <translation>hoptryckt</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="67"/>
+        <location filename="../../run_report.py" line="69"/>
         <source>not translated</source>
         <translation>inte översatt</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="70"/>
+        <location filename="../../run_report.py" line="72"/>
         <source>could not read</source>
         <translation>kunde inte läsas</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="71"/>
+        <location filename="../../run_report.py" line="73"/>
         <source>no regions found</source>
         <translation>inga regioner hittades</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="72"/>
+        <location filename="../../run_report.py" line="74"/>
         <source>not read as a page</source>
         <translation>lästes inte som en sida</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="73"/>
+        <location filename="../../run_report.py" line="75"/>
         <source>language not read</source>
         <translation>språket lästes inte</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="156"/>
+        <location filename="../../run_report.py" line="76"/>
+        <source>another language</source>
+        <translation>ett annat språk</translation>
+    </message>
+    <message>
+        <location filename="../../run_report.py" line="159"/>
         <source>{0} of normal width</source>
         <translation>{0} av normal bredd</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="182"/>
+        <location filename="../../run_report.py" line="185"/>
         <source>%n page(s) packed into {0}</source>
         <translation>
             <numerusform>%n sida packad i {0}</numerusform>
@@ -1992,17 +1997,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="185"/>
+        <location filename="../../run_report.py" line="188"/>
         <source>cancelled — nothing written: {0} is one file, so it is packed only once every page is rendered</source>
         <translation>avbruten — ingenting skrevs: {0} är en enda fil, så den packas först när alla sidor är renderade</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="189"/>
+        <location filename="../../run_report.py" line="192"/>
         <source>nothing written: no page was rendered, so there was nothing to pack into {0}</source>
         <translation>ingenting skrevs: ingen sida renderades, så det fanns ingenting att packa i {0}</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="192"/>
+        <location filename="../../run_report.py" line="195"/>
         <source>cancelled — %n page(s) written to {0}</source>
         <translation>
             <numerusform>avbruten — %n sida skriven till {0}</numerusform>
@@ -2010,7 +2015,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="193"/>
+        <location filename="../../run_report.py" line="196"/>
         <source>%n page(s) written to {0}</source>
         <translation>
             <numerusform>%n sida skriven till {0}</numerusform>
@@ -2018,22 +2023,27 @@
         </translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="199"/>
+        <location filename="../../run_report.py" line="202"/>
         <source>{0} rendered · {1} without a translation · {2} skipped · {3} did not fit</source>
         <translation>{0} renderade · {1} utan översättning · {2} överhoppade · {3} fick inte plats</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="223"/>
+        <location filename="../../run_report.py" line="229"/>
+        <source>the chapter&apos;s ComicInfo.xml says it is in {0}, and every page was read in {1}</source>
+        <translation>kapitlets ComicInfo.xml säger att det är på {0}, och varje sida lästes på {1}</translation>
+    </message>
+    <message>
+        <location filename="../../run_report.py" line="242"/>
         <source>Apple Vision cannot read {0}, and read every page with its own defaults instead</source>
         <translation>Apple Vision kan inte läsa {0} och läste i stället varje sida med sina egna standardval</translation>
     </message>
     <message>
-        <location filename="../../run_report.py" line="237"/>
+        <location filename="../../run_report.py" line="256"/>
         <source>nothing detected on this page</source>
         <translation>ingenting hittades på den här sidan</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="252"/>
+        <location filename="../../run_report.py" line="271"/>
         <source>cancelled after %n page(s) — {0} was not written</source>
         <translation>
             <numerusform>avbruten efter %n sida — {0} skrevs inte</numerusform>
@@ -2041,7 +2051,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="254"/>
+        <location filename="../../run_report.py" line="273"/>
         <source>%n page(s) read into {0}</source>
         <translation>
             <numerusform>%n sida inläst till {0}</numerusform>
@@ -2049,7 +2059,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../run_report.py" line="260"/>
+        <location filename="../../run_report.py" line="279"/>
         <source>%n region(s) · {0} low confidence · {1} approximate · {2} left unseeded</source>
         <translation>
             <numerusform>%n region · {0} med låg säkerhet · {1} ungefärliga · {2} utan förifylld text</numerusform>
@@ -2060,7 +2070,7 @@
 <context>
     <name>YearBox</name>
     <message>
-        <location filename="../../header_dialog.py" line="66"/>
+        <location filename="../../header_dialog.py" line="67"/>
         <source>not stated</source>
         <translation>ej angivet</translation>
     </message>
