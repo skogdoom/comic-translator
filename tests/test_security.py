@@ -32,6 +32,7 @@ from typing import Any
 
 import pytest
 
+from comictrans import comicinfo
 from comictrans.apply import apply_plan
 from comictrans.config import ApplyConfig, ExtractConfig
 from comictrans.errors import InputError
@@ -431,6 +432,62 @@ def test_reading_a_chapter_goes_through_the_door_unpacking_does(tmp_path: Path) 
     assert [path.name for path in report.pages] == ["001-page-001.png", "002-page-002.png"]
     assert skipped == report.skipped
     assert len(skipped) == 5
+
+
+def test_a_comic_info_claiming_to_be_enormous_is_not_read_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page cap's counterpart, at the size a metadata file can be.
+
+    A file that is parsed whole in memory gets a far smaller allowance than
+    a page, and the same rule: refused on what the archive claims, before a
+    byte of it is decompressed.
+    """
+    chapter = _zip_of(
+        {"page-001.png": b"x" * 64, "ComicInfo.xml": b"<ComicInfo/>"}, tmp_path / "c.cbz"
+    )
+    _lie_about_size(chapter, "ComicInfo.xml", comicinfo.MAX_BYTES + 1)
+
+    def never(data: bytes) -> object:
+        raise AssertionError("an oversized ComicInfo.xml was read")
+
+    monkeypatch.setattr("comictrans.sources.read_comic_info", never)
+
+    report = unpack(chapter, tmp_path / "pages")
+
+    assert len(report.pages) == 1, "the chapter still unpacks"
+    assert report.comic_info is None
+    ((name, reason),) = report.skipped
+    assert name == "ComicInfo.xml"
+    assert "a ComicInfo.xml may be" in reason
+
+
+def test_a_comic_info_built_to_expand_is_refused_and_the_chapter_kept(tmp_path: Path) -> None:
+    """A billion laughs: 3GB of text from a file of a few hundred bytes.
+
+    Refused because it declares a document type at all, before any of its
+    entities is declared — not left to the parser's own expansion limits.
+    """
+    levels = ['<!ENTITY lol0 "lol">'] + [
+        f'<!ENTITY lol{n} "{f"&lol{n - 1};" * 10}">' for n in range(1, 10)
+    ]
+    bomb = (
+        f"<?xml version='1.0'?><!DOCTYPE ComicInfo [{''.join(levels)}]>"
+        "<ComicInfo><Series>&lol9;</Series></ComicInfo>"
+    ).encode()
+    chapter = _zip_of({"page-001.png": b"x" * 64, "ComicInfo.xml": bomb}, tmp_path / "c.cbz")
+
+    report = unpack(chapter, tmp_path / "pages")
+
+    assert len(report.pages) == 1
+    assert report.comic_info is None
+    assert report.skipped == (
+        (
+            "ComicInfo.xml",
+            "not read: it declares a document type, which ComicInfo.xml has no use "
+            "for and which is how an XML file is made to expand without limit",
+        ),
+    )
 
 
 # -- what an untrusted plan file may do ---------------------------------------

@@ -105,6 +105,17 @@ def test_pages_go_into_a_cbz_in_the_order_they_were_given(tmp_path: Path) -> Non
         assert archive.read("001-b.png") == b"pixels of b.png"
 
 
+def test_comic_info_goes_in_beside_the_pages_and_is_not_one_of_them(tmp_path: Path) -> None:
+    pages = _pages(tmp_path, "b.png", "a.png")
+
+    names = pack(pages, tmp_path / "chapter.cbz", comic_info=b"<ComicInfo/>")
+
+    assert names == ("001-b.png", "002-a.png")
+    with zipfile.ZipFile(tmp_path / "chapter.cbz") as archive:
+        assert archive.namelist() == [*names, "ComicInfo.xml"]
+        assert archive.read("ComicInfo.xml") == b"<ComicInfo/>"
+
+
 def test_an_archive_already_there_is_not_written_over_without_being_asked(
     tmp_path: Path,
 ) -> None:
@@ -224,6 +235,22 @@ def test_the_pages_are_there_under_the_names_the_compressor_is_given(
     assert sorted(path.name for path in pages[0].parent.iterdir()) == ["a.png", "b.png"], (
         "which are left exactly as they were"
     )
+
+
+def test_a_cbr_is_handed_comic_info_by_the_name_readers_look_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorder = _archiver(tmp_path / "rar", record=tmp_path / "asked.txt")
+    monkeypatch.setenv(RAR_ENV, str(recorder))
+    archive = tmp_path / "chapter.cbr"
+
+    names = pack(_pages(tmp_path, "a.png"), archive, comic_info=b"<ComicInfo/>")
+
+    asked = json.loads((tmp_path / "asked.txt").read_text())
+    assert asked["argv"][4:] == [*names, "ComicInfo.xml"]
+    assert asked["listing"] == ["001-a.png", "ComicInfo.xml"]
+    with zipfile.ZipFile(archive) as packed:
+        assert packed.read("ComicInfo.xml") == b"<ComicInfo/>"
 
 
 def test_the_staging_directory_does_not_outlive_the_archive(

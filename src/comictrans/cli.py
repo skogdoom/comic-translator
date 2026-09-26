@@ -16,6 +16,8 @@ from pathlib import Path
 
 from . import __version__
 from .apply import ApplyReport, apply_plan
+from .comicinfo import FILENAME as COMIC_INFO
+from .comicinfo import ComicInfo, differs
 from .config import (
     DEFAULT_COLOR_TOLERANCE,
     DEFAULT_CONDENSE_MIN,
@@ -492,11 +494,15 @@ def _report_summary(
         )
 
 
-def _unpack_summary(report: UnpackReport) -> None:
+def _unpack_summary(report: UnpackReport, languages: tuple[str, ...]) -> None:
     print(f"\nunpacked {report.source.name} into {report.directory}")
     print(f"  pages:             {len(report.pages)}")
     if report.reused:
         print(f"  already there:     {report.reused}")
+    info = report.comic_info
+    if info is not None:
+        stated = ", ".join(name.replace("_", " ") for name in info.stated())
+        print(f"  {COMIC_INFO + ':':<19}{stated or 'nothing the plan can hold'}")
     for name, reason in report.skipped:
         print(f"  SKIPPED:           {name}: {reason}")
     for name, reason in report.doubtful:
@@ -506,6 +512,16 @@ def _unpack_summary(report: UnpackReport) -> None:
             f"\n{len(report.doubtful)} unpacked page(s) may not be a scan of the "
             "page they came from. They are in the directory like any other; look "
             "at them before translating them."
+        )
+    # Said here, before a page is read, rather than in the summary at the
+    # end: the whole chapter is about to be read in the other language, and
+    # this is the moment stopping it costs nothing.
+    if info is not None and differs(info.language, languages):
+        print(
+            f"\n{COMIC_INFO} says this chapter is in {info.language}, and it is "
+            f"about to be read in {', '.join(languages)}. If the file is right, "
+            "stop here and run this again in that language: --source-lang, or "
+            "--lang if you gave one."
         )
 
 
@@ -546,10 +562,12 @@ def run_extract(args: argparse.Namespace) -> int:
     # After the font and the recogniser, deliberately: unpacking is the first
     # thing here that writes anything, and a run that was going to fail on a
     # missing font should fail before it has left a directory behind.
+    comic_info: ComicInfo | None = None
     if container:
         unpacked = unpack(target, args.unpack_dir)
-        _unpack_summary(unpacked)
+        _unpack_summary(unpacked, config.ocr.languages)
         target = unpacked.directory
+        comic_info = unpacked.comic_info
     plan_path: Path = args.plan or default_plan_path(target)
 
     plan, report = extract(
@@ -562,6 +580,7 @@ def run_extract(args: argparse.Namespace) -> int:
         source_language=args.source_lang,
         target_language=args.target_lang,
         debug_dir=args.debug_dir,
+        comic_info=comic_info,
     )
     merged: MergeReport | None = None
     if args.merge:

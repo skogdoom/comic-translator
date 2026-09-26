@@ -24,6 +24,7 @@ from comictrans.model import (
     Plan,
     PlanHeader,
     PlanImage,
+    ReadingDirection,
     Region,
     TextCase,
 )
@@ -612,14 +613,59 @@ def test_an_output_named_cbz_is_the_chapter_in_one_file(tmp_path: Path, font_dir
     assert report.archive == archive
     assert archive.is_file()
     with zipfile.ZipFile(archive) as packed:
-        assert packed.namelist() == ["001-page10.png", "002-page2.png"], (
+        assert packed.namelist() == ["001-page10.png", "002-page2.png", "ComicInfo.xml"], (
             "the plan's order, carried in the names rather than left to a sort"
         )
     assert [str(page) for page in report.pages_written] == [
         "001-page10.png",
         "002-page2.png",
-    ], "what it wrote is what is in the archive"
+    ], "what it wrote is every page in the archive, and only the pages"
     assert not (tmp_path / "pages" / "page10.png").with_suffix(".cbz").exists()
+
+
+def test_the_chapter_file_says_what_the_plan_header_says_about_the_comic(
+    tmp_path: Path, font_dir: Path
+) -> None:
+    import zipfile
+
+    from comictrans.comicinfo import ComicInfo, read_comic_info
+
+    plan_path, plan = _two_page_project(tmp_path)
+    plan = replace(
+        plan,
+        header=replace(
+            plan.header,
+            series="Tex",
+            number="7",
+            year=1948,
+            reading_direction=ReadingDirection.RIGHT_TO_LEFT,
+        ),
+    )
+    archive = tmp_path / "chapter.cbz"
+
+    apply_plan(plan, plan_path, archive, ApplyConfig())
+
+    with zipfile.ZipFile(archive) as packed:
+        described = read_comic_info(packed.read("ComicInfo.xml"))
+    assert described == ComicInfo(
+        series="Tex",
+        number="7",
+        year=1948,
+        reading_direction=ReadingDirection.RIGHT_TO_LEFT,
+        language="en",
+    )
+
+
+def test_a_folder_of_pages_gets_no_comic_info(tmp_path: Path, font_dir: Path) -> None:
+    """It is an archive's entry: a folder is pages and nothing else, as before."""
+    plan_path, plan = _two_page_project(tmp_path)
+
+    apply_plan(plan, plan_path, tmp_path / "out", ApplyConfig())
+
+    assert sorted(path.name for path in (tmp_path / "out").iterdir()) == [
+        "page10.png",
+        "page2.png",
+    ]
 
 
 def test_a_cancelled_run_into_an_archive_leaves_no_archive_at_all(

@@ -13,6 +13,11 @@ gets a zero-padded index in front of the page's own filename. Source names
 that happen to sort correctly are luck, and a reordered chapter would
 otherwise come out in the order it was scanned in.
 
+**ComicInfo.xml goes in beside the pages**, at the root, where readers look
+for it, holding what the plan header says about the comic and nothing else —
+what that is, and what is left out, is :mod:`comictrans.comicinfo`'s. It is
+not a page, so it is not numbered and not among the names returned.
+
 **A cancelled run leaves no archive at all**, which is a different promise
 from the directory case and a deliberate one. Cancelling a render into a
 directory leaves whole pages and re-running finishes the job; an archive has
@@ -48,6 +53,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from .comicinfo import FILENAME as COMIC_INFO
 from .errors import InputError
 from .sources import RAR, RAR_SUFFIXES, ZIP, ZIP_SUFFIXES
 
@@ -137,7 +143,9 @@ def entry_names(pages: Sequence[Path]) -> tuple[str, ...]:
     return tuple(f"{index:03d}-{page.name}" for index, page in enumerate(pages, start=1))
 
 
-def _pack_zip(pages: Sequence[Path], names: Sequence[str], into: Path) -> None:
+def _pack_zip(
+    pages: Sequence[Path], names: Sequence[str], into: Path, comic_info: bytes | None
+) -> None:
     # Deflated rather than stored. Measured on the fixture pages: 29% off a
     # folder of PNGs and 56% off the same pages as JPEG, for a tenth of a
     # second on 3MB — though those pages are synthetic and flat, and a real
@@ -146,6 +154,8 @@ def _pack_zip(pages: Sequence[Path], names: Sequence[str], into: Path) -> None:
     with zipfile.ZipFile(into, "w", zipfile.ZIP_DEFLATED) as archive:
         for page, name in zip(pages, names, strict=True):
             archive.write(page, name)
+        if comic_info is not None:
+            archive.writestr(COMIC_INFO, comic_info)
 
 
 def _place(page: Path, under: Path) -> None:
@@ -161,7 +171,13 @@ def _place(page: Path, under: Path) -> None:
         shutil.copy2(page, under)
 
 
-def _pack_rar(pages: Sequence[Path], names: Sequence[str], into: Path, rar_tool: str) -> None:
+def _pack_rar(
+    pages: Sequence[Path],
+    names: Sequence[str],
+    into: Path,
+    rar_tool: str,
+    comic_info: bytes | None,
+) -> None:
     tool = rar_compressor(rar_tool)
     # **rar adds a file under the name it already has.** There is no flag for
     # "add this one, call it that" — which is what ``ZipFile.write`` takes as
@@ -178,22 +194,27 @@ def _pack_rar(pages: Sequence[Path], names: Sequence[str], into: Path, rar_tool:
         folder = Path(staging)
         for page, name in zip(pages, names, strict=True):
             _place(page, folder / name)
+        entries = list(names)
+        if comic_info is not None:
+            (folder / COMIC_INFO).write_bytes(comic_info)
+            entries.append(COMIC_INFO)
         # Run where those names are and pass them bare, so the archive holds
         # names rather than paths — with -ep as well, since a rar that
         # disagrees about the default would otherwise put a temporary
         # directory inside somebody's chapter. -o+ because the archive was
         # already cleared or refused above.
-        command = [tool, "a", "-ep", "-o+", str(into.resolve()), *names]
+        command = [tool, "a", "-ep", "-o+", str(into.resolve()), *entries]
         log.info("packing %d page(s) with %s", len(names), tool)
         try:
             # The tool is the one the caller named, run with arguments this
             # module built: no shell, and nothing from the plan file in them.
             # Two things keep that list unambiguous, and both are easier to
-            # break than to notice. Every name comes from ``entry_names`` and
-            # so begins with a digit, which is why no page can arrive at rar
-            # looking like a switch — a page called ``-x.png`` is
-            # ``001--x.png`` here. And ``into`` is resolved, so the archive
-            # path begins with a separator for the same reason.
+            # break than to notice. Every page's name comes from
+            # ``entry_names`` and so begins with a digit, which is why no page
+            # can arrive at rar looking like a switch — a page called
+            # ``-x.png`` is ``001--x.png`` here — and the one other entry is
+            # ComicInfo.xml, a constant. And ``into`` is resolved, so the
+            # archive path begins with a separator for the same reason.
             done = subprocess.run(command, cwd=folder, capture_output=True, text=True, check=False)
         except OSError as exc:
             raise InputError(f"{tool} could not be run: {exc}") from exc
@@ -206,12 +227,19 @@ def _pack_rar(pages: Sequence[Path], names: Sequence[str], into: Path, rar_tool:
 
 
 def pack(
-    pages: Sequence[Path], into: Path, *, rar_tool: str = "", force: bool = False
+    pages: Sequence[Path],
+    into: Path,
+    *,
+    rar_tool: str = "",
+    force: bool = False,
+    comic_info: bytes | None = None,
 ) -> tuple[str, ...]:
     """Write every page into one archive, and say what they are called in it.
 
     The pages are taken in the order given, which is the order the plan
     names them in — the reading order, which is the thing being preserved.
+    ``comic_info`` goes in beside them as ComicInfo.xml, and is not among
+    the names returned: those are the pages.
     """
     kind = archive_kind(into)
     if kind is None:
@@ -232,9 +260,9 @@ def pack(
 
     names = entry_names(pages)
     if kind == ZIP:
-        _pack_zip(pages, names, into)
+        _pack_zip(pages, names, into, comic_info)
     else:
-        _pack_rar(pages, names, into, rar_tool)
+        _pack_rar(pages, names, into, rar_tool, comic_info)
     log.info("wrote %d page(s) into %s", len(names), into)
     return names
 

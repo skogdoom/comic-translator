@@ -12,8 +12,9 @@ happen at all first, then what happened but needs checking.
 No widgets, but not no Qt: every word here is read off a panel, so it is
 translated like the rest of the window. That is the whole of the dependency —
 ``QtCore``, for one bare ``QObject`` subclass that exists to name a catalogue
-context — with no widget, no event loop and no ``QApplication`` in it, and
-the tests still call these six functions directly.
+context, and ``QLocale``'s names for languages by way of ``language_box`` —
+with no widget, no event loop and no ``QApplication`` in it, and the tests
+still call these six functions directly.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from PySide6.QtCore import QCoreApplication, QObject
 from ..apply import ApplyReport
 from ..extract import ExtractReport
 from ..pack import archive_kind
+from .language_box import language_label
 
 
 class RunText(QObject):
@@ -71,6 +73,7 @@ COULD_NOT_READ = RunText.tr("could not read")
 NO_REGIONS = RunText.tr("no regions found")
 NOT_AN_IMAGE = RunText.tr("not read as a page")
 LANGUAGE_NOT_READ = RunText.tr("language not read")
+OTHER_LANGUAGE = RunText.tr("another language")
 
 _EMPTY_TRANSLATION = "no translation"
 """What ``render`` writes as the detail for a region with nothing to letter.
@@ -211,11 +214,27 @@ def extract_rows(report: ExtractReport) -> tuple[RunRow, ...]:
     The plan the run just wrote flags every one of them, the page list counts
     them, and Next Flagged Region walks them; a second copy in a panel would
     go stale the moment one was fixed. What is here is what the plan cannot
-    tell you: a language the recogniser read without, first, because it is
-    true of every page; then pages it does not cover, and pages it covers
-    with nothing on.
+    tell you: a chapter that says it is in a language it was not read in, and
+    a language the recogniser read without, first, because each is true of
+    every page; then pages it does not cover, and pages it covers with
+    nothing on.
     """
-    rows: list[RunRow] = [
+    rows: list[RunRow] = []
+    if report.stated_language:
+        rows.append(
+            RunRow(
+                image="",
+                problem=OTHER_LANGUAGE,
+                detail=RunText.tr(
+                    "the chapter's ComicInfo.xml says it is in {0}, and every page was read in {1}"
+                ).format(
+                    language_label(report.stated_language),
+                    ", ".join(language_label(language) for language in report.languages),
+                ),
+                in_plan=False,
+            )
+        )
+    rows.extend(
         RunRow(
             image="",
             problem=LANGUAGE_NOT_READ,
@@ -225,7 +244,7 @@ def extract_rows(report: ExtractReport) -> tuple[RunRow, ...]:
             in_plan=False,
         )
         for language in report.unread_languages
-    ]
+    )
     rows.extend(
         RunRow(image=path.name, problem=COULD_NOT_READ, detail=reason, in_plan=False)
         for path, reason in report.failures

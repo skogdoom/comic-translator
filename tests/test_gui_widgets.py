@@ -6101,7 +6101,7 @@ def test_rendering_into_a_cbz_from_the_window_writes_one_file(
 
     assert request.output.is_file()
     with zipfile.ZipFile(request.output) as packed:
-        assert packed.namelist() == ["001-page-001.png", "002-page-002.png"]
+        assert packed.namelist() == ["001-page-001.png", "002-page-002.png", "ComicInfo.xml"]
     assert "packed" in window.statusBar().currentMessage()
     assert str(request.output) in window._run_panel._headline.text()
 
@@ -6146,7 +6146,7 @@ def test_the_compressor_the_dialog_was_given_is_the_one_the_run_uses(
 
     assert request.output.is_file(), "the preference reached the compressor"
     with zipfile.ZipFile(request.output) as packed:
-        assert packed.namelist() == ["001-page-001.png", "002-page-002.png"]
+        assert packed.namelist() == ["001-page-001.png", "002-page-002.png", "ComicInfo.xml"]
 
 
 def test_a_cancelled_chapter_run_says_nothing_was_written_rather_than_none(
@@ -7123,6 +7123,28 @@ def test_stopping_while_a_chapter_unpacks_reads_none_of_it(
     assert report.cancelled
     assert report.pages_read == 0
     assert not request.plan_path.exists()
+
+
+def test_what_a_chapter_says_about_itself_reaches_the_plan_the_window_writes(
+    qapp: object, chapter_file: Path, font_dir: Path
+) -> None:
+    import zipfile
+
+    from comictrans.planfile import load_plan
+
+    with zipfile.ZipFile(chapter_file, "a") as handle:
+        handle.writestr(
+            "ComicInfo.xml",
+            "<ComicInfo><Series>Tex</Series><LanguageISO>ja</LanguageISO></ComicInfo>",
+        )
+    dialog = ExtractDialog(None, None, preferences=Preferences(source_language="it"))
+    dialog._source.setText(str(chapter_file))
+    request = dialog.request()
+
+    report = ExtractJob(request, None).work(lambda progress: None, lambda: False)
+
+    assert load_plan(request.plan_path, check_images=False).header.series == "Tex"
+    assert report.stated_language == "ja", "and the panel is told it was read as something else"
 
 
 def test_the_panel_is_told_the_total_once_the_chapter_has_been_counted(

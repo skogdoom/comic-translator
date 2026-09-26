@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import __version__
+from .comicinfo import ComicInfo, differs, with_comic_info
 from .config import (
     DEFAULT_SOURCE_LANGUAGE,
     DEFAULT_TARGET_LANGUAGE,
@@ -72,6 +73,18 @@ class ExtractReport:
     Vision's, in practice: it ignores a language it lacks rather than
     refusing it, so the run goes ahead and this is the only place that says
     the pages were read with its defaults instead."""
+
+    languages: tuple[str, ...] = ()
+    """The languages the pages were read in, as the recogniser was asked."""
+
+    stated_language: str = ""
+    """The language the chapter's ComicInfo.xml says it is in, when that is
+    none of :attr:`languages` — and empty when it agrees or does not say.
+
+    Reported rather than acted on: the run was told which language to read
+    in, and did. A chapter read in the wrong one comes out as nonsense on
+    every page, and this is the one place that can say why before somebody
+    has looked at forty of them."""
 
     @property
     def ok(self) -> bool:
@@ -268,6 +281,7 @@ def extract(
     source_language: str = DEFAULT_SOURCE_LANGUAGE,
     target_language: str = DEFAULT_TARGET_LANGUAGE,
     debug_dir: Path | None = None,
+    comic_info: ComicInfo | None = None,
     progress: ProgressCallback | None = None,
     should_cancel: CancelCheck | None = None,
 ) -> tuple[Plan, ExtractReport]:
@@ -276,6 +290,11 @@ def extract(
     ``progress`` is called once per page, before it is read, and
     ``should_cancel`` is asked at the same moment; see
     :mod:`comictrans.progress`. Neither changes what is detected.
+
+    ``comic_info`` is what the chapter file these pages came out of says
+    about itself, if it said anything; see :func:`sources.unpack`. What it
+    states goes into the plan header — the one thing measured from somewhere
+    other than the pages — except the language, which is only compared.
 
     A cancelled run still returns a plan, because this function does not
     write one — the caller does, and the report says not to. Half a chapter
@@ -287,7 +306,10 @@ def extract(
     report = ExtractReport(
         skipped_inputs=list(skipped),
         unread_languages=unread_languages(recognizer.name, config.ocr.languages),
+        languages=config.ocr.languages,
     )
+    if comic_info is not None and differs(comic_info.language, config.ocr.languages):
+        report.stated_language = comic_info.language
     for path, reason in skipped:
         log.warning("skipping %s: %s", path.name, reason)
 
@@ -340,4 +362,6 @@ def extract(
         font_size_min_ratio=config.font_size_min_ratio,
         condense_min=config.condense_min,
     )
+    if comic_info is not None:
+        header = with_comic_info(header, comic_info)
     return Plan(header=header, images=tuple(pages), regions=tuple(regions)), report

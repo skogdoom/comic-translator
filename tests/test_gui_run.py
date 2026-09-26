@@ -34,6 +34,7 @@ from comictrans.gui.run_report import (  # noqa: E402
     NO_TRANSLATION,
     NOT_AN_IMAGE,
     NOT_TRANSLATED,
+    OTHER_LANGUAGE,
     PAGE_FAILED,
     extract_counts,
     extract_headline,
@@ -207,6 +208,21 @@ def test_a_language_the_recogniser_read_without_is_said_and_goes_nowhere() -> No
     assert row.problem == LANGUAGE_NOT_READ
     assert "sv" in row.detail and "Apple Vision" in row.detail
     assert not row.selectable
+
+
+def test_a_chapter_that_says_it_is_in_another_language_is_said_first() -> None:
+    """True of every page, like the row after it, and more likely the reason
+    every page reads as nonsense — so it goes above even that."""
+    rows = extract_rows(
+        _extract_report(stated_language="ja", languages=("it", "en"), unread_languages=("sv",))
+    )
+
+    assert [row.problem for row in rows] == [OTHER_LANGUAGE, LANGUAGE_NOT_READ]
+    assert rows[0].detail == (
+        "the chapter's ComicInfo.xml says it is in Japanese (ja), and every page "
+        "was read in Italian (it), English (en)"
+    )
+    assert not rows[0].selectable
 
 
 def test_regions_that_merely_need_checking_are_left_to_the_plan() -> None:

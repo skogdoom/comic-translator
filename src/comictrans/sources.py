@@ -33,6 +33,14 @@ it is an afterthought. The name is used only for a file whose bytes cannot be
 read — one that is not there yet, which is every keystroke of a path being
 typed into the window.
 
+**ComicInfo.xml is read, not unpacked.** It is the one file in a chapter
+that is not a page and still says something — the series, the number, which
+way the pages read — so :func:`unpack` reads it and hands back what it says,
+and ``extract`` puts that in the plan header. It is found by the same walk as
+the pages and refused for the same reasons, a link or a size it has no
+business claiming, before a byte of it is read. What reading it involves is
+:mod:`comictrans.comicinfo`'s.
+
 **CBR needs a binary this project will not ship.** `unrar`'s licence is not
 OSI-free and this is an MIT project, so bundling it would put somebody
 else's terms on the whole thing. `rarfile` drives whichever tool is already
@@ -55,6 +63,8 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
+from . import comicinfo
+from .comicinfo import ComicInfo, ComicInfoError, read_comic_info
 from .errors import InputError
 from .imaging import IMAGE_SUFFIXES
 from .progress import CancelCheck, PageProgress, ProgressCallback
@@ -181,6 +191,11 @@ class _Notes:
     skipped: list[tuple[str, str]] = field(default_factory=list)
     doubtful: list[tuple[str, str]] = field(default_factory=list)
 
+    comic_info: tuple[str, Callable[[], bytes]] | None = None
+    """The chapter's ComicInfo.xml, found and not yet read: what it is called
+    in the archive, and its bytes. Only an archive has one, and only while it
+    is open."""
+
     total: int = 0
     """How many pages are coming, set before the first one is read.
 
@@ -224,6 +239,11 @@ class UnpackReport:
     photograph of it, and the answer to that is to say so and let somebody
     look. See :func:`_page_doubt`."""
 
+    comic_info: ComicInfo | None = None
+    """What the chapter's ComicInfo.xml says, or ``None`` for a chapter with
+    none — or one that could not be read, which is in :attr:`skipped` with
+    the reason. Nothing of it is written to the directory."""
+
 
 def is_container(path: Path) -> bool:
     """Whether ``extract`` would unpack this before reading it.
@@ -243,6 +263,15 @@ def default_unpack_dir(source: Path) -> Path:
     system may sweep is no place for something a translation points at.
     """
     return source.with_name(f"{source.stem}-pages")
+
+
+def _is_comic_info(name: str) -> bool:
+    """Whether this archive entry is the chapter's ComicInfo.xml.
+
+    At the root, where the format puts it, and in any case, since not every
+    tool that writes one spells it the same.
+    """
+    return name.casefold() == comicinfo.FILENAME.casefold()
 
 
 def _skip_reason(name: str) -> str | None:
@@ -306,10 +335,19 @@ def _archive_entries(
     for info in sorted(archive.infolist(), key=lambda member: natural_key(member.filename)):
         if info.is_dir():
             continue  # ordinary inside a comic archive, and not a page
-        reason = _skip_reason(info.filename)
+        # The first one only: a second is not what a reader would read, and
+        # is reported as what it is, a file that is not a page.
+        described = notes.comic_info is None and _is_comic_info(info.filename)
+        reason = None if described else _skip_reason(info.filename)
         if reason is None and not regular(info):
             reason = "a link or a device, not a file"
-        if reason is None and info.file_size > MAX_PAGE_BYTES:
+        if reason is None and described and info.file_size > comicinfo.MAX_BYTES:
+            reason = (
+                f"it says it unpacks to {info.file_size / 1024:,.0f}KB, past the "
+                f"{comicinfo.MAX_BYTES // 1024:,}KB a ComicInfo.xml may be — a "
+                "thousand-page chapter's is a tenth of that"
+            )
+        if reason is None and not described and info.file_size > MAX_PAGE_BYTES:
             reason = (
                 f"it says it unpacks to {info.file_size / 1024 / 1024:,.0f}MB, past the "
                 f"{MAX_PAGE_BYTES // 1024 // 1024}MB a page may be — nothing scanned "
@@ -317,6 +355,9 @@ def _archive_entries(
             )
         if reason is not None:
             notes.skipped.append((info.filename, reason))
+            continue
+        if described:
+            notes.comic_info = (info.filename, partial(archive.read, info))
             continue
         members.append(info)
     # Decided in full before anything is read: an archive's member list costs
@@ -574,6 +615,22 @@ def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
     )
 
 
+def _described(notes: _Notes) -> ComicInfo | None:
+    """What the chapter's ComicInfo.xml says, read while the chapter is open.
+
+    One that cannot be read is a skip with the reason, as a page that turns
+    out not to be one is. The chapter is still a chapter without it.
+    """
+    if notes.comic_info is None:
+        return None
+    label, load = notes.comic_info
+    try:
+        return read_comic_info(load())
+    except ComicInfoError as exc:
+        notes.skipped.append((label, f"not read: {exc}"))
+        return None
+
+
 def _loaded(entries: Sequence[_Entry], notes: _Notes) -> Iterator[_Loaded]:
     """Each entry read in turn, with what reading it showed put in ``notes``.
 
@@ -702,6 +759,7 @@ def unpack(
     reused = 0
     cancelled = False
     with reader(source, notes) as entries:
+        described = _described(notes)
         for index, page in enumerate(_loaded(entries, notes), start=1):
             if should_cancel is not None and should_cancel():
                 cancelled = True
@@ -749,6 +807,7 @@ def unpack(
             cancelled=True,
             skipped=tuple(notes.skipped),
             doubtful=tuple(notes.doubtful),
+            comic_info=described,
         )
 
     if not pages:
@@ -774,6 +833,7 @@ def unpack(
         reused=reused,
         skipped=tuple(notes.skipped),
         doubtful=tuple(notes.doubtful),
+        comic_info=described,
     )
 
 

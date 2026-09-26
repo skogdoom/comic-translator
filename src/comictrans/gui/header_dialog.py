@@ -4,7 +4,8 @@ Split the way the header itself is: what you decide, and what the tool
 recorded. Font, case, the two fit limits and the language pair are yours to
 change. So is what the comic is — its series, title, volume and number, year,
 publisher, writer and reading direction — which nothing measures from the
-pages, so a plan extract wrote holds none of it until it is typed here.
+pages, so a plan extract wrote holds only what a chapter file's ComicInfo.xml
+said, and the rest waits to be typed here.
 ``generator``, ``created``, ``ocr_engine`` and ``version`` describe what
 produced this plan, and are shown but not editable — you are not the
 authority on which OCR engine ran, and a plan that claims a different one is

@@ -5,11 +5,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from comictrans.comicinfo import ComicInfo
 from comictrans.config import ExtractConfig, OcrConfig
 from comictrans.errors import InputError
 from comictrans.extract import default_plan_path, extract, read_region, region_box
 from comictrans.imaging import PageImage, PageMeta
-from comictrans.model import Box, Geometry, Polygon, TextCase
+from comictrans.model import Box, Geometry, Polygon, ReadingDirection, TextCase
 from comictrans.ocr.base import OcrLine
 from comictrans.planfile import load_plan, write_plan
 from comictrans.progress import PageProgress
@@ -65,6 +66,72 @@ def _run(
         "Comic Sans MS",
         config or ExtractConfig(),
     )
+
+
+def test_what_a_chapter_file_says_about_itself_goes_into_the_header(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    info = ComicInfo(
+        series="Tex", number="7", year=1948, reading_direction=ReadingDirection.RIGHT_TO_LEFT
+    )
+
+    plan, report = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        ExtractConfig(),
+        comic_info=info,
+    )
+
+    header = plan.header
+    assert (header.series, header.number, header.year) == ("Tex", "7", 1948)
+    assert header.reading_direction is ReadingDirection.RIGHT_TO_LEFT
+    assert (header.title, header.publisher) == ("", ""), "what it did not say stays unsaid"
+    assert report.stated_language == ""
+
+
+def test_a_chapter_in_a_language_it_was_not_read_in_is_reported_not_obeyed(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    directory, recognizer, _ = pages
+    config = ExtractConfig(ocr=OcrConfig(languages=("it",)))
+
+    plan, report = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        config,
+        source_language="it",
+        comic_info=ComicInfo(language="ja"),
+    )
+
+    assert plan.header.source_language == "it", "the language it was read in"
+    assert report.stated_language == "ja"
+    assert report.languages == ("it",)
+
+
+def test_the_languages_compared_are_the_ones_it_was_read_in(
+    pages: tuple[Path, FakeRecognizer, list[Box]],
+) -> None:
+    """OCR languages given explicitly are what the recogniser used, whatever
+    the source language says."""
+    directory, recognizer, _ = pages
+    config = ExtractConfig(ocr=OcrConfig(languages=("jpn", "eng")))
+
+    _plan, report = extract(
+        directory,
+        default_plan_path(directory),
+        recognizer,
+        "Comic Sans MS",
+        config,
+        source_language="it",
+        comic_info=ComicInfo(language="ja"),
+    )
+
+    assert report.stated_language == ""
 
 
 def test_default_plan_path_for_directory_and_single_file(tmp_path: Path) -> None:

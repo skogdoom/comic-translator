@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from comictrans.comicinfo import ComicInfo
 from comictrans.errors import InputError
 from comictrans.imaging import collect_inputs
 from comictrans.progress import PageProgress
@@ -214,6 +215,104 @@ def test_what_is_not_a_page_is_named_rather_than_unpacked(tmp_path: Path) -> Non
         ".DS_Store": "hidden file",
         "__MACOSX/._page1.png": "resource fork (a Mac wrote it, no reader shows it)",
     }
+
+
+COMIC_INFO = b"""<?xml version="1.0"?>
+<ComicInfo><Series>Tex</Series><Number>7</Number><LanguageISO>it</LanguageISO></ComicInfo>
+"""
+
+
+def test_a_chapters_comic_info_is_read_and_not_unpacked(tmp_path: Path) -> None:
+    archive = _cbz(
+        tmp_path,
+        {"page1.png": _page_bytes(tmp_path, "a.png", 201), "ComicInfo.xml": COMIC_INFO},
+    )
+
+    report = unpack(archive)
+
+    assert report.comic_info == ComicInfo(series="Tex", number="7", language="it")
+    assert report.skipped == (), "it is not a page, and it is not skipped either"
+    assert sorted(path.name for path in report.directory.iterdir()) == ["001-page1.png"]
+
+
+def test_comic_info_is_found_however_it_is_spelled(tmp_path: Path) -> None:
+    archive = _cbz(
+        tmp_path,
+        {"page1.png": _page_bytes(tmp_path, "a.png", 201), "comicinfo.XML": COMIC_INFO},
+    )
+
+    assert unpack(archive).comic_info == ComicInfo(series="Tex", number="7", language="it")
+
+
+def test_only_the_one_at_the_root_describes_the_chapter(tmp_path: Path) -> None:
+    archive = _cbz(
+        tmp_path,
+        {"page1.png": _page_bytes(tmp_path, "a.png", 201), "Extras/ComicInfo.xml": COMIC_INFO},
+    )
+
+    report = unpack(archive)
+
+    assert report.comic_info is None
+    assert report.skipped == (("Extras/ComicInfo.xml", "unsupported extension .xml"),)
+
+
+def test_a_second_one_at_the_root_is_named_as_not_a_page(tmp_path: Path) -> None:
+    archive = _cbz(
+        tmp_path,
+        {
+            "page1.png": _page_bytes(tmp_path, "a.png", 201),
+            "ComicInfo.xml": COMIC_INFO,
+            "COMICINFO.XML": b"<ComicInfo><Series>Zagor</Series></ComicInfo>",
+        },
+    )
+
+    report = unpack(archive)
+
+    assert report.comic_info is not None
+    ((name, reason),) = report.skipped
+    assert name in {"ComicInfo.xml", "COMICINFO.XML"}
+    assert reason.casefold() == "unsupported extension .xml"
+
+
+def test_one_that_cannot_be_read_is_named_and_the_chapter_still_unpacks(tmp_path: Path) -> None:
+    archive = _cbz(
+        tmp_path,
+        {"page1.png": _page_bytes(tmp_path, "a.png", 201), "ComicInfo.xml": b"<ComicInfo>"},
+    )
+
+    report = unpack(archive)
+
+    assert report.comic_info is None
+    assert [path.name for path in report.pages] == ["001-page1.png"]
+    ((name, reason),) = report.skipped
+    assert name == "ComicInfo.xml"
+    assert reason.startswith("not read: it is not well-formed XML")
+
+
+def test_a_link_called_comic_info_is_named_rather_than_read(tmp_path: Path) -> None:
+    archive = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("001.png", _page_bytes(tmp_path, "a.png", 201))
+        link = zipfile.ZipInfo("ComicInfo.xml")
+        link.create_system = 3
+        link.external_attr = 0o120777 << 16
+        handle.writestr(link, "/etc/passwd")
+
+    report = unpack(archive)
+
+    assert report.comic_info is None
+    assert report.skipped == (("ComicInfo.xml", "a link or a device, not a file"),)
+
+
+def test_the_reader_window_does_not_count_it_among_what_it_skipped(tmp_path: Path) -> None:
+    archive = _cbz(
+        tmp_path,
+        {"page1.png": _page_bytes(tmp_path, "a.png", 201), "ComicInfo.xml": COMIC_INFO},
+    )
+
+    with open_chapter(archive) as pages:
+        assert len(pages) == 1
+        assert pages.skipped == ()
 
 
 def test_two_pages_with_the_same_name_in_different_folders_do_not_collide(
@@ -767,6 +866,20 @@ def test_a_cbr_is_read_like_any_other_archive(
     assert [path.name for path in report.pages] == ["001-page1.png", "002-page2.png"]
     assert report.skipped == (("Ch/notes.txt", "unsupported extension .txt"),)
     assert _FakeRarFile.opened == [archive]
+
+
+def test_a_cbr_carries_its_comic_info_as_well(
+    tmp_path: Path, fake_rarfile: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(_FAKE_RAR_CONTENT, "page1.png", _page_bytes(tmp_path, "a.png", 201))
+    monkeypatch.setitem(_FAKE_RAR_CONTENT, "ComicInfo.xml", COMIC_INFO)
+    archive = tmp_path / "chapter.cbr"
+    archive.write_bytes(b"Rar!\x1a\x07\x00 pretend")
+
+    report = unpack(archive)
+
+    assert report.comic_info == ComicInfo(series="Tex", number="7", language="it")
+    assert report.skipped == ()
 
 
 def test_a_link_in_a_cbr_is_named_as_well(

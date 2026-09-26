@@ -260,6 +260,7 @@ class ExtractJob(RunJob):
         log.info("OCR backend: %s", recognizer.name)
 
         source = request.source
+        comic_info = None
         if is_container(source):
             chapter = unpack(
                 source,
@@ -270,6 +271,7 @@ class ExtractJob(RunJob):
             if chapter.cancelled:
                 return ExtractReport(cancelled=True)
             source = chapter.directory
+            comic_info = chapter.comic_info
             self.unpacked.emit(len(chapter.pages))
 
         plan, report = extract(
@@ -281,6 +283,7 @@ class ExtractJob(RunJob):
             case=request.case,
             source_language=request.source_language,
             target_language=request.target_language,
+            comic_info=comic_info,
             progress=progress,
             should_cancel=should_cancel,
         )

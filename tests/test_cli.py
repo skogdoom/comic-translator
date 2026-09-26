@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from comictrans.cli import EXIT_FATAL, EXIT_OK, EXIT_PROBLEMS, main
-from comictrans.model import Box
+from comictrans.comicinfo import ComicInfo, read_comic_info
+from comictrans.model import Box, ReadingDirection
 
 from .conftest import (
     ART_DARK,
@@ -223,7 +224,7 @@ def test_apply_writes_a_cbz_when_the_output_is_named_one(
     assert main(["apply", str(plan_path), "--output", str(archive)]) == EXIT_OK
 
     with zipfile.ZipFile(archive) as packed:
-        assert packed.namelist() == ["001-page1.png"]
+        assert packed.namelist() == ["001-page1.png", "ComicInfo.xml"]
     assert not (tmp_path / "chapter-01").exists(), "the workspace is temporary and goes away"
     assert archive.name in capsys.readouterr().out
 
@@ -527,6 +528,70 @@ def test_extract_unpacks_a_chapter_and_the_rest_of_the_tool_reads_the_folder(
     # The point of unpacking rather than reading on demand: every pass after
     # extract is looking at an ordinary folder of images.
     assert main(["validate", str(plan_path)]) == EXIT_OK
+
+
+def test_a_chapters_comic_info_fills_the_header_and_goes_back_out_with_it(
+    chapter: Path, font_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The round trip the milestone is: read at unpack, written at pack."""
+    from comictrans.planfile import load_plan
+
+    with zipfile.ZipFile(chapter, "a") as handle:
+        handle.writestr(
+            "ComicInfo.xml",
+            "<ComicInfo><Series>Tex</Series><Number>7</Number><Year>1948</Year>"
+            "<Manga>YesAndRightToLeft</Manga><LanguageISO>it</LanguageISO></ComicInfo>",
+        )
+
+    assert main(["extract", str(chapter)]) == EXIT_OK
+
+    said = capsys.readouterr().out
+    assert "ComicInfo.xml:     series, number, year, reading direction" in said
+    assert "SKIPPED" not in said
+    assert "--source-lang" not in said, "it is in the language it was read in"
+    plan_path = tmp_path / "chapter-pages" / "comic-plan.yaml"
+    header = load_plan(plan_path).header
+    assert (header.series, header.number, header.year) == ("Tex", "7", 1948)
+    assert header.reading_direction is ReadingDirection.RIGHT_TO_LEFT
+
+    archive = tmp_path / "translated.cbz"
+    assert main(["apply", str(plan_path), "--output", str(archive)]) in (EXIT_OK, EXIT_PROBLEMS)
+    with zipfile.ZipFile(archive) as packed:
+        written = read_comic_info(packed.read("ComicInfo.xml"))
+    assert written == ComicInfo(
+        series="Tex",
+        number="7",
+        year=1948,
+        reading_direction=ReadingDirection.RIGHT_TO_LEFT,
+        language="en",
+    )
+
+
+def test_a_chapter_that_says_it_is_in_another_language_is_said_before_it_is_read(
+    chapter: Path, font_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with zipfile.ZipFile(chapter, "a") as handle:
+        handle.writestr("ComicInfo.xml", "<ComicInfo><LanguageISO>ja</LanguageISO></ComicInfo>")
+
+    assert main(["extract", str(chapter)]) == EXIT_OK
+
+    said = capsys.readouterr().out
+    assert "ComicInfo.xml:     nothing the plan can hold" in said
+    warning = "ComicInfo.xml says this chapter is in ja, and it is about to be read in it."
+    assert warning in said
+    assert said.index(warning) < said.index("comic-plan.yaml"), "before the run's own summary"
+
+
+def test_the_language_compared_is_the_one_ocr_reads_in_when_it_is_given(
+    chapter: Path, font_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--lang is what the recogniser is handed; the source language is not."""
+    with zipfile.ZipFile(chapter, "a") as handle:
+        handle.writestr("ComicInfo.xml", "<ComicInfo><LanguageISO>ja</LanguageISO></ComicInfo>")
+
+    assert main(["extract", str(chapter), "--lang", "ja"]) == EXIT_OK
+
+    assert "says this chapter is in" not in capsys.readouterr().out
 
 
 def test_a_second_extract_reuses_the_pages_already_unpacked(

@@ -79,8 +79,10 @@ class ReadingDirection(StrEnum):
     ``None``: unstated is not the same claim as left-to-right, and a reader
     that has to pick one should know it is picking rather than being told.
 
-    Set in the plan header dialog; nothing downstream acts on it yet — see
-    ``planfile.schema.READABLE_VERSIONS``.
+    Set in the plan header dialog, or read from a chapter file's
+    ComicInfo.xml, and written back into the one a chapter is packed into —
+    see ``comicinfo`` for how the format says it, which is sideways. Nothing
+    else acts on it yet.
     """
 
     LEFT_TO_RIGHT = "ltr"
@@ -351,10 +353,11 @@ class PlanHeader:
     condense_min: float
 
     # What the comic is. Nothing measures any of it from the pages: `extract`
-    # fills in none of these, the plan header dialog is where they are typed,
-    # and a plan that names none is the plan this wrote before they existed.
-    # Empty is a valid answer for every one of them, which is what lets that
-    # stay true. Nothing downstream writes them anywhere yet.
+    # fills in only what a chapter file's ComicInfo.xml states, the plan
+    # header dialog is where the rest is typed, and a plan that names none is
+    # the plan this wrote before they existed. Empty is a valid answer for
+    # every one of them, which is what lets that stay true. A chapter packed
+    # from the plan carries them in its own ComicInfo.xml — see `comicinfo`.
     series: str = ""
     title: str = ""
     volume: str = ""

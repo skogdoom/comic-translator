@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from .comicinfo import comic_info_xml
 from .config import ApplyConfig
 from .errors import ComictransError, FontError, InputError
 from .fonts import FontFace, resolve
@@ -219,9 +220,14 @@ def apply_plan(
             # pages were written: what is on disk is what was there before.
             report.pages_written.clear()
             return report
-        report.pages_written = [
-            Path(name) for name in pack(report.pages_written, output, rar_tool=rar_tool, force=True)
-        ]
+        packed = pack(
+            report.pages_written,
+            output,
+            rar_tool=rar_tool,
+            force=True,
+            comic_info=comic_info_xml(plan.header),
+        )
+        report.pages_written = [Path(name) for name in packed]
         report.archive = output
         return report
 
