@@ -18,4 +18,6 @@ import sys
 from comictrans.gui.app import run
 
 if __name__ == "__main__":
-    sys.exit(run())
+    # end: leave from inside run, while it still holds the window — see
+    # comictrans.gui.app.end_process.
+    sys.exit(run(end=True))

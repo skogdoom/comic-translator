@@ -1004,6 +1004,12 @@ elsewhere, or wherever `COMICTRANS_LOG_DIR` points:
   starts and a Python traceback naming the exact line if the process dies, on
   every thread.
 
+Quitting ends the process as soon as the window has gone and the settings
+and the log are on disk, without the rest of Python's shutdown — which is
+where two crashes on quit came from. A `review.log` line beginning
+`left behind at quit` names an object that would have crashed it; it is worth
+sending with any report of one.
+
 Both are written to your own disk and sent nowhere. This tool makes no
 network calls, and a stack trace is not an exception to that. Neither file
 ever contains the comic: `source_text`, `translation` and `notes` are kept

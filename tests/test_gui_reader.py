@@ -414,6 +414,42 @@ def test_read_opens_the_window_on_a_chapter(
     assert shown == [f"chapter.cbz — {about.NAME}"]
 
 
+def test_read_ends_the_process_after_the_chapter_is_closed_and_before_it_returns(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The review window's reason, and one more: the chapter file is closed
+    first, since a process that ends skips whatever would have closed it."""
+    import shiboken6
+
+    from comictrans.gui import app as gui_app
+
+    class Ended(Exception):  # noqa: N818 - stands in for the exit itself
+        pass
+
+    seen: list[tuple[bool, bool]] = []
+    closed: list[bool] = []
+
+    @contextmanager
+    def watched(target: Path, unrar_tool: str = "") -> Iterator[object]:
+        with open_pages(target, unrar_tool) as pages:
+            yield pages
+        closed.append(True)
+
+    def ending(code: int, window: object, settings: object) -> None:
+        seen.append((isinstance(window, ReaderWindow), shiboken6.isValid(window)))
+        assert closed == [True], "the chapter is closed before the process ends"
+        raise Ended(code)
+
+    monkeypatch.setattr("comictrans.reading.open_pages", watched)
+    monkeypatch.setattr(gui_app, "end_process", ending)
+    monkeypatch.setattr(QApplication, "exec", lambda self: 0)
+
+    with pytest.raises(Ended):
+        gui_app.read(_chapter(tmp_path, [PAGE] * 2), end=True)
+
+    assert seen == [(True, False)], "handed the window, already destroyed"
+
+
 def test_read_refuses_what_extract_refuses(
     qapp: object, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

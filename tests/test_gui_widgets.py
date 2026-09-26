@@ -11,6 +11,7 @@ entirely when PySide6 is not installed or no display can be opened — see the
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 import subprocess
@@ -61,7 +62,7 @@ from .conftest import (
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, Qt
 from PySide6.QtGui import (
     QAction,
     QContextMenuEvent,
@@ -7676,6 +7677,140 @@ def test_destroying_the_window_lets_go_of_nothing_that_holds_it(
     close_down(window)
 
     assert sys.getrefcount(window) == held
+
+
+class _EndedError(Exception):
+    """What ``os._exit`` raises here instead of ending the test run."""
+
+    def __init__(self, code: int) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def _refuse_to_exit(code: int) -> None:
+    raise _EndedError(code)
+
+
+def test_what_a_destroyed_window_still_owns_is_named(qapp: object, tmp_path: Path) -> None:
+    """The precondition of the second quit crash, looked for.
+
+    A Qt object a widget of ours holds, that PySide still believes is alive
+    and Python's to delete once the window has gone. Here one is put there
+    on purpose — a parentless ``QObject`` hung on the canvas — which is the
+    case the crash's object is in on a Mac, where it is deleted as well.
+    Values and the window's own settings are Python's by design and are not
+    named.
+    """
+    import shiboken6
+
+    from comictrans.gui.app import close_down, left_behind
+
+    settings = _settings_in(tmp_path)
+    window = MainWindow(settings=settings)  # type: ignore[arg-type]
+    window._canvas._probe = QObject()  # type: ignore[attr-defined]
+    # Alive too, but Qt's: PySide never deletes it, so it cannot be deleted twice.
+    kept = QObject(QApplication.instance())
+    window._canvas._kept = kept  # type: ignore[attr-defined]
+    close_down(window)
+
+    try:
+        assert left_behind(window, settings) == ("window._canvas._probe (QObject)",)  # type: ignore[arg-type]
+    finally:
+        shiboken6.delete(kept)
+
+
+def test_a_window_left_alone_leaves_nothing_behind(
+    qapp: object, two_page_plan: Path, tmp_path: Path
+) -> None:
+    from comictrans.gui.app import close_down, left_behind
+
+    settings = _settings_in(tmp_path)
+    window = MainWindow(two_page_plan, settings=settings)  # type: ignore[arg-type]
+    close_down(window)
+
+    assert left_behind(window, settings) == ()  # type: ignore[arg-type]
+
+
+def test_ending_the_process_writes_what_has_to_be_written_first(
+    qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The settings reach the disk, the log is flushed, and then the exit.
+
+    ``logging.shutdown`` and ``os._exit`` are stood in for: the real ones
+    would take the test run with them.
+    """
+    from comictrans.gui import app as gui_app
+
+    shut: list[bool] = []
+    monkeypatch.setattr(gui_app.logging, "shutdown", lambda: shut.append(True))
+    monkeypatch.setattr(gui_app.os, "_exit", _refuse_to_exit)
+    settings = _settings_in(tmp_path)
+    window = MainWindow(settings=settings)  # type: ignore[arg-type]
+    window._canvas._probe = QObject()  # type: ignore[attr-defined]
+    window.close()
+    gui_app.close_down(window)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="comictrans.gui.app"),
+        pytest.raises(_EndedError) as ended,
+    ):
+        gui_app.end_process(3, window, settings)  # type: ignore[arg-type]
+
+    assert ended.value.code == 3
+    assert shut == [True], "the log is flushed and closed before the exit"
+    written = (tmp_path / "settings.ini").read_text(encoding="utf-8")
+    assert "geometry=" in written and "state=" in written, "the layout saved at close"
+    assert "window._canvas._probe (QObject)" in caplog.text
+
+
+def test_review_ends_the_process_while_it_still_holds_the_window(
+    qapp: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Returning is what frees the window's wrapper, which is the crash."""
+    import shiboken6
+    from PySide6.QtWidgets import QApplication
+
+    from comictrans.gui import app as gui_app
+
+    held: list[object] = []
+
+    def ending(code: int, window: object, settings: object) -> None:
+        held.append(window)
+        raise _EndedError(code)
+
+    monkeypatch.setattr(gui_app, "end_process", ending)
+    monkeypatch.setattr(QApplication, "exec", lambda self: QApplication.processEvents() or 0)
+
+    with pytest.raises(_EndedError) as ended:
+        gui_app.run(end=True)
+
+    assert ended.value.code == 0
+    (window,) = held
+    assert isinstance(window, MainWindow)
+    assert not shiboken6.isValid(window), "destroyed first, then the exit"
+
+
+def test_the_command_line_asks_both_windows_to_end_the_process(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from comictrans.cli import main
+    from comictrans.gui import app as gui_app
+
+    asked: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(gui_app, "run", lambda *a, **k: asked.append(("run", k)) or 0)
+    monkeypatch.setattr(gui_app, "read", lambda *a, **k: asked.append(("read", k)) or 0)
+
+    main(["review"])
+    main(["read", str(tmp_path)])
+
+    assert asked == [("run", {"end": True}), ("read", {"end": True})]
+
+
+def test_the_application_bundle_asks_to_end_the_process() -> None:
+    """Its entry point is outside the package, and read here as source."""
+    entry = Path(__file__).resolve().parents[1] / "tools" / "app_entry.py"
+
+    assert "run(end=True)" in entry.read_text(encoding="utf-8")
 
 
 def test_closing_down_twice_is_not_a_crash(qapp: object) -> None:

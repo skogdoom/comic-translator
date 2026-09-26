@@ -18,15 +18,20 @@ inside :func:`run`, after :func:`available` has already been checked.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from ..errors import GuiUnavailableError
 
 if TYPE_CHECKING:  # this module has to import without PySide6 — see ``available``
     from PySide6.QtCore import QCoreApplication, QSettings
     from PySide6.QtWidgets import QWidget
+    from shiboken6.Shiboken import Object as Wrapper
 
     from .preferences import Preferences
 
@@ -96,6 +101,112 @@ def close_down(window: QWidget) -> None:
 
     if shiboken6.isValid(window):
         shiboken6.delete(window)
+
+
+def _held(root: object) -> Iterator[tuple[str, Wrapper]]:
+    """Every PySide object reachable from ``root``'s attributes, with its path.
+
+    Through attributes and containers, into PySide objects and this
+    package's own, and no further: a library's internals are not what a
+    window of ours can be holding by mistake. Reads Python's side only, so
+    it is safe on wrappers whose C++ half is gone.
+    """
+    import shiboken6
+
+    seen = {id(root)}
+    stack: list[tuple[str, object]] = [
+        (f"window.{name}", value) for name, value in vars(root).items()
+    ]
+    while stack:
+        path, value = stack.pop()
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        if isinstance(value, shiboken6.Shiboken.Object):
+            yield path, value
+        children: list[tuple[str, object]] = []
+        if isinstance(value, dict):
+            children = [(f"{path}[{key!r}]", item) for key, item in value.items()]
+        elif isinstance(value, list | tuple | set | frozenset):
+            children = [(f"{path}[{index}]", item) for index, item in enumerate(value)]
+        elif isinstance(value, shiboken6.Shiboken.Object) or type(value).__module__.startswith(
+            "comictrans"
+        ):
+            names = list(getattr(value, "__dict__", {}))
+            for kind in type(value).__mro__:
+                names.extend(getattr(kind, "__slots__", ()))
+            children = [
+                (f"{path}.{name}", getattr(value, name))
+                for name in dict.fromkeys(names)
+                if hasattr(value, name)
+            ]
+        stack.extend(children)
+
+
+def left_behind(window: QWidget, settings: QSettings | None = None) -> tuple[str, ...]:
+    """What a destroyed window still holds that PySide would delete, named.
+
+    **The second quit crash.** A review session segfaulted on the way out
+    again, after :func:`close_down` had done its work, and this time the
+    macOS report placed it exactly: ``run()`` returning frees the window's
+    Python wrapper, that frees its attributes, one of those is one of our
+    widgets, and freeing *its* attributes reached a Qt object that PySide
+    believed was alive and Python's to delete — so it called the C++
+    destructor, at ``SbkDeallocWrapperCommon+376``, on memory Qt had freed
+    with the window. A delete twice over. Which object it was, the report
+    cannot say, and the same session replayed here — every action in the
+    window fired — leaves no such object behind, so it cannot be measured
+    off a Mac.
+
+    This is how it is found there: anything reachable from the window that
+    is still marked alive and owned by Python once the window has been
+    destroyed. Plain values are not listed — Qt never deletes a copy it
+    handed out — and neither is the ``QSettings`` the window was given,
+    which is Python's by design and outlives it. What is left is either
+    something the window leaks on purpose, or the object that crashed.
+    """
+    import shiboken6
+
+    found = []
+    for path, held in _held(window):
+        if held is settings or hasattr(type(held), "__copy__"):
+            continue
+        if shiboken6.isValid(held) and shiboken6.ownedByPython(held):
+            found.append(f"{path} ({type(held).__name__})")
+    return tuple(sorted(found))
+
+
+def end_process(code: int, window: QWidget, settings: QSettings | None) -> NoReturn:
+    """Leave the process now, with what has to reach the disk already there.
+
+    **Called while the window is still held, and that is the point.** The
+    crash :func:`left_behind` describes happens when the last reference to
+    the window's wrapper goes, and the one before it happened in PySide's
+    own clean-up at interpreter exit, which destroys every wrapper still
+    alive in an order that is not ours. Both are teardown of objects whose
+    work is over, so neither is done: the settings are synced, the log is
+    flushed and closed, and ``os._exit`` ends the process before either can
+    start. Skipped with them are the ``atexit`` handlers, which nothing
+    here relies on for anything that is not flushed first.
+
+    What is left behind is logged before that, as a warning, so the next
+    report of this crash can name its object even though it no longer
+    crashes.
+    """
+    left = left_behind(window, settings)
+    if left:
+        log.warning(
+            "left behind at quit, still marked alive and Python's to delete: %s",
+            ", ".join(left),
+        )
+    if settings is not None:
+        settings.sync()
+    logging.shutdown()
+    for stream in (sys.stdout, sys.stderr):
+        # A window launched from Finder may have no stream at all.
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            stream.flush()
+    os._exit(code)
 
 
 def _application(window: str) -> tuple[QCoreApplication, QSettings, Preferences, str]:
@@ -205,7 +316,7 @@ def _application(window: str) -> tuple[QCoreApplication, QSettings, Preferences,
     return app, settings, preferences, language
 
 
-def run(plan_path: Path | None = None) -> int:
+def run(plan_path: Path | None = None, *, end: bool = False) -> int:
     """Open the review window, on a plan file if one was named. Blocks until closed.
 
     With no plan file it opens empty, and stays that way until asked. It used
@@ -225,6 +336,11 @@ def run(plan_path: Path | None = None) -> int:
     a platform-plugin failure escape as something unreadable — both are things
     a user can plausibly fix (install the extra; install the missing system
     library) if the message says so.
+
+    ``end`` leaves the process from here rather than returning — see
+    :func:`end_process` for why. The command line and the application bundle
+    ask for it; a caller that has more to do afterwards, a test above all,
+    does not.
     """
     app, settings, _preferences, language = _application("review GUI")
 
@@ -235,17 +351,20 @@ def run(plan_path: Path | None = None) -> int:
     log.debug("window open in %s", language)
     code = app.exec()
     close_down(window)
+    if end:
+        end_process(code, window, settings)
     return code
 
 
-def read(target: Path) -> int:
+def read(target: Path, *, end: bool = False) -> int:
     """Open the reader window on a chapter. Blocks until closed.
 
     A folder of pages, one image, or a chapter file, which is read where it
     is and never unpacked — see :mod:`comictrans.reading`. Something that
     cannot be read is refused before the window opens, as ``extract``
     refuses it. The preferences are the review window's: the language the
-    window speaks, and where the RAR tool is for a ``.cbr``.
+    window speaks, and where the RAR tool is for a ``.cbr``. ``end`` is
+    :func:`run`'s.
     """
     app, _settings, preferences, language = _application("reader window")
 
@@ -263,4 +382,7 @@ def read(target: Path) -> int:
             # be reading it by then.
             window.shutdown()
             close_down(window)
+    # Once the chapter is closed, and while the window is still held.
+    if end:
+        end_process(code, window, None)
     return code

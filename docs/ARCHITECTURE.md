@@ -2372,7 +2372,8 @@ refills the fields under a caret that never moved, so without this the first
 thing typed after Next Region landed in front of the text rather than after
 it.
 
-**Nothing of ours is alive when the interpreter finalises.** `app.run` calls
+**Nothing of ours is alive when the interpreter finalises** — and since the
+second crash below, the interpreter does not finalise at all. `app.run` calls
 `close_down` on the window after `app.exec()` returns, and every dialog is
 opened inside `main_window.transient`, which `deleteLater`s it when the
 command that opened it is done.
@@ -2412,6 +2413,41 @@ returns to the event loop that was running when it was asked for, and a test
 has no event loop. `QApplication.sendPostedEvents(None, DeferredDelete)` is
 what flushes them, and without it the tests here measure three dialogs still
 alive and conclude the wrong thing.
+
+**The second quit crash came after `close_down`, and the process now ends
+before that point.** Its `faulthandler` trace ended in `run_review`, on the line
+that returns `gui_app.run(...)`, with nothing inside `run`: since CPython
+unlinks a returning frame before clearing its locals, that is `run`'s locals
+being released. The macOS `.ips` confirmed it and went further. Clearing the
+frame freed the window's wrapper; freeing its attributes freed one of our
+widgets (a Python subclass, so `subtype_dealloc` on the stack); freeing *its*
+attributes reached a plain PySide wrapper whose deallocation crashed at
+`SbkDeallocWrapperCommon+376`. Disassembled from the same shiboken 6.11.2
+build, `+376` is the return address of `sotp->cpp_dtor(cptr)` — the call
+PySide makes only when the wrapper says the object is alive and Python's —
+and the fault address, in no mapped region, is a vtable read out of freed
+memory. So: an object Qt deleted with the window, which PySide still thought
+it owned, deleted a second time.
+
+Which object, nothing here can say. The session was replayed off a Mac — the
+extract, the previews and the region read the log recorded, then all 87
+enabled actions in the window — and no wrapper was left alive and owned by
+Python afterwards, so the condition only arises on macOS. Two things follow
+from that, and both are done. `app.left_behind` walks what the destroyed
+window's attributes still hold and names anything in that state; `end_process`
+logs it as a warning, syncs the settings, shuts logging down, and calls
+`os._exit` while `run` still holds the window, so neither the release that
+crashed nor PySide's own atexit walk ever starts. The command line and the
+bundle ask for that (`run(end=True)`, `read(end=True)`); the tests do not,
+since it would end them too. Measured through `main(["review", …])`: exit
+code 0, the layout in the settings file, the log flushed, and `run` never
+returns. `shiboken6.invalidate` was tried first, to let the object go
+undeleted: it does not stop the delete — measured, the wrapper stays valid
+and the `QObject` is destroyed when it is freed.
+
+What this does not do is find the object. The warning is how it will be
+found: the next quit on a Mac that would have crashed logs its attribute path
+instead.
 
 **A line of help under a control is a `Note`, never a wrapped `QLabel`.**
 `gui/note.py`, and the rule exists because the obvious thing is wrong in a

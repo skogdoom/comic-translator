@@ -680,14 +680,15 @@ def run_review(args: argparse.Namespace) -> int:
     # backends from inside itself rather than at the top of ocr/__init__.py.
     from .gui import app as gui_app
 
-    return gui_app.run(args.plan)
+    # end: see gui.app.end_process. Nothing here comes after the window.
+    return gui_app.run(args.plan, end=True)
 
 
 def run_read(args: argparse.Namespace) -> int:
     # Lazily, for the reason run_review gives.
     from .gui import app as gui_app
 
-    return gui_app.read(args.input)
+    return gui_app.read(args.input, end=True)
 
 
 def _validate_summary(report: ValidateReport) -> None:

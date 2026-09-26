@@ -23,6 +23,15 @@ what changes: every field version 4 adds is optional and defaults to the value
 that means "as before", and the writer leaves out each one at that value — so a
 plan that says nothing new is byte for byte the file it was.
 
+- **Quitting ends the process once the window has gone.** A review session
+  segfaulted on quit, twice, after the window had been destroyed: the macOS
+  crash report showed PySide deleting, a second time, a Qt object that had
+  gone with the window. Which object it is has not been found — replayed off
+  a Mac, the condition never arises — so the settings and the log are now
+  written and the process ends there, before any of that teardown runs, for
+  `review`, `read` and the application bundle alike. Anything the window
+  leaves in that state is named in `review.log`, beginning `left behind at
+  quit`, so the next report can say what it was.
 - **A chapter file's ComicInfo.xml is read, and a packed chapter carries
   one.** `extract` over a `.cbz` or `.cbr` reads the `ComicInfo.xml` at its
   root and puts the series, title, volume, number, year, publisher, writer and
