@@ -16,6 +16,12 @@ spread is one image already, and beside its neighbour it would be three
 pages wide; it is shown alone and the pairing starts again after it, which
 is where the printed pairing starts again too — the spread was two pages of
 it.
+
+**A chapter file can say what it is**, in the ComicInfo.xml ``extract`` reads
+into a plan's header. The reader shows all of it that a person would read —
+:func:`chapter_info` — and opens right to left when it says so. A folder of
+pages says nothing here, as it says nothing to ``extract``: the reader reads
+what ``extract`` reads.
 """
 
 from __future__ import annotations
@@ -26,8 +32,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from .comicinfo import ComicInfoError, read_elements, reading_direction
 from .errors import InputError
 from .imaging import collect_inputs
+from .model import ReadingDirection
 from .sources import is_container, open_chapter
 
 Size = tuple[int, int]
@@ -46,6 +54,11 @@ class Pages(Protocol):
     def read(self, index: int) -> bytes:
         """The page's bytes, read now. Raises ``InputError`` for one that
         turns out not to be readable."""
+        ...
+
+    @property
+    def comic_info(self) -> bytes | None:
+        """The chapter's ComicInfo.xml, unparsed, or ``None`` if it has none."""
         ...
 
 
@@ -69,6 +82,11 @@ class FilePages:
         except OSError as exc:
             raise InputError(f"cannot read {path.name}: {exc}") from exc
 
+    @property
+    def comic_info(self) -> None:
+        """Never: ``extract`` reads a ComicInfo.xml only out of a chapter file."""
+        return None
+
 
 @contextmanager
 def open_pages(target: Path, unrar_tool: str = "") -> Iterator[Pages]:
@@ -84,6 +102,66 @@ def open_pages(target: Path, unrar_tool: str = "") -> Iterator[Pages]:
         return
     images, _skipped = collect_inputs(target)
     yield FilePages(tuple(images))
+
+
+DETAILS = (
+    "series",
+    "number",
+    "title",
+    "volume",
+    "year",
+    "publisher",
+    "writer",
+    "penciller",
+    "inker",
+    "colorist",
+    "letterer",
+    "coverartist",
+    "editor",
+    "translator",
+    "genre",
+    "languageiso",
+    "pagecount",
+    "summary",
+)
+"""The ComicInfo.xml elements the reader shows, folded, in the order it
+shows them: what the chapter is, who made it, and what it is about. Left out
+is what is for a library rather than a reader — sort keys, links, the page
+list, ratings."""
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterInfo:
+    """What a chapter's ComicInfo.xml says, as the reader shows it."""
+
+    details: tuple[tuple[str, str], ...] = ()
+    """``(element, value)`` for each of :data:`DETAILS` the file gives, in
+    that order. Every value is one line, but the summary, which keeps its
+    paragraphs."""
+
+    reading_direction: ReadingDirection | None = None
+
+    problem: str = ""
+    """Why the file could not be read, when it could not. Said rather than
+    hidden: the chapter has one, and a window that showed nothing would look
+    like a chapter that had none."""
+
+
+def chapter_info(pages: Pages) -> ChapterInfo | None:
+    """What ``pages`` says about itself, or ``None`` if it says nothing."""
+    data = pages.comic_info
+    if data is None:
+        return None
+    try:
+        elements = read_elements(data)
+    except ComicInfoError as exc:
+        return ChapterInfo(problem=str(exc))
+    details = tuple(
+        (name, value if name == "summary" else " ".join(value.split()))
+        for name in DETAILS
+        if (value := elements.get(name))
+    )
+    return ChapterInfo(details, reading_direction(elements.get("manga", "")))
 
 
 def is_spread(size: Size | None) -> bool:
@@ -156,9 +234,12 @@ def pages_to_keep(groups: Sequence[tuple[int, ...]], current: int) -> tuple[int,
 
 
 __all__ = [
+    "DETAILS",
+    "ChapterInfo",
     "FilePages",
     "Pages",
     "Size",
+    "chapter_info",
     "group_of",
     "is_spread",
     "open_pages",

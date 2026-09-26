@@ -9,7 +9,17 @@ import numpy as np
 import pytest
 
 from comictrans.errors import InputError
-from comictrans.reading import group_of, is_spread, open_pages, pages_to_keep, spreads
+from comictrans.model import ReadingDirection
+from comictrans.reading import (
+    DETAILS,
+    ChapterInfo,
+    chapter_info,
+    group_of,
+    is_spread,
+    open_pages,
+    pages_to_keep,
+    spreads,
+)
 
 from .conftest import save_page
 
@@ -143,3 +153,93 @@ def test_a_page_that_has_gone_is_named_when_it_is_read(tmp_path: Path) -> None:
         page.unlink()
         with pytest.raises(InputError, match=r"cannot read page\.png"):
             pages.read(0)
+
+
+# -- what a chapter says about itself -----------------------------------------
+
+DESCRIBED = b"""<?xml version="1.0"?>
+<ComicInfo>
+  <Summary>
+    The first paragraph.
+
+    The second.
+  </Summary>
+  <Web>https://example.invalid/tex</Web>
+  <Title>La mano  rossa</Title>
+  <Series>Tex</Series>
+  <Number>7</Number>
+  <Penciller>Aurelio
+    Galleppini</Penciller>
+  <LanguageISO>it</LanguageISO>
+  <Manga>YesAndRightToLeft</Manga>
+  <Pages><Page Image="0" /></Pages>
+</ComicInfo>
+"""
+
+
+def _described_chapter(tmp_path: Path, comic_info: bytes | None) -> Path:
+    chapter = tmp_path / "chapter.cbz"
+    with zipfile.ZipFile(chapter, "w") as archive:
+        archive.writestr("001.png", _png(tmp_path / "a.png", 1).read_bytes())
+        if comic_info is not None:
+            archive.writestr("ComicInfo.xml", comic_info)
+    return chapter
+
+
+def test_what_a_chapter_says_is_shown_in_the_readers_order(tmp_path: Path) -> None:
+    with open_pages(_described_chapter(tmp_path, DESCRIBED)) as pages:
+        info = chapter_info(pages)
+
+    assert info == ChapterInfo(
+        details=(
+            ("series", "Tex"),
+            ("number", "7"),
+            ("title", "La mano rossa"),
+            ("penciller", "Aurelio Galleppini"),
+            ("languageiso", "it"),
+            ("summary", "The first paragraph.\n\n    The second."),
+        ),
+        reading_direction=ReadingDirection.RIGHT_TO_LEFT,
+    )
+
+
+def test_what_is_for_a_library_rather_than_a_reader_is_left_out() -> None:
+    """A link, the page list: nothing in them is what a chapter is."""
+    assert "web" not in DETAILS and "pages" not in DETAILS
+
+
+def test_a_chapter_with_nothing_to_say_says_nothing(tmp_path: Path) -> None:
+    with open_pages(_described_chapter(tmp_path, None)) as pages:
+        assert chapter_info(pages) is None
+
+
+def test_a_folder_says_nothing_even_with_a_comic_info_in_it(tmp_path: Path) -> None:
+    """The reader reads what extract reads, and extract reads it only out of
+    a chapter file."""
+    _png(tmp_path / "001.png", 1)
+    (tmp_path / "ComicInfo.xml").write_bytes(DESCRIBED)
+
+    with open_pages(tmp_path) as pages:
+        assert chapter_info(pages) is None
+
+
+def test_one_that_cannot_be_read_says_why_rather_than_nothing(tmp_path: Path) -> None:
+    with open_pages(_described_chapter(tmp_path, b"<ComicInfo><Series>")) as pages:
+        info = chapter_info(pages)
+
+    assert info is not None
+    assert info.details == ()
+    assert info.problem.startswith("it is not well-formed XML")
+
+
+def test_one_the_archive_cannot_give_up_leaves_the_pages_readable(tmp_path: Path) -> None:
+    """A damaged entry fails to come out of the zip at all — a bad CRC here."""
+    chapter = _described_chapter(tmp_path, b"<ComicInfo><Series>Tex</Series></ComicInfo>")
+    raw = bytearray(chapter.read_bytes())
+    at = raw.index(b"<Series>Tex")
+    raw[at + len(b"<Series>")] = ord("X")
+    chapter.write_bytes(bytes(raw))
+
+    with open_pages(chapter) as pages:
+        assert chapter_info(pages) is None
+        assert pages.read(0), "and the chapter still reads"

@@ -70,9 +70,11 @@ from PySide6.QtWidgets import (
 )
 
 from ..errors import ComictransError, InputError
-from ..reading import Pages, Size, group_of, pages_to_keep, spreads
+from ..model import ReadingDirection
+from ..reading import Pages, Size, chapter_info, group_of, pages_to_keep, spreads
 from . import about
 from .canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_STEP
+from .chapter_info import ChapterInfoDialog
 
 log = logging.getLogger(__name__)
 
@@ -465,6 +467,10 @@ class ReaderWindow(QMainWindow):
     No toolbar: the pages have the whole window, and every command is in the
     View menu and on a key. No Help menu either — there is nothing here the
     menus and the keys do not already say.
+
+    A chapter file's ComicInfo.xml is read once, as it is opened: File ▸
+    Chapter Info shows it, and a chapter it says reads right to left opens
+    that way round — see :func:`reading.chapter_info`.
     """
 
     def __init__(self, pages: Pages, title: str, parent: QWidget | None = None) -> None:
@@ -477,6 +483,9 @@ class ReaderWindow(QMainWindow):
         self._groups = spreads(self._sizes, two_up=False)
         self._current = 0
         self._stopped = False
+        self._title = title
+        self._info = chapter_info(pages)
+        self._info_dialog: ChapterInfoDialog | None = None
 
         self.setWindowTitle(self.tr("{0} — {1}").format(title, about.NAME))
         self._view = ReaderView()
@@ -497,6 +506,12 @@ class ReaderWindow(QMainWindow):
         self._loader.decoded.connect(self._on_decoded)
         self._loader.measured.connect(self._on_measured)
         self._loader.start()
+
+        stated = self._info.reading_direction if self._info is not None else None
+        if stated is ReadingDirection.RIGHT_TO_LEFT:
+            # Only ever towards right to left: a chapter that says left to
+            # right, or nothing, opens the way every chapter already did.
+            self._right_to_left_action.setChecked(True)
 
         self.resize(900, 1100)
         self._show_current()
@@ -545,6 +560,11 @@ class ReaderWindow(QMainWindow):
         self._right_to_left_action.setCheckable(True)
         self._right_to_left_action.toggled.connect(self._set_right_to_left)
 
+        self._info_action = QAction(self.tr("Chapter &Info…"), self)
+        self._info_action.setShortcut(QKeySequence("Ctrl+I"))
+        self._info_action.setEnabled(self._info is not None)
+        self._info_action.triggered.connect(self._show_info)
+
         self._close_action = QAction(self.tr("&Close"), self)
         # Every binding the platform has, not the first: on Linux the first
         # is Ctrl+F4 and Ctrl+W is the second, measured. A Mac has only one.
@@ -554,6 +574,8 @@ class ReaderWindow(QMainWindow):
     def _build_menus(self) -> None:
         bar = self.menuBar()
         file_menu = bar.addMenu(self.tr("&File"))
+        file_menu.addAction(self._info_action)
+        file_menu.addSeparator()
         file_menu.addAction(self._close_action)
 
         view_menu = bar.addMenu(self.tr("&View"))
@@ -570,6 +592,16 @@ class ReaderWindow(QMainWindow):
         view_menu.addAction(self._two_pages_action)
         view_menu.addSeparator()
         view_menu.addAction(self._right_to_left_action)
+
+    def _show_info(self) -> None:
+        """The chapter's details, in a window that stays open while reading."""
+        if self._info is None:
+            return
+        if self._info_dialog is None:
+            self._info_dialog = ChapterInfoDialog(self._info, self._title, self)
+        self._info_dialog.show()
+        self._info_dialog.raise_()
+        self._info_dialog.activateWindow()
 
     # -- what is on screen --------------------------------------------------
 

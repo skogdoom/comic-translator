@@ -421,6 +421,126 @@ def test_read_refuses_what_extract_refuses(
     assert "input path does not exist" in capsys.readouterr().err
 
 
+def _described(tmp_path: Path, comic_info: str) -> Path:
+    chapter = _chapter(tmp_path, [PAGE] * 3)
+    with zipfile.ZipFile(chapter, "a") as archive:
+        archive.writestr("ComicInfo.xml", comic_info)
+    return chapter
+
+
+def _rows(dialog: Any) -> list[tuple[str, str]]:
+    """What the info window lists, as ``(label, value)``; one text alone is
+    ``("", text)``."""
+    from PySide6.QtWidgets import QFormLayout, QLabel, QPlainTextEdit
+
+    form = dialog.form
+    rows = []
+    for row in range(form.rowCount()):
+        label = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+        field = form.itemAt(row, QFormLayout.ItemRole.FieldRole) or form.itemAt(
+            row, QFormLayout.ItemRole.SpanningRole
+        )
+        widget = field.widget()
+        value = widget.toPlainText() if isinstance(widget, QPlainTextEdit) else widget.text()
+        rows.append((label.widget().text() if label is not None else "", value))
+        assert not isinstance(widget, QLabel) or widget.textFormat() == Qt.TextFormat.PlainText
+    return rows
+
+
+def test_chapter_info_shows_what_the_chapter_says_about_itself(
+    qapp: object, tmp_path: Path
+) -> None:
+    chapter = _described(
+        tmp_path,
+        "<ComicInfo><Summary>A ranger.\n\nIn Texas.</Summary><Series>Tex</Series>"
+        "<Number>7</Number><Writer>Gian Luigi Bonelli</Writer>"
+        "<LanguageISO>it</LanguageISO><Manga>No</Manga></ComicInfo>",
+    )
+
+    with _reader(chapter) as window:
+        action = window._info_action
+        assert action.isEnabled()
+        assert action.shortcut().toString() == "Ctrl+I"
+        assert action in window.menuBar().actions()[0].menu().actions()
+
+        action.trigger()
+        dialog = window._info_dialog
+
+        assert dialog is not None and dialog.isVisible()
+        assert not dialog.isModal(), "it stays open while the pages are turned"
+        assert _rows(dialog) == [
+            ("series", "Tex"),
+            ("number", "7"),
+            ("writer", "Gian Luigi Bonelli"),
+            ("language", "Italian (it)"),
+            ("reading direction", "left to right"),
+            ("summary", "A ranger.\n\nIn Texas."),
+        ]
+        from PySide6.QtWidgets import QPlainTextEdit
+
+        (summary,) = dialog.findChildren(QPlainTextEdit)
+        assert summary.isReadOnly()
+        action.trigger()
+        assert window._info_dialog is dialog, "asked again, the same window comes forward"
+
+
+def test_a_chapter_with_no_comic_info_has_no_info_to_show(qapp: object, tmp_path: Path) -> None:
+    with _reader(_chapter(tmp_path, [PAGE] * 3)) as window:
+        assert not window._info_action.isEnabled()
+        window._show_info()
+        assert window._info_dialog is None
+
+
+def test_one_with_nothing_a_reader_wants_says_so_rather_than_nothing(
+    qapp: object, tmp_path: Path
+) -> None:
+    """A page list and a link: a file, but not one with anything to show."""
+    chapter = _described(
+        tmp_path,
+        '<ComicInfo><Web>https://example.invalid</Web><Pages><Page Image="0"/></Pages></ComicInfo>',
+    )
+
+    with _reader(chapter) as window:
+        window._info_action.trigger()
+        rows = _rows(window._info_dialog)
+
+    assert rows == [("", "This chapter's ComicInfo.xml says nothing a reader shows.")]
+
+
+def test_one_that_cannot_be_read_says_why(qapp: object, tmp_path: Path) -> None:
+    with _reader(_described(tmp_path, "<ComicInfo><Series>")) as window:
+        window._info_action.trigger()
+        ((label, text),) = _rows(window._info_dialog)
+
+    assert label == ""
+    assert text.startswith("This chapter's ComicInfo.xml could not be read: it is not well-formed")
+
+
+def test_a_chapter_that_says_right_to_left_opens_right_to_left(
+    qapp: object, tmp_path: Path
+) -> None:
+    chapter = _described(tmp_path, "<ComicInfo><Manga>YesAndRightToLeft</Manga></ComicInfo>")
+
+    with _reader(chapter) as window:
+        assert window._right_to_left_action.isChecked()
+        assert window._view.right_to_left
+        assert window._bar.slider.invertedAppearance()
+
+        window._right_to_left_action.setChecked(False)
+        assert not window._view.right_to_left, "and it can still be turned round"
+
+
+@pytest.mark.parametrize("manga", ["No", "Yes", "Unknown"])
+def test_anything_else_opens_left_to_right_as_before(
+    qapp: object, tmp_path: Path, manga: str
+) -> None:
+    chapter = _described(tmp_path, f"<ComicInfo><Manga>{manga}</Manga></ComicInfo>")
+
+    with _reader(chapter) as window:
+        assert not window._right_to_left_action.isChecked()
+        assert not window._view.right_to_left
+
+
 def test_the_pages_have_the_window_to_themselves_and_the_view_menu_has_the_rest(
     qapp: object, tmp_path: Path
 ) -> None:

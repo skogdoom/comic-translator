@@ -615,6 +615,26 @@ def _stray_pages(directory: Path, pages: Sequence[Path]) -> list[Path]:
     )
 
 
+def _comic_info_bytes(notes: _Notes) -> bytes | None:
+    """The chapter's ComicInfo.xml, read out of the open archive, unparsed.
+
+    For the reader window, which shows what it says and must still open a
+    chapter whose metadata is broken: an entry that fails to come out of the
+    archive is logged and treated as absent, where a page failing the same
+    way is said in the page's place.
+    """
+    if notes.comic_info is None:
+        return None
+    label, load = notes.comic_info
+    try:
+        return load()
+    except Exception as exc:
+        # Whatever the archive's reader raises for a damaged entry, which
+        # differs between the three; the chapter is still readable without it.
+        log.warning("%s could not be read out of the chapter: %s", label, exc)
+        return None
+
+
 def _described(notes: _Notes) -> ComicInfo | None:
     """What the chapter's ComicInfo.xml says, read while the chapter is open.
 
@@ -679,6 +699,16 @@ class ChapterPages:
     """What was found not to be a page before anything was read, as
     :attr:`UnpackReport.skipped` has it."""
 
+    comic_info: bytes | None = None
+    """The chapter's ComicInfo.xml as it is in the archive, unparsed, or
+    ``None`` for a chapter with none.
+
+    Read when the chapter is opened rather than when it is asked for: after
+    that the window's one loader thread is the only thing reading the
+    archive, and none of the three formats' readers is safe to share. It is
+    found under the same checks as a page and is at most
+    :data:`comicinfo.MAX_BYTES`, so holding it costs nothing."""
+
     def __len__(self) -> int:
         return len(self.entries)
 
@@ -717,7 +747,7 @@ def open_chapter(source: Path, unrar_tool: str = "") -> Iterator[ChapterPages]:
     with reader(source, notes) as entries:
         if not entries:
             raise InputError(f"no pages found in {source.name}")
-        yield ChapterPages(source, entries, tuple(notes.skipped))
+        yield ChapterPages(source, entries, tuple(notes.skipped), _comic_info_bytes(notes))
 
 
 def unpack(

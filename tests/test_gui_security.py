@@ -154,3 +154,33 @@ def test_the_reader_refuses_a_page_larger_than_qt_will_decode(qapp: object) -> N
 
     with pytest.raises(InputError, match=r"this 9000x8000 image"):
         decode_page(buffer.getvalue())
+
+
+# -- what a chapter says about itself is text, never markup -------------------
+
+
+def test_a_chapters_details_are_shown_as_the_text_they_are(qapp: object) -> None:
+    """A ComicInfo.xml is somebody else's, and a label left to guess renders
+    HTML — an image from anywhere on disk, a link. Every value is plain text.
+
+    Measured first, so the test is known to be asking the right question: the
+    same string in a label left on its default format is taken for rich text.
+    """
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import Qt as GuiQt
+    from PySide6.QtWidgets import QLabel
+
+    from comictrans.gui.chapter_info import ChapterInfoDialog
+    from comictrans.reading import ChapterInfo
+
+    markup = '<img src="file:///etc/hosts"><a href="https://example.invalid">Tex</a>'
+    assert GuiQt.mightBeRichText(markup), "the string a default label would render"
+
+    dialog = ChapterInfoDialog(
+        ChapterInfo(details=(("series", markup), ("summary", markup))), "chapter.cbz"
+    )
+    shown = [label for label in dialog.findChildren(QLabel) if label.text() == markup]
+
+    assert shown, "the value is on screen, as typed"
+    assert all(label.textFormat() == Qt.TextFormat.PlainText for label in shown)
+    assert all(not label.openExternalLinks() for label in shown)

@@ -151,8 +151,14 @@ def _refuse_doctype(*_args: object) -> None:
     )
 
 
-def _elements(data: bytes) -> dict[str, str]:
-    """The root's direct children, by folded name, first non-empty value each."""
+def read_elements(data: bytes) -> dict[str, str]:
+    """The root's direct children, by folded name: the first non-empty value
+    of each, stripped at the ends and otherwise as written.
+
+    Everything the file says, where :func:`read_comic_info` is what a plan
+    can hold of it — the reader window shows the rest. Refused, with
+    :class:`ComicInfoError`, exactly as :func:`read_comic_info` refuses.
+    """
     parser = expat.ParserCreate()
     parser.StartDoctypeDeclHandler = _refuse_doctype
     depth = 0
@@ -173,7 +179,7 @@ def _elements(data: bytes) -> dict[str, str]:
     def end(_name: str) -> None:
         nonlocal depth
         if depth == 2:
-            value = " ".join("".join(text).split())
+            value = "".join(text).strip()
             if value and current not in found:
                 found[current] = value
         depth -= 1
@@ -194,6 +200,12 @@ def _elements(data: bytes) -> dict[str, str]:
     return found
 
 
+def _folded(text: str) -> str:
+    """Whitespace inside a value as single spaces: every field it lands in is
+    one line in the plan header dialog."""
+    return " ".join(text.split())
+
+
 def _year(text: str) -> int | None:
     try:
         year = int(text)
@@ -203,7 +215,12 @@ def _year(text: str) -> int | None:
     return year if low <= year <= high else None
 
 
-def _direction(text: str) -> ReadingDirection | None:
+def reading_direction(text: str) -> ReadingDirection | None:
+    """What a ``Manga`` element says about which way the pages read.
+
+    ``YesAndRightToLeft`` is right to left and ``No`` is left to right, as
+    Komga reads them; ``Yes`` says it is a manga and nothing about direction.
+    """
     folded = text.casefold()
     if folded == "yesandrighttoleft":
         return ReadingDirection.RIGHT_TO_LEFT
@@ -218,7 +235,7 @@ def read_comic_info(data: bytes) -> ComicInfo:
     A file that is XML with a ``ComicInfo`` root is read, however little of
     it makes sense; one that is not either is refused, with the reason.
     """
-    found = _elements(data)
+    found = {name: _folded(value) for name, value in read_elements(data).items()}
     volume = found.get("volume", "")
     return ComicInfo(
         series=found.get("series", ""),
@@ -228,7 +245,7 @@ def read_comic_info(data: bytes) -> ComicInfo:
         year=_year(found.get("year", "")),
         publisher=found.get("publisher", ""),
         writer=found.get("writer", ""),
-        reading_direction=_direction(found.get("manga", "")),
+        reading_direction=reading_direction(found.get("manga", "")),
         language=found.get("languageiso", ""),
     )
 
@@ -310,5 +327,7 @@ __all__ = [
     "comic_info_xml",
     "differs",
     "read_comic_info",
+    "read_elements",
+    "reading_direction",
     "with_comic_info",
 ]
