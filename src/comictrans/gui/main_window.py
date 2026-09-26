@@ -17,7 +17,6 @@ import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
@@ -483,7 +482,11 @@ class MainWindow(QMainWindow):
         add_menu = edit_menu.addMenu(self.tr("&Add Region"))
         for action, mode in self._shape_actions():
             action.setCheckable(True)
-            action.toggled.connect(partial(self._on_shape_toggled, mode))
+            # The mode rides on the action rather than in a partial bound to
+            # this window — see _on_recent_triggered for the crash that shape
+            # caused here once already.
+            action.setData(str(mode))
+            action.toggled.connect(self._on_shape_toggled)
             add_menu.addAction(action)
 
         # The brushes, one action per size, all of them the canvas's one
@@ -495,7 +498,9 @@ class MainWindow(QMainWindow):
         add_menu.addSeparator()
         for action, share in self._brush_actions():
             action.setCheckable(True)
-            action.toggled.connect(partial(self._on_brush_toggled, share))
+            # The size rides on the action, as the shapes' modes do above.
+            action.setData(share)
+            action.toggled.connect(self._on_brush_toggled)
             add_menu.addAction(action)
 
         # The toolbar's one button for all of them, which opens the palette
@@ -1371,28 +1376,37 @@ class MainWindow(QMainWindow):
         )
         return tuple(zip(actions, BRUSH_SIZES, strict=True))
 
-    def _on_brush_toggled(self, share: float, on: bool) -> None:
+    def _on_brush_toggled(self, on: bool) -> None:
         """Pick a brush up, or put it down, as :meth:`_on_shape_toggled` does.
 
-        Swapping one brush for another leaves the canvas in the mode it was
-        in, so it reports no change of mode, and the brush put down is
-        unticked here instead.
+        Which brush is read off the action that was toggled, where
+        ``_build_menus`` put its size. Swapping one brush for another leaves
+        the canvas in the mode it was in, so it reports no change of mode,
+        and the brush put down is unticked here instead.
         """
+        action = self.sender()
+        if not isinstance(action, QAction):
+            return
         if not on:
             self._canvas.set_mode(CanvasMode.SELECT)
             return
-        self._canvas.set_brush(share)
+        self._canvas.set_brush(float(action.data()))
         self._canvas.set_mode(CanvasMode.BRUSH)
         self._show_tools_checked()
 
-    def _on_shape_toggled(self, mode: CanvasMode, on: bool) -> None:
+    def _on_shape_toggled(self, on: bool) -> None:
         """Pick a shape up, or put it down.
 
-        Only ever the shape in hand is put down: picking another unticks the
-        last one through :meth:`_on_canvas_mode_changed`, with its signals
-        blocked, so this does not hear of it.
+        Which shape is read off the action that was toggled, where
+        ``_build_menus`` put its mode — see :meth:`_on_recent_triggered` for
+        why it is not bound in. Only ever the shape in hand is put down:
+        picking another unticks the last one through
+        :meth:`_on_canvas_mode_changed`, with its signals blocked, so this
+        does not hear of it.
         """
-        self._canvas.set_mode(mode if on else CanvasMode.SELECT)
+        action = self.sender()
+        if isinstance(action, QAction):
+            self._canvas.set_mode(CanvasMode(action.data()) if on else CanvasMode.SELECT)
 
     def _on_canvas_mode_changed(self, mode: str) -> None:
         """Keep the checked action and the canvas saying the same thing.

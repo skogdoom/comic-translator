@@ -7648,6 +7648,36 @@ def test_closing_down_destroys_the_window_and_its_children(qapp: object) -> None
     assert not shiboken6.isValid(kept), "children go with it"
 
 
+def test_destroying_the_window_lets_go_of_nothing_that_holds_it(
+    qapp: object, two_page_plan: Path
+) -> None:
+    """The shape of the recent-menu crash, checked for every signal at once.
+
+    A callable bound to this window and connected to one of its children —
+    a ``partial`` over a method, a lambda over ``self`` — is freed while the
+    window is being destroyed, and dropping it drops a reference to the
+    window's wrapper from inside that destruction. Measured, the shape and
+    brush actions' partials were seven such references. Counted rather than
+    looked for in the source, so a new one of any spelling fails here too.
+    The tools are picked up and put down first, so every connection has fired.
+    """
+    from comictrans.gui.app import close_down
+
+    window = MainWindow()
+    window.open_plan(two_page_plan)
+    for action, _mode in window._shape_actions():
+        action.trigger()
+        action.trigger()
+    for action, _share in window._brush_actions():
+        action.trigger()
+        action.trigger()
+    held = sys.getrefcount(window)
+
+    close_down(window)
+
+    assert sys.getrefcount(window) == held
+
+
 def test_closing_down_twice_is_not_a_crash(qapp: object) -> None:
     """It runs on the way out of a process that may have got there oddly."""
     from comictrans.gui.app import close_down

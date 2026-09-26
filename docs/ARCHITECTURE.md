@@ -1587,6 +1587,19 @@ window left alive at interpreter exit under the offscreen platform exit
 cleanly. What was done removes the object the trace died on. It does not
 prove the race is gone.
 
+The rule was broken again by the shape and brush actions, each connected to
+a `partial` over the window's handler, and nothing noticed: measured, the
+window's wrapper lost seven references inside `close_down`, one per action.
+Their mode and size now ride on `QAction.data` as the recent entries' paths
+do. What holds it now is a count rather than a reading of the source:
+`test_destroying_the_window_lets_go_of_nothing_that_holds_it` fires every
+tool, then asserts the window's reference count is the same after
+`close_down` as before it, which a partial or a lambda over `self` on any
+of the window's signals would break — both were tried. It was found while
+looking into a second quit crash, whose trace ends after `close_down` has
+returned, and it is not that crash's explanation: while `run` holds the
+window, those references could not have been the last.
+
 **One canvas mode at a time.** A click on the page means different things —
 select a region, take hold of a corner, place a corner, take a colour — and
 they contradict each other, so the canvas holds a single `CanvasMode` rather
