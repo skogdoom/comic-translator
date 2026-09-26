@@ -7734,15 +7734,22 @@ def test_a_window_left_alone_leaves_nothing_behind(
 def test_ending_the_process_writes_what_has_to_be_written_first(
     qapp: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The settings reach the disk, the log is flushed, and then the exit.
+    """The settings reach the disk, the quit is logged, the log is flushed,
+    and then the exit.
 
     ``logging.shutdown`` and ``os._exit`` are stood in for: the real ones
-    would take the test run with them.
+    would take the test run with them. The stand-in for the shutdown notes
+    whether the quit line was already logged, since one logged after it is
+    one the file never gets.
     """
     from comictrans.gui import app as gui_app
 
     shut: list[bool] = []
-    monkeypatch.setattr(gui_app.logging, "shutdown", lambda: shut.append(True))
+    monkeypatch.setattr(
+        gui_app.logging,
+        "shutdown",
+        lambda: shut.append("ending the process (exit 3)" in caplog.text),
+    )
     monkeypatch.setattr(gui_app.os, "_exit", _refuse_to_exit)
     settings = _settings_in(tmp_path)
     window = MainWindow(settings=settings)  # type: ignore[arg-type]
@@ -7751,13 +7758,13 @@ def test_ending_the_process_writes_what_has_to_be_written_first(
     gui_app.close_down(window)
 
     with (
-        caplog.at_level(logging.WARNING, logger="comictrans.gui.app"),
+        caplog.at_level(logging.DEBUG, logger="comictrans.gui.app"),
         pytest.raises(_EndedError) as ended,
     ):
         gui_app.end_process(3, window, settings)  # type: ignore[arg-type]
 
     assert ended.value.code == 3
-    assert shut == [True], "the log is flushed and closed before the exit"
+    assert shut == [True], "the quit line is logged, then the log is flushed and closed"
     written = (tmp_path / "settings.ini").read_text(encoding="utf-8")
     assert "geometry=" in written and "state=" in written, "the layout saved at close"
     assert "window._canvas._probe (QObject)" in caplog.text

@@ -201,6 +201,9 @@ def end_process(code: int, window: QWidget, settings: QSettings | None) -> NoRet
         )
     if settings is not None:
         settings.sync()
+    # The last line of every quit, so a log that ends without it is a quit
+    # that did not come this way. Before the shutdown, which would lose it.
+    log.debug("quit: settings written; flushing the log and ending the process (exit %d)", code)
     logging.shutdown()
     for stream in (sys.stdout, sys.stderr):
         # A window launched from Finder may have no stream at all.
