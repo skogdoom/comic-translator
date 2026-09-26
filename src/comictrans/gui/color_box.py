@@ -53,21 +53,32 @@ def swatch_icon(color: Color) -> QIcon:
 
 
 class ColorBox(QPushButton):
-    """One colour, shown as a swatch and its hex, and a menu to change it."""
+    """One colour, shown as a swatch and its hex, and a menu to change it.
+
+    Given a ``none_label``, the field can also hold no colour at all — an
+    outline that is not drawn — offered first in the menu under that label
+    and shown as it when chosen.
+    """
 
     picked = Signal(object)
-    """A colour was chosen here: a :class:`Color`. Not emitted by
-    :meth:`set_color`, which is how the field is filled in from the plan."""
+    """A colour was chosen here: a :class:`Color`, or ``None`` for the field's
+    none. Not emitted by :meth:`set_color`, which is how the field is filled
+    in from the plan."""
 
     sample_requested = Signal()
     """The page itself is where this colour should come from. The canvas is
     not reachable from here, so whoever owns both is asked to arrange it."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, none_label: str | None = None) -> None:
         super().__init__(parent)
-        self._color = Color(255, 255, 255)
+        self._color: Color | None = Color(255, 255, 255)
+        self._none_label = none_label
 
         menu = QMenu(self)
+        if none_label is not None:
+            none_action = menu.addAction(none_label)
+            none_action.triggered.connect(lambda _checked=False: self._announce(None))
+            menu.addSeparator()
         self._sample_action = menu.addAction(self.tr("Sample from the page…"))
         menu.addSeparator()
         for name, color in STANDARD_COLORS:
@@ -84,23 +95,30 @@ class ColorBox(QPushButton):
         self._choose_action.triggered.connect(self._on_choose)
         self.set_color(self._color)
 
-    def value(self) -> Color:
+    def value(self) -> Color | None:
         return self._color
 
-    def set_color(self, color: Color) -> None:
-        """Show a colour without reporting it: this is how the field is filled in."""
+    def set_color(self, color: Color | None) -> None:
+        """Show a colour without reporting it: this is how the field is filled in.
+
+        ``None`` shows the field's none, and only a field that has one is
+        ever handed it.
+        """
         self._color = color
+        if color is None:
+            self.setIcon(QIcon())
+            self.setText(self._none_label or "")
+            return
         self.setIcon(swatch_icon(color))
         self.setText(color.to_hex())
 
     def _on_choose(self) -> None:
-        chosen = QColorDialog.getColor(
-            QColor(*self._color.as_tuple()), self, self.tr("Choose a colour")
-        )
+        start = self._color or Color(0, 0, 0)
+        chosen = QColorDialog.getColor(QColor(*start.as_tuple()), self, self.tr("Choose a colour"))
         if chosen.isValid():
             self._announce(Color(chosen.red(), chosen.green(), chosen.blue()))
 
-    def _announce(self, color: Color) -> None:
+    def _announce(self, color: Color | None) -> None:
         """Take a new colour and say so, unless it is the one already shown."""
         if color == self._color:
             return

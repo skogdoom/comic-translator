@@ -52,6 +52,41 @@ _HEADER_RANGES: dict[str, tuple[float, float]] = {
 }
 """The reader's own limits, so an edit cannot outrun what will load again."""
 
+SOUND_EFFECT_TEXT = Color(255, 20, 147)
+SOUND_EFFECT_OUTLINE = Color(0, 0, 0)
+"""Hot pink lettering with a black outline: what a sound effect is drawn in.
+
+Measured over the thirteen fixture pages as the share of the page where the
+text would be hard to read against what is under it — a sound effect is
+lettered straight onto the art, over paper and ink alike:
+
+====================  =======  ==========  =====
+fill                  outline  worst page  mean
+====================  =======  ==========  =====
+magenta 255,0,255     none     67.9%       49.6%
+hot pink 255,20,147   none     43.3%       25.2%
+hot pink 255,20,147   black    11.2%       1.3%
+white                 black    0.0%        0.0%
+====================  =======  ==========  =====
+
+A colour halfway between paper and ink stands out from neither, which is
+why magenta, the obvious colour nobody draws in, is the worst. White with a
+black outline reads best and was not chosen, because it reads as ordinary
+lettering: a sound effect that shows it was placed is the point."""
+
+
+def is_sound_effect(region: Region) -> bool:
+    """Lettered on the art with an outline: what the Sound Effect switch makes.
+
+    Read from the region rather than recorded beside it, so it holds for a
+    plan reopened tomorrow and stops holding as soon as either half is taken
+    away by hand — the outline set to none, or erasing turned back on. The
+    lettering's colour is not part of it: a sound effect recoloured is still
+    one.
+    """
+    return region.erase is Erase.NONE and region.stroke_color is not None
+
+
 CHAPTER_TEXT_FIELDS = ("series", "title", "volume", "number", "publisher", "writer")
 """The header's details of the comic that are free text, in the order the
 plan file writes them. The year and the reading direction are the two that
@@ -632,6 +667,38 @@ class PlanDocument:
         right and whose text is level. Positive is counter-clockwise.
         """
         return self._update(region_id, angle=normalised_angle(degrees))
+
+    def set_stroke_color(self, region_id: str, color: Color | None) -> Region:
+        """The outline drawn round the lettering, or ``None`` for none."""
+        return self._update(region_id, stroke_color=color)
+
+    def set_sound_effect(
+        self, region_id: str, on: bool, *, text_color: Color | None = None
+    ) -> Region:
+        """Make a region a sound effect, or an ordinary region again.
+
+        On is three settings in one edit, and one undo step: nothing is
+        painted over (``erase: none``), the lettering is
+        :data:`SOUND_EFFECT_TEXT` and it is outlined in
+        :data:`SOUND_EFFECT_OUTLINE`. The outline is its own field rather than
+        something ``erase: none`` implies, so a caption a plan already letters
+        over artwork does not start being outlined.
+
+        Off puts back what a region drawn fresh would have: erasing as the run
+        decides, no outline, and ``text_color`` — which the caller measures
+        off the page, since nothing recorded what it was before and nothing
+        here reads pixels. Left out, the lettering keeps its colour.
+        """
+        if on:
+            return self._update(
+                region_id,
+                erase=Erase.NONE,
+                text_color=SOUND_EFFECT_TEXT,
+                stroke_color=SOUND_EFFECT_OUTLINE,
+            )
+        if text_color is None:
+            return self._update(region_id, erase=None, stroke_color=None)
+        return self._update(region_id, erase=None, stroke_color=None, text_color=text_color)
 
     def set_source_text(
         self, region_id: str, source_text: str, *, seed_translation: bool = False

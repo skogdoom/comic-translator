@@ -14,16 +14,18 @@ from PIL import Image, ImageDraw
 from comictrans.config import ApplyConfig, TypesetConfig
 from comictrans.fonts import FontFace, resolve
 from comictrans.imaging import PageImage, PageMeta
-from comictrans.model import Box, Color, Geometry, Region, TextCase, rotate_polygon
+from comictrans.model import Box, Color, Erase, Geometry, Region, TextCase, rotate_polygon
 from comictrans.render import (
     FRAME_MARGIN,
     RegionStyle,
     RenderCancelled,
     _turn_onto,
+    draw_layout,
     plan_region,
     render_page,
     upright_frame,
 )
+from comictrans.typeset import Layout, PlacedLine, PlacedRun
 
 INK = Color(20, 20, 20)
 FILL = Color(250, 250, 250)
@@ -456,3 +458,118 @@ def test_what_is_turned_back_reaches_the_frames_margin_and_no_further() -> None:
         box.right + FRAME_MARGIN,
         box.bottom + FRAME_MARGIN,
     )
+
+
+# -- outlined lettering ------------------------------------------------------
+
+PINK = Color(255, 20, 147)
+BLACK = Color(0, 0, 0)
+
+
+SFX_BOX = Box(50, 50, 650, 250)
+
+
+def _sound_effect(box: Box = SFX_BOX, **fields: object) -> Region:
+    return Region(
+        id="sfx",
+        image="p.png",
+        order=1,
+        geometry=Geometry.MANUAL,
+        polygon=box.as_polygon(),
+        fill_color=Color(255, 255, 255),
+        text_color=PINK,
+        confidence=1.0,
+        source_text="",
+        translation="BLAM!",
+        erase=Erase.NONE,
+        stroke_color=BLACK,
+        **fields,  # type: ignore[arg-type]
+    )
+
+
+def _extent(mask: np.ndarray) -> tuple[int, int, int, int]:
+    ys, xs = np.nonzero(mask)
+    return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+
+
+def _pink(pixels: np.ndarray) -> np.ndarray:
+    return (pixels[:, :, 0] > 240) & (pixels[:, :, 1] < 40) & (abs(pixels[:, :, 2] - 147) < 20)
+
+
+def _black(pixels: np.ndarray) -> np.ndarray:
+    return pixels.sum(axis=2) < 60
+
+
+def test_an_outline_goes_round_the_lettering_as_wide_as_the_ratio_says(
+    style: RegionStyle,
+) -> None:
+    pixels, outcome = _render_one(_sound_effect(), style, _blank(700, 300))
+    width = max(1, round(outcome.font_size * TypesetConfig().outline_ratio))
+
+    pink, black = _extent(_pink(pixels)), _extent(_black(pixels))
+
+    assert black[0] == pytest.approx(pink[0] - width, abs=1), "left"
+    assert black[1] == pytest.approx(pink[1] - width, abs=1), "top"
+    assert black[2] == pytest.approx(pink[2] + width, abs=1), "right"
+    assert black[3] == pytest.approx(pink[3] + width, abs=1), "bottom"
+
+
+def test_lettering_without_an_outline_has_none(style: RegionStyle) -> None:
+    pixels, _outcome = _render_one(
+        replace(_sound_effect(), stroke_color=None), style, _blank(700, 300)
+    )
+
+    assert _pink(pixels).any() and not _black(pixels).any()
+
+
+def test_the_fit_leaves_room_for_the_outline_inside_the_outline(style: RegionStyle) -> None:
+    """An outline is ink: the fit keeps it inside the polygon as it keeps text."""
+    import cv2
+
+    tight = Box(100, 100, 420, 190)
+    region = replace(_sound_effect(tight), translation="KRA-KA-BOOM")
+    pixels, outcome = _render_one(region, style, _blank(700, 300))
+
+    inside = np.zeros(pixels.shape[:2], dtype=np.uint8)
+    cv2.fillPoly(inside, [np.array(region.polygon, dtype=np.int32)], 255)
+    inked = np.argwhere((pixels != 255).any(axis=2))
+    assert outcome.rendered
+    assert _black(pixels).sum() > 500, "an outline was drawn"
+    assert all(inside[y, x] for y, x in inked)
+
+
+def test_one_runs_outline_is_never_drawn_over_the_letters_of_the_next(face: FontFace) -> None:
+    """Every outline on a line is drawn before any letter on it.
+
+    Two runs touching — a word half in bold — drawn one run at a time would
+    put the second run's outline over the edge of the first run's last letter.
+    """
+    style = RegionStyle(face=face, case=TextCase.UPPER, size=None)
+    first = face.regular.load(80).getlength("BL")
+    layout = Layout(
+        lines=(
+            PlacedLine(
+                runs=(PlacedRun("BL", False, 0), PlacedRun("AM", False, round(first))),
+                width=round(face.regular.load(80).getlength("BLAM")),
+                top=40,
+                band_left=20,
+                band_right=420,
+            ),
+        ),
+        font_size=80,
+        condense=1.0,
+        line_height=92,
+        outline=8,
+    )
+    outlined = Image.new("RGB", (440, 180), (255, 255, 255))
+    lettered = Image.new("RGB", (440, 180), (255, 255, 255))
+
+    draw_layout(outlined, layout, style, PINK, outline=BLACK)
+    draw_layout(lettered, layout, style, PINK)
+
+    # The letters' solid pixels, not their antialiased edges: an edge is
+    # meant to blend with what is under it, paper or outline.
+    solid = (abs(np.asarray(lettered, dtype=np.int16) - np.array(PINK.as_tuple())) <= 2).all(axis=2)
+    assert solid.sum() > 1000
+    kept = (abs(np.asarray(outlined, dtype=np.int16) - np.array(PINK.as_tuple())) <= 2).all(axis=2)
+    assert kept[solid].all()

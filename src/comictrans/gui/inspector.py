@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
 from ..model import Color, Erase, Region
 from . import erase_choices
 from .color_box import ColorBox
-from .document import PlanDocument, RegionFlags
+from .document import PlanDocument, RegionFlags, is_sound_effect
 from .font_box import FontBox
 from .prose import ProseEdit
 
@@ -299,6 +299,11 @@ class RegionInspector(QWidget):
     The canvas is not reachable from here; the window arranges the picking
     and writes the answer back through :meth:`set_region`."""
 
+    sound_effect_requested = Signal(bool)
+    """The sound effect checkbox was ticked or unticked. The window does it,
+    because turning one off measures a colour off the page, which is not
+    reachable from here."""
+
     escaped = Signal()
     """Escape was pressed in one of the prose fields. The window puts focus
     back on the page, where the arrow keys nudge a region again."""
@@ -337,12 +342,16 @@ class RegionInspector(QWidget):
         # Saying "still lettered" in the label is what keeps the next person
         # from reading this one as a quieter skip.
         self._locked = QCheckBox(self.tr("locked: finished — still lettered, but not editable"))
+        # Ticked for a region lettered on the art with an outline, however it
+        # came to be: the same state the menu's Sound Effect item ticks for.
+        self._sound_effect = QCheckBox(self.tr("sound effect: on the art, hot pink, outlined"))
         self._erase = QComboBox()
         for label, mode, hint in ERASE_CHOICES:
             self._erase.addItem(label, None if mode is None else str(mode))
             self._erase.setItemData(self._erase.count() - 1, hint, Qt.ItemDataRole.ToolTipRole)
         self._fill_color = ColorBox()
         self._text_color = ColorBox()
+        self._stroke_color = ColorBox(none_label=self.tr("none"))
         self._font = FontBox(allow_default=True)
         self._font_size = QSpinBox()
         self._font_size.setRange(_FONT_SIZE_AUTO, 999)
@@ -370,9 +379,13 @@ class RegionInspector(QWidget):
         form.addRow(self.tr("notes"), self._notes)
         form.addRow("", self._skip)
         form.addRow("", self._locked)
+        form.addRow("", self._sound_effect)
         form.addRow(erase_choices.ERASE_FIELD, self._erase)
         form.addRow(self.tr("fill colour"), self._fill_color)
         form.addRow(self.tr("text colour"), self._text_color)
+        # "text outline", not "outline colour": the outline colours are the
+        # ones the window draws round a region, and the guide says so.
+        form.addRow(self.tr("text outline"), self._stroke_color)
         form.addRow(self.tr("font override"), self._font)
         form.addRow(self.tr("font size"), self._font_size)
         form.addRow(self.tr("text angle"), self._angle)
@@ -388,14 +401,17 @@ class RegionInspector(QWidget):
         self._notes.textChanged.connect(self._on_notes_changed)
         self._skip.toggled.connect(self._on_skip_changed)
         self._locked.toggled.connect(self._on_locked_changed)
+        self._sound_effect.toggled.connect(self.sound_effect_requested)
         self._font.chosen.connect(self._on_font_chosen)
         self._font_size.valueChanged.connect(self._on_font_size_changed)
         self._angle.valueChanged.connect(self._on_angle_changed)
         self._erase.currentIndexChanged.connect(self._on_erase_changed)
         self._fill_color.picked.connect(self._on_fill_color_picked)
         self._text_color.picked.connect(self._on_text_color_picked)
+        self._stroke_color.picked.connect(self._on_stroke_color_picked)
         self._fill_color.sample_requested.connect(lambda: self.sample_requested.emit("fill"))
         self._text_color.sample_requested.connect(lambda: self.sample_requested.emit("text"))
+        self._stroke_color.sample_requested.connect(lambda: self.sample_requested.emit("stroke"))
 
         self.set_region(None, None)
 
@@ -459,9 +475,11 @@ class RegionInspector(QWidget):
             self._notes,
             self._skip,
             self._locked,
+            self._sound_effect,
             self._erase,
             self._fill_color,
             self._text_color,
+            self._stroke_color,
             self._font,
             self._font_size,
             self._angle,
@@ -476,9 +494,11 @@ class RegionInspector(QWidget):
             self._notes.setPlainText("")
             self._skip.setChecked(False)
             self._locked.setChecked(False)
+            self._sound_effect.setChecked(False)
             self._erase.setCurrentIndex(0)
             self._fill_color.set_color(Color(255, 255, 255))
             self._text_color.set_color(Color(0, 0, 0))
+            self._stroke_color.set_color(None)
             self._font.set_value(None)
             self._font_size.setValue(_FONT_SIZE_AUTO)
             self._angle.setValue(0.0)
@@ -505,9 +525,11 @@ class RegionInspector(QWidget):
             prose.put_the_caret_at_the_end()
         self._skip.setChecked(region.skip)
         self._locked.setChecked(region.locked)
+        self._sound_effect.setChecked(is_sound_effect(region))
         self._erase.setCurrentIndex(_erase_index(region.erase))
         self._fill_color.set_color(region.fill_color)
         self._text_color.set_color(region.text_color)
+        self._stroke_color.set_color(region.stroke_color)
         self._font.set_value(region.font)
         self._font_size.setValue(region.font_size or _FONT_SIZE_AUTO)
         self._angle.setValue(region.angle)
@@ -531,6 +553,13 @@ class RegionInspector(QWidget):
             # Flags may have changed (e.g. translation is no longer empty),
             # so the label needs refreshing even though nothing else does.
             self._flags.set_flags(self._document.flags(self._region_id))
+            # So may whether this is a sound effect: an outline taken away,
+            # or erasing turned back on, ends one without the box being
+            # touched. Blocked, since saying so is not asking for it.
+            with QSignalBlocker(self._sound_effect):
+                self._sound_effect.setChecked(
+                    is_sound_effect(self._document.region(self._region_id))
+                )
         self.edited.emit()
 
     def _on_source_text_changed(self) -> None:
@@ -554,6 +583,11 @@ class RegionInspector(QWidget):
     def _on_text_color_picked(self, color: Color) -> None:
         if self._document is not None and self._region_id is not None:
             self._document.set_text_color(self._region_id, color)
+        self._commit()
+
+    def _on_stroke_color_picked(self, color: Color | None) -> None:
+        if self._document is not None and self._region_id is not None:
+            self._document.set_stroke_color(self._region_id, color)
         self._commit()
 
     def _on_translation_changed(self) -> None:
