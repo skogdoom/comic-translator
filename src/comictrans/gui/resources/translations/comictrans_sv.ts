@@ -78,6 +78,129 @@
     </message>
 </context>
 <context>
+    <name>ChapterInfoDialog</name>
+    <message>
+        <location filename="../../chapter_info.py" line="47"/>
+        <source>Chapter Info — {0}</source>
+        <translation>Kapitelinfo — {0}</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="55"/>
+        <source>This chapter&apos;s ComicInfo.xml could not be read: {0}</source>
+        <translation>Kapitlets ComicInfo.xml kunde inte läsas: {0}</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="62"/>
+        <source>This chapter&apos;s ComicInfo.xml says nothing a reader shows.</source>
+        <translation>Kapitlets ComicInfo.xml säger inget som läsaren visar.</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="75"/>
+        <source>reading direction</source>
+        <translation>läsriktning</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="77"/>
+        <source>right to left</source>
+        <translation>höger till vänster</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="79"/>
+        <source>left to right</source>
+        <translation>vänster till höger</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="101"/>
+        <source>series</source>
+        <translation>serie</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="102"/>
+        <source>number</source>
+        <translation>nummer</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="103"/>
+        <source>title</source>
+        <translation>titel</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="104"/>
+        <source>volume</source>
+        <translation>volym</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="105"/>
+        <source>year</source>
+        <translation>år</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="106"/>
+        <source>publisher</source>
+        <translation>förlag</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="107"/>
+        <source>writer</source>
+        <translation>författare</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="108"/>
+        <source>penciller</source>
+        <translation>tecknare</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="109"/>
+        <source>inker</source>
+        <translation>tuschare</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="110"/>
+        <source>colourist</source>
+        <translation>färgläggare</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="111"/>
+        <source>letterer</source>
+        <translation>textare</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="112"/>
+        <source>cover</source>
+        <translation>omslag</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="113"/>
+        <source>editor</source>
+        <translation>redaktör</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="114"/>
+        <source>translator</source>
+        <translation>översättare</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="115"/>
+        <source>genre</source>
+        <translation>genre</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="116"/>
+        <source>language</source>
+        <translation>språk</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="117"/>
+        <source>pages</source>
+        <translation>sidor</translation>
+    </message>
+    <message>
+        <location filename="../../chapter_info.py" line="118"/>
+        <source>summary</source>
+        <translation>sammanfattning</translation>
+    </message>
+</context>
+<context>
     <name>ColorBox</name>
     <message>
         <location filename="../../color_box.py" line="27"/>
@@ -1476,82 +1599,87 @@
 <context>
     <name>ReaderWindow</name>
     <message>
-        <location filename="../../reader_window.py" line="481"/>
+        <location filename="../../reader_window.py" line="490"/>
         <source>{0} — {1}</source>
         <translation>{0} — {1}</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="508"/>
+        <location filename="../../reader_window.py" line="523"/>
         <source>Fit &amp;Page</source>
         <translation>Anpassa &amp;sidan</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="512"/>
+        <location filename="../../reader_window.py" line="527"/>
         <source>Fit &amp;Width</source>
         <translation>Anpassa &amp;bredden</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="515"/>
+        <location filename="../../reader_window.py" line="530"/>
         <source>&amp;Actual Size</source>
         <translation>&amp;Verklig storlek</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="519"/>
+        <location filename="../../reader_window.py" line="534"/>
         <source>Zoom &amp;In</source>
         <translation>Zooma &amp;in</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="523"/>
+        <location filename="../../reader_window.py" line="538"/>
         <source>Zoom &amp;Out</source>
         <translation>Zooma &amp;ut</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="529"/>
+        <location filename="../../reader_window.py" line="544"/>
         <source>&amp;One Page</source>
         <translation>&amp;En sida</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="535"/>
+        <location filename="../../reader_window.py" line="550"/>
         <source>&amp;Two Pages</source>
         <translation>&amp;Två sidor</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="544"/>
+        <location filename="../../reader_window.py" line="559"/>
         <source>&amp;Right to Left</source>
         <translation>&amp;Höger till vänster</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="548"/>
+        <location filename="../../reader_window.py" line="563"/>
+        <source>Chapter &amp;Info…</source>
+        <translation>Kapitel&amp;info…</translation>
+    </message>
+    <message>
+        <location filename="../../reader_window.py" line="568"/>
         <source>&amp;Close</source>
         <translation>&amp;Stäng</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="556"/>
+        <location filename="../../reader_window.py" line="576"/>
         <source>&amp;File</source>
         <translation>&amp;Arkiv</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="559"/>
+        <location filename="../../reader_window.py" line="581"/>
         <source>&amp;View</source>
         <translation>&amp;Visa</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="600"/>
+        <location filename="../../reader_window.py" line="632"/>
         <source>Page {0} could not be read: {1}</source>
         <translation>Sidan {0} kunde inte läsas: {1}</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="601"/>
+        <location filename="../../reader_window.py" line="633"/>
         <source>Reading page {0}…</source>
         <translation>Läser sidan {0}…</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="609"/>
+        <location filename="../../reader_window.py" line="641"/>
         <source>page {0} of {1}</source>
         <translation>sida {0} av {1}</translation>
     </message>
     <message>
-        <location filename="../../reader_window.py" line="612"/>
+        <location filename="../../reader_window.py" line="644"/>
         <source>pages {0}–{1} of {2}</source>
         <translation>sidorna {0}–{1} av {2}</translation>
     </message>

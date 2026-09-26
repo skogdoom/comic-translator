@@ -941,6 +941,28 @@ there is nothing to decode, the worker measures the rest of the chapter from
 each page's header, and the pairing is regrouped around the page being read
 as the sizes arrive.
 
+**A chapter file's ComicInfo.xml is read once, when it is opened.** After
+that the loader thread is the only thing reading the archive, for the reason
+above, so `open_chapter` reads it out while nothing else is — through the
+same walk and the same checks `unpack` uses, at most a megabyte — and holds
+the bytes on `ChapterPages.comic_info`. An entry that will not come out of
+the archive is logged and treated as absent: the chapter still reads. What
+the reader does with it is decided in `reading.chapter_info`, without Qt:
+every element of `reading.DETAILS` it gives, one line each but the summary,
+which keeps its paragraphs, and the reading direction `Manga` states. A
+folder of pages is not asked, even with a ComicInfo.xml in it, because
+`extract` does not ask one either and the reader reads what `extract` reads.
+
+It is put to two uses. **File ▸ Chapter Info** shows it, in a window that
+stays open while the pages turn; a file that could not be parsed says why
+rather than showing nothing, since a chapter that has one and shows nothing
+looks like a chapter without. Every value is shown as plain text — each
+label is told so, and the summary is a plain text box — because a `QLabel`
+left to decide renders what looks like HTML as HTML, and this is somebody
+else's file. And **a chapter that says right to left opens right to left**;
+one that says left to right, or nothing, opens as every chapter did before,
+and the menu turns either round.
+
 ## The review GUI
 
 `src/comictrans/gui/` splits along the same line as everything else: what

@@ -1086,8 +1086,16 @@ is written beside it. Needs PySide6, like `review`.
   it faces. A page wider than it is tall is taken for both halves of a spread
   scanned as one, and is shown on its own; the pairing starts again after it.
 - **Right to Left**, for a chapter that reads that way: facing pages swap
-  sides, and the left arrow goes forward. A chapter file does not say which way
-  it reads, so this is a choice rather than a guess.
+  sides, and the left arrow goes forward. A CBZ or CBR whose `ComicInfo.xml`
+  says `Manga: YesAndRightToLeft` opens right to left; anything else opens
+  left to right, and either way the menu changes it.
+- **Chapter Info** in the File menu, Ctrl+I, shows what a chapter file's
+  `ComicInfo.xml` says — series, number, title, volume, year, publisher, the
+  credits, genre, language, page count and the summary — in a window that
+  stays open while the pages are turned. Every value is shown as plain text,
+  never as markup: the file is somebody else's. A chapter without one has
+  nothing to show, and a folder of pages is not asked, since `extract` does
+  not ask one either.
 - The View menu fits the page, or its width, or shows it at the size it was
   scanned, and zooms in and out from there; Ctrl (Command on a Mac) and the
   wheel zoom as they do in `review`, and so does a pinch on a trackpad. There

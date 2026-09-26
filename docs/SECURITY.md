@@ -153,6 +153,11 @@ interpreted rather than copied. Three things bound it, and each has a test in
 - What is read goes into eight text fields of the plan header, whitespace
   folded, and a year that must be in `YEAR_RANGE`. Nothing in it names a path,
   runs anything, or reaches the language OCR runs in.
+- The reader window shows more of it, and shows every value as plain text.
+  A `QLabel` left to its default decides for itself whether a string is rich
+  text, and Qt's own test takes a string with an `<img>` and a link in it for
+  markup, measured; each label here is told it holds plain text instead, and
+  `tests/test_gui_security.py` checks it with that string.
 
 Writing one, into a packed chapter, is not an untrusted input and is covered
 only for correctness: characters XML 1.0 cannot carry are dropped, so a plan

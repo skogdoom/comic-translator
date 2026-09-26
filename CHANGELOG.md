@@ -40,7 +40,10 @@ plan that says nothing new is byte for byte the file it was.
   there and Komga's mapper, measured, refuses `Vol. 3` and drops the whole
   file; left to right is written as nothing, since the format can only say it
   as "not a manga". A folder of pages gets none. No change to the plan
-  format.
+  format. **The reader uses it too:** File ▸ Chapter Info (Ctrl+I) shows
+  what a chapter file's ComicInfo.xml says — the series, the credits, the
+  summary and the rest — as plain text, and a chapter it says reads right to
+  left opens right to left.
 - **A sound effect can be lettered over the art.** Ticking Edit > Sound
   Effect — also on a region's right-click menu, and a checkbox in the Region
   panel — sets three things in one undo step:
